@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>{{ paper_title }}</title>
+    <link rel="stylesheet" href="essay.css">
+</head>
+<body>
+    <div class="essay">
+        <header>
+            <h1>{{ paper_title }}</h1>
+            <p class="date">{{ date }}</p>
+        </header>
+        <main>
+            {% for article in articles %}
+            <article>
+                <h2>{{ article.title }}</h2>
+                {% if article.subtitle %}
+                <h3>{{ article.subtitle }}</h3>
+                {% endif %}
+                <p class="byline">By {{ article.author }}</p>
+                <div class="content">
+                    {{ article.content }}
+                </div>
+            </article>
+            <hr>
+            {% endfor %}
+        </main>
+    </div>
+</body>
+</html>

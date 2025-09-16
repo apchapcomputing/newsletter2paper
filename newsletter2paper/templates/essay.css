@@ -1,0 +1,32 @@
+/* Essay layout styles */
+.essay {
+    max-width: 800px;
+    margin: 0 auto;
+    padding: 40px;
+    font-family: Georgia, serif;
+    line-height: 1.6;
+}
+
+.essay header {
+    text-align: center;
+    margin-bottom: 40px;
+}
+
+.essay article {
+    margin-bottom: 60px;
+}
+
+.essay .byline {
+    font-style: italic;
+    margin-bottom: 20px;
+}
+
+.essay .content {
+    text-align: justify;
+}
+
+.essay hr {
+    margin: 40px 0;
+    border: none;
+    border-top: 1px solid #ccc;
+}
