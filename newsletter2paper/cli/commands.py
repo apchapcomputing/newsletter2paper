@@ -3,7 +3,7 @@ from services import rss_service, content_service, pdf_service, email_service
 
 @click.group()
 def cli():
-    """Newsletter to Paper CLI"""
+    """newsletter2paper cli"""
     pass
 
 @cli.command()

@@ -2,11 +2,11 @@ import requests
 from bs4 import BeautifulSoup
 import logging
 from urllib.parse import urljoin
-
+from models import Publication
 
 class RSSService:
 
-    def get_feed_url(self, webpage_url):
+    def get_feed_url(self, webpage_url) -> str:
         """
         Discover RSS feed URL from a given webpage URL by checking HTML head for feed links.
         
@@ -66,7 +66,7 @@ class RSSService:
             logging.error(f"Error fetching webpage {webpage_url}: {str(e)}")
             raise
 
-    def get_publication_metadata(self, feed_url):
+    def get_publication_metadata(self, feed_url) -> Publication:
         """Extract publication metadata from RSS feed."""
         pass
 
