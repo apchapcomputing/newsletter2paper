@@ -1,5 +1,5 @@
 import click
-from newsletter2paper.services import rss_service, content_service, pdf_service, email_service
+from services import rss_service, content_service, pdf_service, email_service
 
 @click.group()
 def cli():
@@ -10,7 +10,17 @@ def cli():
 @click.argument('url')
 def discover_feed(url):
     """Discover RSS feed from webpage URL"""
-    pass
+    rss = rss_service.RSSService()
+    try:
+        feed_url = rss.get_feed_url(url)
+        if feed_url:
+            click.echo(f"Found feed URL: {feed_url}")
+        else:
+            click.echo(f"No feed URL found for {url}", err=True)
+            exit(1)
+    except Exception as e:
+        click.echo(f"Error: {str(e)}", err=True)
+        exit(1)
 
 @cli.command()
 @click.argument('feed_url')
