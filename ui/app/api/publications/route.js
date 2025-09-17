@@ -18,7 +18,7 @@ export async function GET() {
       return headers.reduce((obj, header, index) => {
         obj[header] = values[index];
         return obj;
-      }, {} as Record<string, string>);
+      }, {});
     });
 
     return NextResponse.json({ publications });

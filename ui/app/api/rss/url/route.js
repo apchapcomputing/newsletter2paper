@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 
 const PYTHON_API_URL = 'http://localhost:8000';
 
-export async function GET(request: Request) {
+export async function GET(request) {
   try {
     // Get the webpage_url from the query parameters
     const { searchParams } = new URL(request.url);
