@@ -110,9 +110,6 @@ newsletter2paper/
 ├── utils/
 │   ├── __init__.py
 │   └── helpers.py         # Common utility functions
-├── lambda/
-│   ├── __init__.py
-│   └── handlers.py        # AWS Lambda function handlers
 ├── tests/
 │   ├── __init__.py
 │   ├── test_rss_service.py
