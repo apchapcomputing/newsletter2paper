@@ -1,11 +1,13 @@
 """Unit tests for RSS feed extraction functionality."""
 
 import unittest
-from unittest.mock import patch
+from unittest.mock import patch, MagicMock, AsyncMock
 import os
 from datetime import datetime
 from pathlib import Path
+import asyncio
 from services.rss_service import RSSService
+from services.database_service import DatabaseService
 
 
 class MockResponse:
@@ -36,15 +38,51 @@ class TestFeedExtraction(unittest.TestCase):
         """Set up test fixtures before each test."""
         self.rss_service = RSSService()
         self.feed_url = "https://kyla.substack.com/feed"
+        
+        # Mock the database service
+        self.mock_db = MagicMock()
+        mock_publication = {
+            'id': '08945b32-305a-467e-8117-b4390a47d981',
+            'title': "Kyla's Newsletter",
+            'url': 'https://kyla.substack.com',
+            'feed_url': self.feed_url,
+            'publisher': 'Kyla Scanlon'
+        }
+        
+        # Create async mock for database methods
+        self.mock_db.get_publication_by_url = AsyncMock(return_value=mock_publication)
+        self.mock_db.query_articles_table = AsyncMock(return_value=None)
+        self.rss_service.db = self.mock_db
+
+    def asyncSetUp(self):
+        """Set up async test fixtures."""
+        self.loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(self.loop)
+
+    def asyncTearDown(self):
+        """Clean up async test fixtures."""
+        self.loop.close()
+
+    def async_test(func):
+        """Decorator for async test methods."""
+        def wrapper(*args, **kwargs):
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            try:
+                return loop.run_until_complete(func(*args, **kwargs))
+            finally:
+                loop.close()
+        return wrapper
 
     @patch('requests.get')
-    def test_get_articles(self, mock_get):
+    @async_test
+    async def test_get_articles(self, mock_get):
         """Test extracting articles from a feed."""
         # Configure the mock
         mock_get.return_value = MockResponse(self.sample_xml)
 
         # Get articles with default pagination
-        articles, total = self.rss_service.get_articles(self.feed_url)
+        articles, total = await self.rss_service.get_articles(self.feed_url)
 
         # Basic assertions
         self.assertIsNotNone(articles)
@@ -71,8 +109,19 @@ class TestFeedExtraction(unittest.TestCase):
             expected_date
         )
         
+        # Check subtitle/description extraction
+        self.assertIsNotNone(first_article.subtitle)
+        self.assertLessEqual(len(first_article.subtitle), 255)
+        
+        # Check publication linking
+        self.assertEqual(
+            str(first_article.publication_id),
+            '08945b32-305a-467e-8117-b4390a47d981'
+        )
+        
     @patch('requests.get')
-    def test_pagination(self, mock_get):
+    @async_test
+    async def test_pagination(self, mock_get):
         """Test pagination of articles."""
         # Configure the mock
         mock_get.return_value = MockResponse(self.sample_xml)
@@ -87,7 +136,7 @@ class TestFeedExtraction(unittest.TestCase):
         
         for case in test_cases:
             with self.subTest(case=case):
-                articles, total = self.rss_service.get_articles(
+                articles, total = await self.rss_service.get_articles(
                     self.feed_url,
                     skip=case["skip"],
                     limit=case["limit"]
@@ -98,7 +147,8 @@ class TestFeedExtraction(unittest.TestCase):
                 if articles:
                     self.assertGreaterEqual(total, len(articles))
 
-    def test_live_feed_fetch(self):
+    @async_test
+    async def test_live_feed_fetch(self):
         """Test that we can fetch real XML content from the live RSS feed."""
         try:
             import requests
@@ -139,23 +189,25 @@ class TestFeedExtraction(unittest.TestCase):
             self.fail(f"Received invalid XML from feed: {str(e)}")
 
     @patch('requests.get')
-    def test_error_handling(self, mock_get):
+    @async_test
+    async def test_error_handling(self, mock_get):
         """Test handling of request errors."""
         # Configure mock to raise an exception
         mock_get.return_value = MockResponse("", status_code=404)
 
         # Verify that the error is propagated
         with self.assertRaises(Exception):
-            self.rss_service.get_articles(self.feed_url, skip=0, limit=10)
+            await self.rss_service.get_articles(self.feed_url, skip=0, limit=10)
 
     @patch('requests.get')
-    def test_required_fields(self, mock_get):
+    @async_test
+    async def test_required_fields(self, mock_get):
         """Test that all required fields are present in parsed articles."""
         # Configure the mock
         mock_get.return_value = MockResponse(self.sample_xml)
 
         # Get articles
-        articles, _ = self.rss_service.get_articles(self.feed_url)
+        articles, _ = await self.rss_service.get_articles(self.feed_url)
 
         # Check each article has required fields
         for article in articles:
