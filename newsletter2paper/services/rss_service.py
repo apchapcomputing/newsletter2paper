@@ -5,7 +5,12 @@ import logging
 from urllib.parse import urljoin
 from models import Article, Publication
 
+from services.database_service import DatabaseService
+
 class RSSService:
+    def __init__(self):
+        """Initialize RSS service with database connection."""
+        self.db = DatabaseService()
 
     def get_feed_url(self, webpage_url) -> str:
         """
@@ -55,7 +60,7 @@ class RSSService:
             for path in common_paths:
                 test_url = urljoin(webpage_url, path)
                 try:
-                    test_response = requests.get(test_url)
+                    test_response = requests.get(test_url, timeout=30)
                     if test_response.status_code == 200 and 'xml' in test_response.headers.get('content-type', ''):
                         return test_url
                 except requests.RequestException:
@@ -71,7 +76,7 @@ class RSSService:
         """Extract publication metadata from RSS feed."""
         pass
 
-    def get_articles(
+    async def get_articles(
         self, 
         feed_url: str,
         skip: int = 0,
@@ -137,6 +142,21 @@ class RSSService:
                 if title_elem is not None:
                     # Handle possible CDATA content
                     title = ''.join(title_elem.itertext()).strip()
+
+                # Get description/subtitle (handle CDATA and various tag names)
+                subtitle = None
+                description_elem = item.find('description')
+                if description_elem is None:
+                    description_elem = item.find('summary')
+                if description_elem is None:
+                    description_elem = item.find('.//{http://www.w3.org/2005/Atom}summary')
+                if description_elem is None:
+                    description_elem = item.find('.//{http://www.w3.org/2005/Atom}content')
+                if description_elem is not None:
+                    # Handle possible CDATA content
+                    subtitle = ''.join(description_elem.itertext()).strip()
+                    # Truncate to fit the max_length of 255 characters
+                    subtitle = subtitle[:255] if subtitle else None
                 
                 # Get author (handle CDATA sections)
                 author = "Unknown Author"
@@ -187,7 +207,7 @@ class RSSService:
                 article = Article(
                     id=uuid4(),
                     title=title[:255],  # Ensure we don't exceed max_length
-                    subtitle=None,  # Could be extracted from description if needed
+                    subtitle=subtitle,  # Set from extracted description
                     date_published=date_published,
                     author=author[:255],
                     content_url=content_url[:512],
@@ -197,6 +217,13 @@ class RSSService:
                 
                 articles.append(article)
             
+            # Look up publication by feed URL
+            publication = await self.db.get_publication_by_url(feed_url)
+            if publication:
+                # Update all articles with the publication ID
+                for article in articles:
+                    article.publication_id = publication['id']
+
             total_articles = len(articles)
             
             # Apply pagination

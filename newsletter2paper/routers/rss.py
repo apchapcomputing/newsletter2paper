@@ -1,10 +1,12 @@
 from fastapi import APIRouter, HTTPException, Query
 from services.rss_service import RSSService
+from services.article_service import ArticleService
 from models.api import ArticleResponse, PaginatedArticlesResponse
 from typing import List
 
 router = APIRouter(prefix="/rss", tags=["RSS"])
 rss_service = RSSService()
+article_service = ArticleService()
 
 @router.get("/url")
 async def get_rss_feed_url(webpage_url: str) -> dict:
@@ -65,10 +67,14 @@ async def get_feed_articles(
         HTTPException: If feed cannot be fetched or parsed
     """
     try:
-        articles, total = rss_service.get_articles(feed_url, skip, limit)
+        # Fetch articles from RSS feed
+        articles, total = await rss_service.get_articles(feed_url, skip, limit)
+        
+        # Store articles in database
+        stored_articles = await article_service.store_articles(articles)
         
         return PaginatedArticlesResponse(
-            items=articles,
+            items=stored_articles,
             total=total,
             skip=skip,
             limit=limit,

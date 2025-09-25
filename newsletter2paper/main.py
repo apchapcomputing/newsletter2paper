@@ -1,5 +1,12 @@
 from fastapi import FastAPI
+import os
 from routers import rss
+
+# Verify required environment variables
+required_env_vars = ['SUPABASE_URL', 'SUPABASE_KEY']
+missing_vars = [var for var in required_env_vars if not os.getenv(var)]
+if missing_vars:
+    raise RuntimeError(f"Missing required environment variables: {', '.join(missing_vars)}")
 
 app = FastAPI(
     title="Newsletter2Paper API",

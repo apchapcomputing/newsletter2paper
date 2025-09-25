@@ -1,6 +1,6 @@
 # newsletter2paper cli
 
-This is a CLI that is deployed as AWS Lambda functions.
+This is an API. 
 
 
 ## Database Schema
