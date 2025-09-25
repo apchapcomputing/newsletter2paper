@@ -1,10 +1,14 @@
 from datetime import datetime
-from typing import Optional, List, TYPE_CHECKING
+from typing import Optional, List, TYPE_CHECKING, ForwardRef
 from uuid import UUID
 from sqlmodel import Field, SQLModel, Relationship
 
+from .issue import UserIssue
+
 if TYPE_CHECKING:
-    from .issue import Issue, UserIssue
+    from .issue import Issue
+else:
+    Issue = ForwardRef("Issue")
 
 
 class User(SQLModel, table=True):
@@ -46,5 +50,6 @@ class User(SQLModel, table=True):
     # Relationship with issues through the association table
     issues: List["Issue"] = Relationship(
         back_populates="users",
-        link_model="UserIssue"
+        link_model=UserIssue,
+        sa_relationship_kwargs={'lazy': 'selectin'}
     )

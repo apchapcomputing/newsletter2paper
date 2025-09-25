@@ -1,10 +1,12 @@
 from datetime import datetime
-from typing import Optional, List, TYPE_CHECKING
+from typing import Optional, List, TYPE_CHECKING, ForwardRef
 from uuid import UUID
 from sqlmodel import Field, SQLModel, Relationship
 
 if TYPE_CHECKING:
     from .user import User
+else:
+    User = ForwardRef("User")
 
 
 class UserIssue(SQLModel, table=True):
@@ -37,9 +39,6 @@ class Issue(SQLModel, table=True):
     format: str = Field(
         max_length=50,
         nullable=False,
-        sa_column_kwargs={
-            "check": "format IN ('newspaper', 'essay')"
-        }
     )
     target_email: Optional[str] = Field(
         default=None,
@@ -69,5 +68,6 @@ class Issue(SQLModel, table=True):
     # Relationship with users through the association table
     users: List["User"] = Relationship(
         back_populates="issues",
-        link_model=UserIssue
+        link_model=UserIssue,
+        sa_relationship_kwargs={'lazy': 'selectin'}
     )
