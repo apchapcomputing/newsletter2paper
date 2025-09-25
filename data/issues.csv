@@ -1,0 +1,6 @@
+id,format,target_email,frequency,created_at,updated_at,title
+2e397f1c-fc72-4eff-bdd9-4ed0c1c7593b,newspaper,john.doe@example.com,daily,2025-09-25 01:30:30.25052+00,2025-09-25 01:30:30.25052+00,Economics Digest
+72cf9fa5-d344-42fb-81d9-06c126049b1d,newspaper,michael.johnson@example.com,weekly,2025-09-25 01:30:30.25052+00,2025-09-25 01:30:30.25052+00,Tech News Central
+818bcaed-4fae-41e9-96f6-a4ec35471a68,essay,sarah.smith@example.com,weekly,2025-09-25 01:30:30.25052+00,2025-09-25 01:30:30.25052+00,Weekly Essays
+c3ac330a-931b-4202-b1a1-7aed7fdef98f,newspaper,james.brown@example.com,daily,2025-09-25 01:30:30.25052+00,2025-09-25 01:30:30.25052+00,The Daily!
+e3e079e4-204d-4a0b-a666-ac784ecea425,essay,emma.wilson@example.com,monthly,2025-09-25 01:30:30.25052+00,2025-09-25 01:30:30.25052+00,Thought Provoking Pieces

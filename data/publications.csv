@@ -1,4 +1,4 @@
-title,url,feed_url,author
-Kyla's Newsletter,https://kyla.substack.com,https://kyla.substack.com/feed,Kyla Scanlon
-The Elysian,https://www.elysian.press,https://www.elysian.press/feed,Elle Griffin
-Ultra Successful,https://drgurner.substack.com,https://drgurner.substack.com/feed,Dr. Julie Gurner
+id,title,url,rss_feed_url,publisher,created_at,updated_at
+040105ac-14ae-44bd-b53e-a1287fcf004d,Ultra Successful,https://drgurner.substack.com,https://drgurner.substack.com/feed,Dr. Julie Gurner,2025-09-25 01:24:19.687644+00,2025-09-25 01:24:19.687644+00
+08945b32-305a-467e-8117-b4390a47d981,Kyla's Newsletter,https://kyla.substack.com,https://kyla.substack.com/feed,Kyla Scanlon,2025-09-25 01:24:19.687644+00,2025-09-25 01:24:19.687644+00
+5b3e16c7-d33f-4020-8b99-621215978626,The Elysian,https://www.elysian.press,https://www.elysian.press/feed,Elle Griffin,2025-09-25 01:24:19.687644+00,2025-09-25 01:24:19.687644+00

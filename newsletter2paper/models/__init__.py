@@ -1,6 +1,6 @@
 from .publication import Publication
 from .article import Article
-from .paper import Paper
+from .issue import Issue
 from .user import User
 
-__all__ = ['Publication', 'Article', 'Paper', 'User']
+__all__ = ['Publication', 'Article', 'Issue', 'User']

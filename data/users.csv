@@ -1,0 +1,6 @@
+id,email,username,password,first_name,last_name,created_at,updated_at
+77bf08fe-b816-4c15-a1ea-f1faf5b141e9,michael.johnson@example.com,michaelj,hashed_password_3,Michael,Johnson,2025-09-25 01:32:16.803659+00,2025-09-25 01:32:16.803659+00
+9d493c3f-cab1-468b-baf7-018f53e90e0e,sarah.smith@example.com,sarahs,hashed_password_2,Sarah,Smith,2025-09-25 01:32:16.803659+00,2025-09-25 01:32:16.803659+00
+9eb39735-8e34-4d5f-a4a6-a2944b2cedd2,emma.wilson@example.com,emmaw,hashed_password_4,Emma,Wilson,2025-09-25 01:32:16.803659+00,2025-09-25 01:32:16.803659+00
+c3588fd3-1d57-4a37-912f-3dc390ac868e,john.doe@example.com,johndoe,hashed_password_1,John,Doe,2025-09-25 01:32:16.803659+00,2025-09-25 01:32:16.803659+00
+d450a762-de01-4aca-bddb-f2b2299ce11d,james.brown@example.com,jamesb,hashed_password_5,James,Brown,2025-09-25 01:32:16.803659+00,2025-09-25 01:32:16.803659+00

@@ -6,7 +6,7 @@ This is a CLI that is deployed as AWS Lambda functions.
 ## Database Schema
 
 
-### User
+### Users
 
 - email
 
@@ -18,10 +18,12 @@ This is a CLI that is deployed as AWS Lambda functions.
 
 - last name
 
-- papers
+- issues
 
 
-### Article
+### Articles
+
+Get the article from the publication for print
 
 - title
 
@@ -35,10 +37,12 @@ This is a CLI that is deployed as AWS Lambda functions.
 
 - url to content on internet
 
-- AWS S3 url
+- object storage url
 
 
-### Publication
+### Publications
+
+Save the information of the Substack publication
 
 - title
 
@@ -49,15 +53,30 @@ This is a CLI that is deployed as AWS Lambda functions.
 - publisher
 
 
-### Papers
+### Subscriptions
+
+Associate user with all the publications they have imported
+
+- user
+
+- publication
+
+
+### Issues
+
+Combine all the relevant publications into the newspaper with user configuration
+
+- issue title
 
 - publications
 
 - format (newspaper or essay layout)
 
-- email to send PDF to
+- target email to send PDF to (uses user's email, if none given)
 
-- frequency to pull articles, generate PDF, and send in email
+- cron frequency to pull articles, generate PDF, and send in email
+
+- user
 
 
 ## Capabilities
@@ -68,13 +87,13 @@ This is a CLI that is deployed as AWS Lambda functions.
 
 - get XML content from RSS and store in Articles
 
-- transform XML to HTML content and store in AWS S3
+- transform XML to HTML content and store in object storage
 
 - style and format HTML content for newspaper and essay layouts
 
-- generate PDF from HTML content of Articles within Paper's frequency and in Paper's publications
+- generate PDF from HTML content of Articles within Issue's frequency and in Issue's publications
 
-- send PDF to Paper's email (or User's email, by default)
+- send PDF to Issue's email (or User's email, by default)
 
 
 ## Project Structure
@@ -93,14 +112,14 @@ newsletter2paper/
 │   ├── user.py            # User model
 │   ├── article.py         # Article model
 │   ├── publication.py     # Publication model
-│   └── paper.py           # Paper model
+│   └── paper.py           # Issue model
 ├── services/
 │   ├── __init__.py
-│   ├── rss_service.py     # RSS feed discovery and processing
 │   ├── content_service.py # HTML content transformation
-│   ├── storage_service.py # AWS S3 storage operations
+│   ├── email_service.py   # Email sending functionality
 │   ├── pdf_service.py     # PDF generation
-│   └── email_service.py   # Email sending functionality
+│   ├── rss_service.py     # RSS feed discovery and processing
+│   └── storage_service.py # object storage operations
 ├── templates/
 │   ├── newspaper.html     # Template for newspaper layout
 │   └── essay.html         # Template for essay layout
