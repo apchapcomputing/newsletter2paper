@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 
-const PYTHON_API_URL = 'http://localhost:8000';
+// Get API URL from environment variables
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL;
 
 export async function GET(request) {
   try {
@@ -17,7 +18,7 @@ export async function GET(request) {
 
     // Call the Python FastAPI endpoint
     const response = await fetch(
-      `${PYTHON_API_URL}/rss/url?webpage_url=${encodeURIComponent(webpageUrl)}`,
+      `${API_BASE_URL}/rss/url?webpage_url=${encodeURIComponent(webpageUrl)}`,
       {
         method: 'GET',
         headers: {
