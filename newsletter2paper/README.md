@@ -2,6 +2,8 @@
 
 This is an API. 
 
+Run locally via `uvicorn main:app --reload`
+
 
 ## Database Schema
 

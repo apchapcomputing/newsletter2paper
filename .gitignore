@@ -1,3 +1,5 @@
 newsletter2newspaper
 .env
 __pycache__
+.vscode
+.vercel
