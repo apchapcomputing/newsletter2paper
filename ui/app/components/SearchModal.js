@@ -14,6 +14,10 @@ import SearchIcon from '@mui/icons-material/Search';
 import CloseIcon from '@mui/icons-material/Close';
 
 import SearchHistory from './SearchHistory';
+
+import { getRssFeedUrl } from '../../utils/rssUtils';
+import { searchSubstack } from '../../utils/substackUtils';
+
 import { useSelectedPublications } from '../../contexts/useSelectedPublications';
 
 export default function SearchModal({
@@ -28,21 +32,30 @@ export default function SearchModal({
 }) {
     const { selectedPublications, addPublication, removePublication } = useSelectedPublications();
 
-    const handlePublicationToggle = (searchResult) => {
+    const handlePublicationToggle = async (searchResult) => {
+        // if result is type user, make a secondary search with the publication's name to get the publication domain
+        let url = searchResult.subdomain;
+        if (searchResult.type === 'user') {
+            const results = await searchSubstack(searchResult.name);
+            if (results.length > 0) {
+                url = results[0].custom_domain || results[0].subdomain;
+            }
+        }
+        // add 'https://' prefix if missing
+        if (!url.startsWith('http')) {
+            url = `https://${url}`;
+        }
+
+        const feedUrl = await getRssFeedUrl(url);
+
         // Convert search result to publication format
         const publication = {
             id: searchResult.handle || searchResult.subdomain, // Use handle or subdomain as unique ID
             title: searchResult.name,
-            url: searchResult.type === 'user'
-                ? `https://${searchResult.handle}.substack.com`
-                : `https://${searchResult.subdomain}.substack.com`,
-            publisher: searchResult.type === 'user' ? searchResult.handle : 'Substack',
-            feed_url: searchResult.type === 'user'
-                ? `https://${searchResult.handle}.substack.com/feed`
-                : `https://${searchResult.subdomain}.substack.com/feed`,
-            type: searchResult.type,
+            url: url,
+            publisher: searchResult.publisher || searchResult.handle || 'Unknown Author',
+            feed_url: feedUrl,
             handle: searchResult.handle,
-            subdomain: searchResult.subdomain,
             subscribers: searchResult.subscribers
         };
 

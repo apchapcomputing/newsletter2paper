@@ -15,6 +15,9 @@ import PublicationsList from './components/PublicationsList';
 import SelectedPublications from './components/SelectedPublications';
 import SearchModal from './components/SearchModal';
 
+import { getRssFeedUrl } from '../utils/rssUtils';
+import { searchSubstack } from '../utils/substackUtils';
+
 import { useSelectedPublications } from '../contexts/useSelectedPublications';
 
 export default function Home() {
@@ -29,6 +32,8 @@ export default function Home() {
   const [searchHistory, setSearchHistory] = useState([]);
   const [outputMode, setOutputMode] = useState('newspaper');
   const [newspaperTitle, setNewspaperTitle] = useState('');
+  const [currentIssueId, setCurrentIssueId] = useState(null);
+  const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
     const fetchPublications = async () => {
@@ -57,19 +62,6 @@ export default function Home() {
     fetchPublications();
   }, []);
 
-  const getRssFeedUrl = async (url) => {
-    try {
-      const response = await fetch(`/api/rss/url?webpage_url=${encodeURIComponent(url)}`);
-      if (!response.ok) {
-        throw new Error(`Error: ${response.statusText}`);
-      }
-      const data = await response.json();
-      return data.feed_url;
-    } catch (error) {
-      console.error("Failed to fetch RSS feed URL:", error);
-    }
-  }
-
   const addToSearchHistory = (query) => {
     if (!query.trim()) return;
 
@@ -97,6 +89,111 @@ export default function Home() {
     setNewspaperTitle(event.target.value);
   };
 
+  const handleSaveIssue = async () => {
+    if (isSaving) return; // Prevent double saves
+
+    setIsSaving(true);
+    try {
+      // Step 1: Create or update issue
+      let issueId = currentIssueId;
+
+      if (!issueId) {
+        // Create new issue
+        const issueResponse = await fetch('/api/issues', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            title: newspaperTitle || null,
+            format: outputMode,
+            frequency: 'weekly'
+            // TODO: set user login email as default target email
+          })
+        });
+
+        if (!issueResponse.ok) {
+          throw new Error('Failed to create issue');
+        }
+
+        const issueData = await issueResponse.json();
+        issueId = issueData.issue.id;
+        setCurrentIssueId(issueId);
+      } else {
+        // Update existing issue
+        const issueResponse = await fetch(`/api/issues?id=${issueId}`, {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            title: newspaperTitle || null,
+            format: outputMode
+          })
+        });
+
+        if (!issueResponse.ok) {
+          throw new Error('Failed to update issue');
+        }
+      }
+
+      // Step 2: Save selected publications
+      if (selectedPublications.length > 0) {
+        // First, ensure all publications exist in the database
+        const publicationIds = [];
+
+        for (const publication of selectedPublications) {
+          const pubResponse = await fetch('/api/publications-db?action=find-or-create', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              title: publication.name || publication.title,
+              url: publication.url,
+              rss_feed_url: publication.feed_url || publication.url + '/feed',
+              publisher: publication.publisher || publication.handle || 'Unknown'
+            })
+          });
+
+          if (!pubResponse.ok) {
+            console.error(`Failed to create/find publication: ${publication.name}`);
+            continue;
+          }
+
+          const pubData = await pubResponse.json();
+          publicationIds.push(pubData.publication.id);
+        }
+
+        // Add publications to issue
+        if (publicationIds.length > 0) {
+          const pubResponse = await fetch(`/api/issues/${issueId}/publications`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              publication_ids: publicationIds
+            })
+          });
+
+          if (!pubResponse.ok) {
+            throw new Error('Failed to save publications to issue');
+          }
+        }
+      }
+
+      console.log('Issue saved successfully!');
+      // You could add a success notification here
+
+    } catch (error) {
+      console.error('Error saving issue:', error);
+      // You could add an error notification here
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
   const handlePublicationToggle = (publication) => {
     const isAlreadySelected = selectedPublications.some(p => p.id === publication.id);
     if (isAlreadySelected) {
@@ -114,60 +211,25 @@ export default function Home() {
 
   const handleSearchHistory = (term) => {
     setSearchQuery(term);
-    searchSubstack(term);
+    performSearch(term);
   }
 
-  const searchSubstack = async (query) => {
-    if (!query.trim()) {
-      setSearchResults([]);
-      return;
+  // Create a debounced search function
+  const performSearch = async (query) => {
+    const results = await searchSubstack(query);
+    setSearchResults(results);
+
+    // Add successful searches to history
+    if (results.length > 0) {
+      addToSearchHistory(query);
     }
-
-    try {
-      const response = await fetch(`/api/substack/search?query=${encodeURIComponent(query)}`);
-      if (!response.ok) {
-        throw new Error(`Error: ${response.statusText}`);
-      }
-      const data = await response.json();
-      console.log('Substack search results:', data);
-
-      // Parse results to extract publication names
-      const publications = data.results?.map(result => {
-        if (result.type === 'user') {
-          return {
-            name: result.user?.publication_name || 'Unknown Publication',
-            type: 'user',
-            handle: result.user?.handle,
-            subscribers: result.user?.subscriber_count_string
-          };
-        } else if (result.type === 'publication') {
-          return {
-            name: result.publication?.name || 'Unknown Publication',
-            type: 'publication',
-            subdomain: result.publication?.subdomain,
-            subscribers: result.publication?.subscriber_count_string
-          };
-        }
-        return null;
-      }).filter(Boolean) || [];
-
-      setSearchResults(publications);
-
-      // Add successful searches to history
-      if (publications.length > 0) {
-        addToSearchHistory(query);
-      }
-    } catch (error) {
-      console.error("Failed to search Substack:", error);
-      setSearchResults([]);
-    }
-  }
+  };
 
   // Debounce search to avoid too many API calls
   useEffect(() => {
     const timeoutId = setTimeout(() => {
       if (searchQuery) {
-        searchSubstack(searchQuery);
+        performSearch(searchQuery);
       }
     }, 500);
     return () => clearTimeout(timeoutId);
@@ -177,7 +239,7 @@ export default function Home() {
     <div className="font-sans grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20">
       <main className="flex flex-col gap-[32px] row-start-2 items-center sm:items-start">
         <Typography variant="h2" component="h1" sx={{ fontWeight: 'bold', textAlign: { xs: 'center', sm: 'left' } }}>
-          Your {outputMode === 'newspaper' ? 'Newspaper' : 'Essay'} Issue
+          Your {outputMode === 'newspaper' ? 'Newspaper' : 'Essays'}
         </Typography>
 
         {/* Output Mode Toggle and Title Input */}
@@ -222,6 +284,8 @@ export default function Home() {
           <Button
             variant="contained"
             color="primary"
+            onClick={handleSaveIssue}
+            disabled={isSaving}
             sx={{
               px: 3,
               py: 1.5,
@@ -231,7 +295,7 @@ export default function Home() {
               minWidth: 120
             }}
           >
-            💾 Save
+            {isSaving ? '💾 Saving...' : '💾 Save'}
           </Button>
         </Box>
 

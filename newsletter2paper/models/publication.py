@@ -5,6 +5,7 @@ from sqlmodel import Field, SQLModel, Relationship
 
 if TYPE_CHECKING:
     from .article import Article
+    from .issue_publication import IssuePublication
 
 
 class Publication(SQLModel, table=True):
@@ -33,3 +34,6 @@ class Publication(SQLModel, table=True):
     
     # Relationship with Article
     articles: List["Article"] = Relationship(back_populates="publication")
+    
+    # Relationship with issues through the association table
+    issue_publications: List["IssuePublication"] = Relationship(back_populates="publication")

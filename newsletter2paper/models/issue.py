@@ -5,8 +5,10 @@ from sqlmodel import Field, SQLModel, Relationship
 
 if TYPE_CHECKING:
     from .user import User
+    from .issue_publication import IssuePublication
 else:
     User = ForwardRef("User")
+    IssuePublication = ForwardRef("IssuePublication")
 
 
 class UserIssue(SQLModel, table=True):
@@ -71,3 +73,6 @@ class Issue(SQLModel, table=True):
         link_model=UserIssue,
         sa_relationship_kwargs={'lazy': 'selectin'}
     )
+    
+    # Relationship with publications through the association table
+    issue_publications: List["IssuePublication"] = Relationship(back_populates="issue")
