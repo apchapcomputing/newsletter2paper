@@ -33,17 +33,18 @@ export const searchSubstack = async (query) => {
                 };
             } else if (result.type === 'publication') {
                 const p = result.publication;
+                const domain = p?.subdomain + '.substack.com';
                 return {
                     name: p?.name || 'Unknown Publication',
                     publisher: p?.author_name || 'Unknown Publisher',
                     type: 'publication',
-                    subdomain: p?.custom_domain || p?.subdomain,
+                    domain: p?.custom_domain || domain,
                     subscribers: p?.subscriber_count_string
                 };
             }
             return null;
         }).filter(Boolean) || [];
-
+        console.log(publications);
         return publications;
     } catch (error) {
         console.error("Failed to search Substack:", error);

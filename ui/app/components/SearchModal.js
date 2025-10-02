@@ -34,18 +34,22 @@ export default function SearchModal({
 
     const handlePublicationToggle = async (searchResult) => {
         // if result is type user, make a secondary search with the publication's name to get the publication domain
-        let url = searchResult.subdomain;
-        if (searchResult.type === 'user') {
+        console.log('res', searchResult)
+
+        let url;
+        if (searchResult.type === 'publication') {
+            url = searchResult.domain;
+        } else if (searchResult.type === 'user') {
             const results = await searchSubstack(searchResult.name);
             if (results.length > 0) {
-                url = results[0].custom_domain || results[0].subdomain;
+                url = results[0].custom_domain || results[0].domain;
             }
         }
         // add 'https://' prefix if missing
-        if (!url.startsWith('http')) {
+        if (url && !url.startsWith('http')) {
             url = `https://${url}`;
         }
-
+        console.log(url);
         const feedUrl = await getRssFeedUrl(url);
 
         // Convert search result to publication format
