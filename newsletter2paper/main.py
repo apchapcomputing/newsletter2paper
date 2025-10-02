@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 import os
-from routers import rss
+from routers import rss, issues, publications, articles
 
 # Verify required environment variables
 required_env_vars = ['SUPABASE_URL', 'SUPABASE_KEY']
@@ -16,6 +16,9 @@ app = FastAPI(
 
 # Include routers
 app.include_router(rss.router)
+app.include_router(issues.router)
+app.include_router(publications.router)
+app.include_router(articles.router)
 
 # Optional: Add a root endpoint
 @app.get("/")
