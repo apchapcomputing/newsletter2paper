@@ -4,52 +4,34 @@ Handles conversion of article content to formatted PDFs.
 """
 
 import os
-import requests
 import hashlib
+import requests
 from datetime import datetime
 from pathlib import Path
-from typing import List, Dict, Optional
-import logging
-try:
-    from weasyprint import HTML, CSS
-except ImportError:
-    print("WeasyPrint not installed. Run: pip install weasyprint")
-    HTML = CSS = None
-
-try:
-    from jinja2 import Environment, FileSystemLoader
-except ImportError:
-    print("Jinja2 not installed. Run: pip install jinja2")
-    Environment = FileSystemLoader = None
-
+from urllib.parse import urlparse
+from weasyprint import HTML
 from bs4 import BeautifulSoup
+import tempfile
+import logging
+from typing import Dict, List, Optional, Any
+
 from services.rss_service import RSSService
 
+logger = logging.getLogger(__name__)
 
 class PDFService:
-    """Service for generating PDFs from article content."""
-    
     def __init__(self):
-        """Initialize PDF service."""
         self.base_dir = Path(__file__).parent.parent
-        self.templates_dir = self.base_dir / 'templates'
-        self.images_dir = self.base_dir / 'images'
-        self.output_dir = self.base_dir / 'newspapers'
-        
-        # Create directories if they don't exist
-        self.images_dir.mkdir(exist_ok=True)
-        self.output_dir.mkdir(exist_ok=True)
-        
-        # Initialize Jinja2 environment if available
-        if Environment and FileSystemLoader:
-            self.jinja_env = Environment(
-                loader=FileSystemLoader(str(self.templates_dir)),
-                autoescape=True
-            )
-        else:
-            self.jinja_env = None
+        self.images_dir = self.base_dir / "images"
+        self.styles_dir = self.base_dir / "styles"
+        self.newspapers_dir = self.base_dir / "newspapers"
+        self.output_dir = self.newspapers_dir  # Use newspapers dir as output directory
         
         self.rss_service = RSSService()
+        
+        # Ensure directories exist
+        self.images_dir.mkdir(exist_ok=True)
+        self.newspapers_dir.mkdir(exist_ok=True)
     
     def clean_html_content(self, html_content: str, verbose: bool = False) -> str:
         """
@@ -241,7 +223,7 @@ class PDFService:
         output_filename: Optional[str] = None,
         keep_html: bool = False,
         verbose: bool = False
-    ) -> Dict[str, any]:
+    ) -> Dict[str, Any]:
         """
         Generate a PDF from an issue's articles.
         
@@ -333,18 +315,12 @@ class PDFService:
             if verbose:
                 logging.info(f"Generating PDF: {pdf_path}")
             
-            if not HTML or not CSS:
+            if not HTML:
                 result['error'] = "WeasyPrint not available. Install with: pip install weasyprint"
                 return result
             
-            css_path = self.templates_dir / f"{layout_type}.css"
-            
-            html_obj = HTML(string=html_content, base_url=str(self.templates_dir))
-            if css_path.exists():
-                css_obj = CSS(filename=str(css_path))
-                html_obj.write_pdf(str(pdf_path), stylesheets=[css_obj])
-            else:
-                html_obj.write_pdf(str(pdf_path))
+            html_obj = HTML(string=html_content, base_url=str(self.base_dir))
+            html_obj.write_pdf(str(pdf_path))
             
             result.update({
                 'success': True,
@@ -417,7 +393,7 @@ class PDFService:
         verbose: bool = False
     ) -> str:
         """
-        Create combined HTML content from multiple articles using templates.
+        Create combined HTML content from multiple articles using CSS-based styling.
         
         Args:
             articles (list): List of article dictionaries
@@ -431,38 +407,217 @@ class PDFService:
         if verbose:
             logging.info(f"Creating combined HTML with {len(articles)} articles in {layout_type} layout")
         
-        # Prepare template data
-        template_data = {
-            'paper_title': issue_info.get('title', 'Newsletter Digest'),
-            'date': datetime.now().strftime("%A, %B %d, %Y"),
-            'articles': articles,
-            'total_articles': len(articles),
-            'layout_type': layout_type
-        }
+        # Generate HTML based on layout type
+        if layout_type == 'newspaper':
+            return self._create_newspaper_html(articles, issue_info, verbose)
+        else:  # essay
+            return self._create_essay_html(articles, issue_info, verbose)
+    
+    def _create_newspaper_html(self, articles: List[Dict], issue_info: Dict, verbose: bool = False) -> str:
+        """Create newspaper-style HTML with embedded CSS."""
         
-        # Load and render template
-        template_name = f"{layout_type}.html"
-        try:
-            if self.jinja_env:
-                template = self.jinja_env.get_template(template_name)
-                html_content = template.render(**template_data)
-                
-                if verbose:
-                    logging.info(f"Template {template_name} rendered successfully")
-                
-                return html_content
-            else:
-                # Jinja2 not available, use fallback
-                if verbose:
-                    logging.warning("Jinja2 not available, using fallback HTML generation")
-                return self._create_fallback_html(articles, issue_info, layout_type)
+        # Read CSS file
+        css_path = self.styles_dir / "newspaper.css"
+        css_content = ""
+        if css_path.exists():
+            with open(css_path, 'r', encoding='utf-8') as f:
+                css_content = f.read()
+        elif verbose:
+            logging.warning(f"CSS file not found: {css_path}")
+        
+        # Build HTML
+        html_parts = []
+        html_parts.append(f'''<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{issue_info.get('title', 'Newsletter Digest')}</title>
+    <style>
+{css_content}
+    </style>
+</head>
+<body>''')
+        
+        # Add masthead
+        date_str = datetime.now().strftime("%A, %B %d, %Y")
+        total_articles = len(articles)
+        
+        html_parts.append(f'''
+    <div class="masthead">
+        <h1>{issue_info.get('title', 'THE NEWSLETTER DIGEST')}</h1>
+        <div class="subtitle">Your Collection of Insights and Analysis</div>
+        <div class="date">{date_str} • {total_articles} Articles</div>
+    </div>''')
+        
+        # Start main content
+        html_parts.append('<div class="newspaper-content">')
+        
+        # Add table of contents for multiple articles
+        if len(articles) > 1:
+            html_parts.append('<div class="newspaper-toc">')
+            html_parts.append('<h3>IN THIS EDITION</h3>')
+            html_parts.append('<ul>')
             
-        except Exception as e:
-            if verbose:
-                logging.error(f"Template rendering failed: {e}")
+            for i, article in enumerate(articles, 1):
+                title = article.get('title', f'Article {i}')
+                publication = article.get('publication_name', article.get('feed_title', ''))
+                
+                html_parts.append('<li>')
+                html_parts.append(f'<span class="toc-title">{title}</span>')
+                if publication:
+                    html_parts.append(f'<span class="toc-source"> - {publication}</span>')
+                html_parts.append('</li>')
             
-            # Fallback to simple HTML generation
-            return self._create_fallback_html(articles, issue_info, layout_type)
+            html_parts.append('</ul>')
+            html_parts.append('</div>')
+        
+        # Add articles
+        for i, article in enumerate(articles, 1):
+            title = article.get('title', f'Article {i}')
+            author = article.get('author', '')
+            publication = article.get('publication_name', article.get('feed_title', ''))
+            content = article.get('content', '')
+            
+            # Clean and process content
+            if content:
+                content = self.clean_html_content(content, verbose=False)
+                content = self.download_and_cache_images(content, verbose=verbose)
+            
+            # Create byline
+            byline_parts = []
+            if author:
+                byline_parts.append(f"By {author}")
+            if publication:
+                if author:
+                    byline_parts.append(f"({publication})")
+                else:
+                    byline_parts.append(f"From {publication}")
+            
+            byline = " ".join(byline_parts) if byline_parts else ""
+            
+            # Add article break for articles after the first
+            article_class = "article-break" if i > 1 else ""
+            
+            html_parts.append(f'<div class="article {article_class}" id="article-{i}">')
+            html_parts.append(f'<div class="headline">{title}</div>')
+            if byline:
+                html_parts.append(f'<div class="byline">{byline}</div>')
+            html_parts.append(f'<div class="article-content">{content}</div>')
+            html_parts.append('</div>')
+            
+            # Add separator between articles (except the last one)
+            if i < len(articles):
+                html_parts.append('<div class="article-separator">• • •</div>')
+        
+        # Close main content and HTML
+        html_parts.append('</div>')  # Close newspaper-content
+        html_parts.append('</body>')
+        html_parts.append('</html>')
+        
+        return '\n'.join(html_parts)
+    
+    def _create_essay_html(self, articles: List[Dict], issue_info: Dict, verbose: bool = False) -> str:
+        """Create essay-style HTML with embedded CSS."""
+        
+        # Read CSS file
+        css_path = self.styles_dir / "essay.css"
+        css_content = ""
+        if css_path.exists():
+            with open(css_path, 'r', encoding='utf-8') as f:
+                css_content = f.read()
+        elif verbose:
+            logging.warning(f"CSS file not found: {css_path}")
+        
+        # Build HTML
+        html_parts = []
+        html_parts.append(f'''<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{issue_info.get('title', 'Newsletter Collection')}</title>
+    <style>
+{css_content}
+    </style>
+</head>
+<body>''')
+        
+        # Add header for collection
+        html_parts.append(f'''
+    <div class="collection-header">
+        <h1>{issue_info.get('title', 'Newsletter Collection')}</h1>
+        <div class="collection-date">{datetime.now().strftime("%B %d, %Y")}</div>
+        <div class="collection-summary">{len(articles)} articles compiled</div>
+    </div>''')
+        
+        # Add table of contents for multiple articles
+        if len(articles) > 1:
+            html_parts.append('<div class="toc">')
+            html_parts.append('<h2>Table of Contents</h2>')
+            html_parts.append('<ul>')
+            
+            for i, article in enumerate(articles, 1):
+                title = article.get('title', f'Article {i}')
+                author = article.get('author', '')
+                publication = article.get('publication_name', article.get('feed_title', ''))
+                
+                html_parts.append(f'<li>{i}. <a href="#article-{i}">{title}</a>')
+                if author:
+                    html_parts.append(f' <span class="toc-author">by {author}</span>')
+                if publication:
+                    html_parts.append(f' <span class="toc-publication">({publication})</span>')
+                html_parts.append('</li>')
+            
+            html_parts.append('</ul>')
+            html_parts.append('</div>')
+        
+        # Add articles
+        for i, article in enumerate(articles, 1):
+            title = article.get('title', f'Article {i}')
+            author = article.get('author', '')
+            publication = article.get('publication_name', article.get('feed_title', ''))
+            pub_date = article.get('pub_date', article.get('published_date', ''))
+            url = article.get('url', article.get('link', ''))
+            content = article.get('content', '')
+            
+            # Clean and process content
+            if content:
+                content = self.clean_html_content(content, verbose=False)
+                content = self.download_and_cache_images(content, verbose=verbose)
+            
+            html_parts.append(f'<div class="article" id="article-{i}">')
+            
+            # Article header
+            html_parts.append('<div class="article-header">')
+            html_parts.append(f'<div class="article-title">{title}</div>')
+            
+            if author:
+                html_parts.append(f'<div class="article-meta">Author: {author}</div>')
+            
+            if pub_date:
+                html_parts.append(f'<div class="article-meta">Published: {pub_date}</div>')
+            
+            if publication:
+                html_parts.append(f'<div class="article-meta">Source: {publication}</div>')
+            
+            if url:
+                html_parts.append(f'<div class="article-meta">URL: <a href="{url}">{url}</a></div>')
+            
+            html_parts.append('</div>')  # Close article-header
+            
+            # Article content
+            html_parts.append('<div class="article-content">')
+            html_parts.append(content)
+            html_parts.append('</div>')
+            
+            html_parts.append('</div>')  # Close article
+        
+        # Close HTML
+        html_parts.append('</body>')
+        html_parts.append('</html>')
+        
+        return '\n'.join(html_parts)
     
     def _create_fallback_html(
         self, 
@@ -511,33 +666,3 @@ class PDFService:
         html_parts.extend(['</body>', '</html>'])
         
         return '\n'.join(html_parts)
-    
-    def generate_pdf(self, html_content: str, layout_type: str = 'newspaper') -> str:
-        """
-        Generate PDF from formatted HTML content.
-        
-        Args:
-            html_content (str): Formatted HTML content
-            layout_type (str): Layout type for CSS selection
-            
-        Returns:
-            str: Path to generated PDF file
-        """
-        timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-        pdf_path = self.output_dir / f"newsletter_{layout_type}_{timestamp}.pdf"
-        
-        # Load CSS file
-        css_path = self.templates_dir / f"{layout_type}.css"
-        
-        if not HTML or not CSS:
-            raise ImportError("WeasyPrint not available. Install with: pip install weasyprint")
-        
-        html_obj = HTML(string=html_content, base_url=str(self.templates_dir))
-        
-        if css_path.exists():
-            css_obj = CSS(filename=str(css_path))
-            html_obj.write_pdf(str(pdf_path), stylesheets=[css_obj])
-        else:
-            html_obj.write_pdf(str(pdf_path))
-        
-        return str(pdf_path)
