@@ -81,7 +81,7 @@ export default function SearchModal({
             onClose={onClose}
             sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'center', pt: 10 }}
         >
-            <Paper sx={{ width: 600, height: 500, borderRadius: 4, overflow: 'hidden' }}>
+            <Paper sx={{ width: 600, height: 500, borderRadius: 0, overflow: 'hidden' }}>
                 {/* Header */}
                 <Box sx={{ p: 3, borderBottom: 1, borderColor: 'grey.100' }}>
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
@@ -120,7 +120,8 @@ export default function SearchModal({
                                 <ListItem key={index} sx={{ cursor: 'pointer', '&:hover': { bgcolor: 'grey.50' } }}>
                                     <ListItemAvatar>
                                         <Avatar sx={{
-                                            background: 'linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%)',
+                                            backgroundColor: 'secondary.main',
+                                            color: 'secondary.contrastText',
                                             fontWeight: 'medium'
                                         }}>
                                             {(result.name && result.name.length > 0) ? result.name.charAt(0).toUpperCase() : '?'}
@@ -154,7 +155,8 @@ export default function SearchModal({
                                             <ListItem key={publication.id || index} sx={{ cursor: 'pointer', '&:hover': { bgcolor: 'grey.50' } }}>
                                                 <ListItemAvatar>
                                                     <Avatar sx={{
-                                                        background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+                                                        backgroundColor: 'primary.main',
+                                                        color: 'primary.contrastText',
                                                         fontWeight: 'medium'
                                                     }}>
                                                         {(publication.name || publication.title || '').charAt(0).toUpperCase() || '?'}

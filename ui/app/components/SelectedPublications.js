@@ -18,7 +18,7 @@ export default function SelectedPublications() {
                 <Skeleton variant="text" width={300} height={40} />
                 <Box>
                     {[1, 2, 3].map((i) => (
-                        <Skeleton key={i} variant="rectangular" height={60} sx={{ mb: 1, borderRadius: 1 }} />
+                        <Skeleton key={i} variant="rectangular" height={60} sx={{ mb: 1, borderRadius: 0 }} />
                     ))}
                 </Box>
             </Box>
@@ -40,7 +40,13 @@ export default function SelectedPublications() {
                 {selectedPublications.map((publication, index) => (
                     <ListItem
                         key={publication.id || index}
-                        sx={{ bgcolor: 'green.50', mb: 1, borderRadius: 1 }}
+                        sx={{
+                            bgcolor: 'rgba(213, 137, 54, 0.1)', // Using secondary color with opacity
+                            mb: 1,
+                            borderRadius: 0,
+                            border: '1px solid',
+                            borderColor: 'secondary.main'
+                        }}
                     >
                         <ListItemText
                             primary={publication.name || publication.title}
