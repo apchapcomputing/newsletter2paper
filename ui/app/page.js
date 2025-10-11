@@ -19,9 +19,19 @@ import { getRssFeedUrl } from '../utils/rssUtils';
 import { searchSubstack } from '../utils/substackUtils';
 
 import { useSelectedPublications } from '../contexts/useSelectedPublications';
+import { useNewsletterConfig } from '../contexts/useNewsletterConfig';
 
 export default function Home() {
   const { selectedPublications, addPublication, removePublication, isLoaded } = useSelectedPublications();
+  const {
+    newspaperTitle,
+    outputMode,
+    currentIssueId,
+    isLoaded: configLoaded,
+    updateTitle,
+    updateOutputMode,
+    updateIssueId
+  } = useNewsletterConfig();
 
   const [publications, setPublications] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -30,10 +40,9 @@ export default function Home() {
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState([]);
   const [searchHistory, setSearchHistory] = useState([]);
-  const [outputMode, setOutputMode] = useState('newspaper');
-  const [newspaperTitle, setNewspaperTitle] = useState('');
-  const [currentIssueId, setCurrentIssueId] = useState(null);
   const [isSaving, setIsSaving] = useState(false);
+  const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
+  const [pdfUrl, setPdfUrl] = useState(null);
 
   useEffect(() => {
     const fetchPublications = async () => {
@@ -81,12 +90,12 @@ export default function Home() {
 
   const handleOutputModeChange = (event, newMode) => {
     if (newMode !== null) {
-      setOutputMode(newMode);
+      updateOutputMode(newMode);
     }
   };
 
   const handleNewspaperTitleChange = (event) => {
-    setNewspaperTitle(event.target.value);
+    updateTitle(event.target.value);
   };
 
   const handleSaveIssue = async () => {
@@ -118,7 +127,7 @@ export default function Home() {
 
         const issueData = await issueResponse.json();
         issueId = issueData.issue.id;
-        setCurrentIssueId(issueId);
+        updateIssueId(issueId);
       } else {
         // Update existing issue
         const issueResponse = await fetch(`/api/issues?id=${issueId}`, {
@@ -184,6 +193,7 @@ export default function Home() {
       }
 
       console.log('Issue saved successfully!');
+      // Configuration is automatically persisted via the context
       // You could add a success notification here
 
     } catch (error) {
@@ -191,6 +201,50 @@ export default function Home() {
       // You could add an error notification here
     } finally {
       setIsSaving(false);
+    }
+  };
+
+  const handleGeneratePdf = async () => {
+    if (!currentIssueId) {
+      alert('Please save your issue first before generating a PDF');
+      return;
+    }
+
+    if (isGeneratingPdf) return; // Prevent double clicks
+
+    setIsGeneratingPdf(true);
+    setPdfUrl(null);
+
+    try {
+      const response = await fetch(`/api/pdf/generate/${currentIssueId}?layout_type=${outputMode}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        }
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || 'Failed to generate PDF');
+      }
+
+      const data = await response.json();
+
+      if (data.success && data.pdf_url) {
+        setPdfUrl(data.pdf_url);
+        console.log('PDF generated successfully:', data.pdf_url);
+
+        // Optionally open the PDF in a new tab
+        window.open(data.pdf_url, '_blank');
+      } else {
+        throw new Error(data.message || 'PDF generation failed');
+      }
+
+    } catch (error) {
+      console.error('Error generating PDF:', error);
+      alert(`Failed to generate PDF: ${error.message}`);
+    } finally {
+      setIsGeneratingPdf(false);
     }
   };
 
@@ -235,6 +289,19 @@ export default function Home() {
     return () => clearTimeout(timeoutId);
   }, [searchQuery]);
 
+  // Don't render the form until both contexts are loaded
+  if (!isLoaded || !configLoaded) {
+    return (
+      <div className="font-sans grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20" style={{ backgroundColor: '#F7F5E2' }}>
+        <main className="flex flex-col gap-[32px] row-start-2 items-center sm:items-start">
+          <Typography variant="h4" component="h1" sx={{ textAlign: 'center' }}>
+            Loading your newsletter configuration...
+          </Typography>
+        </main>
+      </div>
+    );
+  }
+
   return (
     <div className="font-sans grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20" style={{ backgroundColor: '#F7F5E2' }}>
       <main className="flex flex-col gap-[32px] row-start-2 items-center sm:items-start">
@@ -251,6 +318,7 @@ export default function Home() {
         >
           Your {outputMode === 'newspaper' ? 'Newspaper' : 'Essays'}
         </Typography>
+        <p>Substack RSS to Newspaper PDF</p>
 
         {/* Output Mode Toggle and Title Input */}
         <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 2, alignItems: { xs: 'stretch', sm: 'center' }, width: '100%', maxWidth: 800 }}>
@@ -305,7 +373,7 @@ export default function Home() {
               minWidth: 120
             }}
           >
-            {isSaving ? '💾 Saving...' : '💾 Save'}
+            {isSaving ? '💾 Saving...' : currentIssueId ? '💾 Update' : '💾 Save'}
           </Button>
         </Box>
 
@@ -317,6 +385,57 @@ export default function Home() {
 
         {/* Selected Publications */}
         <SelectedPublications />
+
+        {/* PDF Generation Section */}
+        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, alignItems: 'center' }}>
+          {!currentIssueId && (
+            <Typography variant="body2" color="text.secondary" sx={{ textAlign: 'center' }}>
+              💡 Save your issue first, then generate your PDF
+            </Typography>
+          )}
+
+          {currentIssueId && (
+            <Typography variant="body2" color="success.main" sx={{ textAlign: 'center' }}>
+              ✅ Newsletter configuration saved! Ready to generate PDF
+            </Typography>
+          )}
+
+          <Button
+            variant="contained"
+            color="primary"
+            onClick={handleGeneratePdf}
+            disabled={isGeneratingPdf || !currentIssueId}
+            sx={{
+              px: 3,
+              py: 1.5,
+              fontWeight: 'medium',
+              textTransform: 'none',
+              fontSize: '1rem',
+              minWidth: 120
+            }}>
+            {isGeneratingPdf
+              ? '📄 Generating...'
+              : `Create ${outputMode.charAt(0).toUpperCase() + outputMode.slice(1)} Issue File`
+            }
+          </Button>
+
+          {/* Show PDF URL if available */}
+          {pdfUrl && (
+            <Box sx={{ mt: 2, p: 2, backgroundColor: '#e8f5e8', borderRadius: 1 }}>
+              <Typography variant="body2" color="success.main" sx={{ mb: 1 }}>
+                ✅ PDF generated successfully!
+              </Typography>
+              <Button
+                variant="outlined"
+                size="small"
+                onClick={() => window.open(pdfUrl, '_blank')}
+                sx={{ textTransform: 'none' }}
+              >
+                📄 Open PDF
+              </Button>
+            </Box>
+          )}
+        </Box>
       </main>
 
       {/* Search Modal */}
@@ -331,7 +450,7 @@ export default function Home() {
         onRemoveFromHistory={removeFromSearchHistory}
       />
 
-      <footer className="row-start-3 flex gap-[24px] flex-wrap items-center justify-center">
+      {/* <footer className="row-start-3 flex gap-[24px] flex-wrap items-center justify-center">
         <a
           className="flex items-center gap-2 hover:underline hover:underline-offset-4 text-primary"
           href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
@@ -377,7 +496,7 @@ export default function Home() {
           />
           Go to nextjs.org →
         </a>
-      </footer>
+      </footer> */}
     </div>
   );
 }
