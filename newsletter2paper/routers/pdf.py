@@ -4,7 +4,7 @@ Handles PDF generation endpoints.
 """
 
 from fastapi import APIRouter, HTTPException, Query
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, RedirectResponse
 from typing import Optional
 import logging
 from pathlib import Path
@@ -59,7 +59,7 @@ async def generate_pdf_for_issue(
         return {
             "success": True,
             "message": "PDF generated successfully",
-            "pdf_path": result['pdf_path'],
+            "pdf_url": result['pdf_url'],
             "html_path": result.get('html_path'),
             "issue_info": result['issue_info'],
             "articles_count": result['articles_count']
@@ -79,7 +79,7 @@ async def download_pdf(
     output_filename: Optional[str] = Query(None, description="Custom output filename")
 ):
     """
-    Generate and download a PDF for an issue.
+    Generate and download a PDF for an issue by redirecting to the Supabase storage URL.
     
     Args:
         issue_id: UUID of the issue
@@ -89,7 +89,7 @@ async def download_pdf(
         output_filename: Custom output filename (without extension)
         
     Returns:
-        FileResponse: PDF file for download
+        RedirectResponse: Redirect to the PDF URL in Supabase storage
     """
     try:
         result = await pdf_service.generate_pdf_from_issue(
@@ -104,21 +104,12 @@ async def download_pdf(
         if not result['success']:
             raise HTTPException(status_code=400, detail=result.get('error', 'PDF generation failed'))
         
-        pdf_path = Path(result['pdf_path'])
-        if not pdf_path.exists():
-            raise HTTPException(status_code=404, detail="Generated PDF file not found")
+        pdf_url = result['pdf_url']
+        if not pdf_url:
+            raise HTTPException(status_code=404, detail="Generated PDF URL not found")
         
-        # Generate download filename
-        issue_title = result['issue_info'].get('title', 'Newsletter')
-        safe_title = "".join(c for c in issue_title if c.isalnum() or c in (' ', '-', '_')).strip()
-        safe_title = safe_title.replace(' ', '_')
-        download_filename = f"{safe_title}_{layout_type}.pdf"
-        
-        return FileResponse(
-            path=str(pdf_path),
-            filename=download_filename,
-            media_type='application/pdf'
-        )
+        # Redirect to the Supabase storage URL for direct download
+        return RedirectResponse(url=pdf_url, status_code=302)
         
     except HTTPException:
         raise
@@ -130,34 +121,26 @@ async def download_pdf(
 @router.get("/status/{issue_id}")
 async def get_pdf_status(issue_id: str):
     """
-    Check if a PDF exists for an issue.
+    Check PDF generation status for an issue.
     
     Args:
         issue_id: UUID of the issue
         
     Returns:
-        dict: Status information about existing PDFs
+        dict: Status information about PDF generation capabilities
     """
     try:
-        # Check for existing PDF files for this issue
-        pdf_dir = pdf_service.output_dir
-        pdf_files = list(pdf_dir.glob(f"*{issue_id}*.pdf"))
-        
-        if not pdf_files:
-            return {
-                "exists": False,
-                "message": "No PDF found for this issue"
-            }
-        
-        # Get the most recent PDF
-        latest_pdf = max(pdf_files, key=lambda p: p.stat().st_mtime)
-        
+        # Since PDFs are now generated on-demand and stored in Supabase storage,
+        # this endpoint provides information about the generation capability
         return {
-            "exists": True,
-            "pdf_path": str(latest_pdf),
-            "filename": latest_pdf.name,
-            "size_bytes": latest_pdf.stat().st_size,
-            "created_at": latest_pdf.stat().st_mtime
+            "issue_id": issue_id,
+            "storage_type": "supabase",
+            "generation_available": True,
+            "message": "PDFs are generated on-demand and stored in cloud storage",
+            "endpoints": {
+                "generate": f"/pdf/generate/{issue_id}",
+                "download": f"/pdf/download/{issue_id}"
+            }
         }
         
     except Exception as e:
@@ -165,13 +148,44 @@ async def get_pdf_status(issue_id: str):
         raise HTTPException(status_code=500, detail=f"Status check failed: {str(e)}")
 
 
-@router.delete("/cleanup")
-async def cleanup_old_pdfs(days_old: int = Query(7, description="Delete PDFs older than this many days")):
+@router.get("/test-storage")
+async def test_storage_access():
     """
-    Clean up old PDF files.
+    Test Supabase storage access for debugging.
+    
+    Returns:
+        dict: Storage access test results
+    """
+    try:
+        # Check bucket access
+        bucket_info = pdf_service.storage_service.check_bucket_access()
+        
+        return {
+            "storage_test": bucket_info,
+            "supabase_configured": True,
+            "message": "Storage access test completed"
+        }
+        
+    except Exception as e:
+        logging.error(f"Storage test failed: {e}")
+        return {
+            "storage_test": {
+                "success": False,
+                "error": str(e)
+            },
+            "supabase_configured": False,
+            "message": f"Storage test failed: {str(e)}"
+        }
+
+
+@router.delete("/cleanup")
+async def cleanup_old_files(days_old: int = Query(7, description="Delete local files older than this many days")):
+    """
+    Clean up old local files (HTML and any remaining PDFs).
+    Note: PDFs are now stored in Supabase storage and need to be managed separately.
     
     Args:
-        days_old: Delete PDFs older than this many days
+        days_old: Delete local files older than this many days
         
     Returns:
         dict: Cleanup results
@@ -185,6 +199,7 @@ async def cleanup_old_pdfs(days_old: int = Query(7, description="Delete PDFs old
         deleted_files = []
         total_size_freed = 0
         
+        # Clean up any remaining local PDF files (legacy)
         for pdf_file in pdf_dir.glob("*.pdf"):
             file_mtime = datetime.fromtimestamp(pdf_file.stat().st_mtime)
             if file_mtime < cutoff_date:
@@ -193,20 +208,24 @@ async def cleanup_old_pdfs(days_old: int = Query(7, description="Delete PDFs old
                 deleted_files.append(pdf_file.name)
                 total_size_freed += file_size
         
-        # Also clean up any orphaned HTML files
+        # Clean up HTML files
         for html_file in pdf_dir.glob("*.html"):
             file_mtime = datetime.fromtimestamp(html_file.stat().st_mtime)
             if file_mtime < cutoff_date:
+                file_size = html_file.stat().st_size
                 html_file.unlink()
+                deleted_files.append(html_file.name)
+                total_size_freed += file_size
         
         return {
             "success": True,
             "files_deleted": len(deleted_files),
             "deleted_files": deleted_files,
             "total_size_freed_bytes": total_size_freed,
-            "cutoff_date": cutoff_date.isoformat()
+            "cutoff_date": cutoff_date.isoformat(),
+            "note": "PDFs are now stored in Supabase storage. Cloud storage cleanup should be managed through Supabase console or API."
         }
         
     except Exception as e:
-        logging.error(f"PDF cleanup failed: {e}")
+        logging.error(f"File cleanup failed: {e}")
         raise HTTPException(status_code=500, detail=f"Cleanup failed: {str(e)}")

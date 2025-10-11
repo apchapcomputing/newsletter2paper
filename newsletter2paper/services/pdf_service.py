@@ -16,6 +16,7 @@ import logging
 from typing import Dict, List, Optional, Any
 
 from services.rss_service import RSSService
+from services.storage_service import StorageService
 
 logger = logging.getLogger(__name__)
 
@@ -28,6 +29,7 @@ class PDFService:
         self.output_dir = self.newspapers_dir  # Use newspapers dir as output directory
         
         self.rss_service = RSSService()
+        self.storage_service = StorageService()
         
         # Ensure directories exist
         self.images_dir.mkdir(exist_ok=True)
@@ -236,11 +238,11 @@ class PDFService:
             verbose (bool): Enable verbose output
             
         Returns:
-            dict: Result dictionary with success status, paths, and error info
+            dict: Result dictionary with success status, URLs, and error info
         """
         result = {
             'success': False,
-            'pdf_path': None,
+            'pdf_url': None,
             'html_path': None,
             'issue_info': None,
             'articles_count': 0,
@@ -303,7 +305,6 @@ class PDFService:
                 output_filename = f"{safe_title}_{timestamp}"
             
             html_path = self.output_dir / f"{output_filename}.html"
-            pdf_path = self.output_dir / f"{output_filename}.pdf"
             
             # Save HTML if requested
             if keep_html:
@@ -313,24 +314,27 @@ class PDFService:
             
             # Generate PDF
             if verbose:
-                logging.info(f"Generating PDF: {pdf_path}")
+                logging.info(f"Generating PDF: {output_filename}.pdf")
             
             if not HTML:
                 result['error'] = "WeasyPrint not available. Install with: pip install weasyprint"
                 return result
             
             html_obj = HTML(string=html_content, base_url=str(self.base_dir))
-            html_obj.write_pdf(str(pdf_path))
+            
+            # Generate PDF in memory and upload to Supabase storage
+            pdf_bytes = html_obj.write_pdf()
+            supabase_url = self.storage_service.upload_pdf(pdf_bytes, output_filename)
             
             result.update({
                 'success': True,
-                'pdf_path': str(pdf_path),
+                'pdf_url': supabase_url,
                 'issue_info': issue_info,
                 'articles_count': len(articles)
             })
             
             if verbose:
-                logging.info(f"PDF generated successfully: {pdf_path}")
+                logging.info(f"PDF uploaded successfully to Supabase: {supabase_url}")
             
         except Exception as e:
             result['error'] = f"PDF generation failed: {str(e)}"
@@ -626,7 +630,7 @@ class PDFService:
         layout_type: str
     ) -> str:
         """
-        Create simple HTML content as fallback when templates fail.
+        Create simple HTML content as fallback when CSS generation fails.
         
         Args:
             articles (list): List of article dictionaries
