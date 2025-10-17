@@ -48,6 +48,7 @@ async def generate_pdf_for_issue(
             issue_id=issue_id,
             days_back=days_back,
             max_articles_per_publication=max_articles_per_publication,
+            layout_type=layout_type,
             output_filename=output_filename,
             keep_html=keep_html,
             verbose=verbose
@@ -62,7 +63,8 @@ async def generate_pdf_for_issue(
             "pdf_url": result['pdf_url'],
             "html_path": result.get('html_path'),
             "issue_info": result['issue_info'],
-            "articles_count": result['articles_count']
+            "articles_count": result['articles_count'],
+            "layout_type": result.get('layout_type', layout_type)
         }
         
     except Exception as e:
@@ -96,6 +98,7 @@ async def download_pdf(
             issue_id=issue_id,
             days_back=days_back,
             max_articles_per_publication=max_articles_per_publication,
+            layout_type=layout_type,
             output_filename=output_filename,
             keep_html=False,
             verbose=False

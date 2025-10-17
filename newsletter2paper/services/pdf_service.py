@@ -14,9 +14,12 @@ from bs4 import BeautifulSoup
 import tempfile
 import logging
 from typing import Dict, List, Optional, Any
+from jinja2 import Environment, FileSystemLoader
 
 from services.rss_service import RSSService
 from services.storage_service import StorageService
+from utils.image_optimizer import ImageOptimizer, MemoryEfficientCache
+from config.memory_settings import memory_settings
 
 logger = logging.getLogger(__name__)
 
@@ -26,14 +29,23 @@ class PDFService:
         self.images_dir = self.base_dir / "images"
         self.styles_dir = self.base_dir / "styles"
         self.newspapers_dir = self.base_dir / "newspapers"
+        self.templates_dir = self.base_dir / "templates"
         self.output_dir = self.newspapers_dir  # Use newspapers dir as output directory
         
         self.rss_service = RSSService()
         self.storage_service = StorageService()
         
+        # Initialize Jinja2 environment
+        self.jinja_env = Environment(loader=FileSystemLoader(str(self.templates_dir)))
+        
+        # Initialize image processing components
+        self.image_optimizer = ImageOptimizer()
+        self.image_cache = MemoryEfficientCache(self.images_dir)
+        
         # Ensure directories exist
         self.images_dir.mkdir(exist_ok=True)
         self.newspapers_dir.mkdir(exist_ok=True)
+        self.templates_dir.mkdir(exist_ok=True)
     
     def clean_html_content(self, html_content: str, verbose: bool = False) -> str:
         """
@@ -94,10 +106,97 @@ class PDFService:
                 elem.decompose()
                 image_icons_removed += 1
         
+        # Remove social media and call-to-action elements
+        social_elements_removed = 0
+        social_selectors = [
+            # Share buttons and social links
+            '[class*="share"]',
+            '[class*="social"]',
+            '[data-action="share"]',
+            '.share-button',
+            '.social-button',
+            '.social-media',
+            '.share-link',
+            
+            # Like/heart buttons and counts
+            '[class*="like"]',
+            '[class*="heart"]',
+            '[class*="favorite"]',
+            '.like-button',
+            '.heart-button',
+            '.favorite-button',
+            
+            # Comment counts and buttons
+            '[class*="comment"]',
+            '.comment-count',
+            '.comment-button',
+            '.comments-section',
+            
+            # Generic call-to-action elements
+            '[class*="cta"]',
+            '[class*="call-to-action"]',
+            '.cta-button',
+            '.action-button',
+            
+            # Social platform specific
+            '[class*="twitter"]',
+            '[class*="facebook"]',
+            '[class*="linkedin"]',
+            '[class*="instagram"]',
+            '[class*="tiktok"]',
+            '[class*="youtube"]',
+            
+            # Newsletter/email signup
+            '[class*="newsletter"]',
+            '[class*="signup"]',
+            '[class*="email-signup"]',
+            
+            # Interaction counters
+            '[class*="view"]',
+            '[class*="read"]',
+            '.view-count',
+            '.read-count',
+            '.engagement',
+            
+            # Footer and navigation elements
+            'footer',
+            'nav',
+            '[role="navigation"]',
+            '.footer',
+            '.navigation'
+        ]
+        
+        for selector in social_selectors:
+            for elem in soup.select(selector):
+                elem.decompose()
+                social_elements_removed += 1
+        
+        # Remove elements containing typical social/CTA text
+        text_patterns_to_remove = [
+            'share', 'like', 'comment', 'subscribe', 'follow',
+            'sign up', 'join', 'newsletter', 'get updates'
+        ]
+        
+        text_elements_removed = 0
+        for element in soup.find_all(text=True):
+            if element.parent.name in ['script', 'style']:
+                continue
+            
+            element_text = element.strip().lower()
+            for pattern in text_patterns_to_remove:
+                if pattern in element_text and len(element_text) < 50:  # Only remove short text snippets
+                    try:
+                        element.parent.decompose()
+                        text_elements_removed += 1
+                        break
+                    except:
+                        pass
+        
         if verbose:
             logging.info(f"Cleaned HTML: {widgets_removed} widgets, {forms_removed} forms, "
                         f"{inputs_removed} inputs, {subscription_elements_removed} subscription elements, "
-                        f"{image_icons_removed} image icons removed")
+                        f"{image_icons_removed} image icons, {social_elements_removed} social elements, "
+                        f"{text_elements_removed} text elements removed")
         
         # Format footnotes to have number and content on same line
         footnotes = soup.find_all('div', class_='footnote')
@@ -146,7 +245,7 @@ class PDFService:
     
     def download_and_cache_images(self, html_content: str, verbose: bool = False) -> str:
         """
-        Download images from HTML content and replace URLs with local file paths.
+        Download and optimize images from HTML content with memory-efficient caching.
         
         Args:
             html_content (str): HTML content containing image URLs
@@ -156,7 +255,7 @@ class PDFService:
             str: Modified HTML content with local image paths
         """
         if verbose:
-            logging.info("Processing images in HTML content...")
+            logging.info("Processing images with optimization...")
         
         soup = BeautifulSoup(html_content, 'html.parser')
         images = soup.find_all('img')
@@ -166,62 +265,168 @@ class PDFService:
                 logging.info("No images found in content")
             return str(soup)
         
-        downloaded_count = 0
+        processed_count = 0
+        cached_count = 0
         failed_count = 0
+        skipped_count = 0
+        total_original_size = 0
+        total_optimized_size = 0
         
         for img in images:
             src = img.get('src')
-            if not src or src.startswith('data:') or src.startswith('file:'):
+            if not src:
                 continue
             
             try:
-                # Create a hash of the URL for the filename
-                url_hash = hashlib.md5(src.encode()).hexdigest()
+                # Check if image should be processed
+                if not self.image_optimizer.should_process_image(url=src):
+                    skipped_count += 1
+                    continue
                 
-                # Try to get file extension from URL
-                extension = '.png'
-                if '.' in src.split('/')[-1]:
-                    extension = '.' + src.split('.')[-1].split('?')[0]
-                
-                local_filename = f"{url_hash}{extension}"
-                local_path = self.images_dir / local_filename
-                
-                # Download if not already cached
-                if not local_path.exists():
+                # Check cache first
+                cached_path = self.image_cache.get_cached_path(src)
+                if cached_path:
+                    img['src'] = str(cached_path)
+                    cached_count += 1
                     if verbose:
-                        logging.info(f"Downloading image: {src}")
-                    
-                    headers = {
-                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-                    }
-                    
-                    response = requests.get(src, headers=headers, timeout=10)
-                    response.raise_for_status()
-                    
-                    with open(local_path, 'wb') as f:
-                        f.write(response.content)
+                        logging.debug(f"Using cached image: {src}")
+                    continue
                 
-                # Update the img src to local path
-                img['src'] = str(local_path)
-                downloaded_count += 1
+                # Download and optimize image
+                if verbose:
+                    logging.info(f"Downloading and optimizing image: {src}")
+                
+                headers = {
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+                }
+                
+                # Stream download with size checking
+                response = requests.get(src, headers=headers, timeout=10, stream=True)
+                response.raise_for_status()
+                
+                # Check content length
+                content_length = response.headers.get('content-length')
+                if content_length:
+                    content_length = int(content_length)
+                    if not self.image_optimizer.should_process_image(content_length, src):
+                        skipped_count += 1
+                        img.decompose()  # Remove oversized images
+                        continue
+                
+                # Download image data
+                image_data = b''
+                downloaded_size = 0
+                max_size = memory_settings.get_max_image_size_bytes()
+                
+                for chunk in response.iter_content(chunk_size=8192):
+                    if chunk:
+                        downloaded_size += len(chunk)
+                        if downloaded_size > max_size:
+                            raise ValueError(f"Image too large: {downloaded_size} bytes")
+                        image_data += chunk
+                
+                total_original_size += len(image_data)
+                
+                # Determine original format
+                original_format = 'JPEG'
+                content_type = response.headers.get('content-type', '').lower()
+                if 'png' in content_type:
+                    original_format = 'PNG'
+                elif 'webp' in content_type:
+                    original_format = 'WebP'
+                elif 'gif' in content_type:
+                    original_format = 'GIF'
+                
+                # Optimize image
+                optimized_data, output_format = self.image_optimizer.optimize_image_stream(
+                    image_data, original_format
+                )
+                total_optimized_size += len(optimized_data)
+                
+                # Cache optimized image
+                extension = self.image_optimizer.get_file_extension(output_format)
+                cached_path = self.image_cache.cache_image(src, optimized_data, extension)
+                
+                # Update img src to local path
+                img['src'] = str(cached_path)
+                processed_count += 1
                 
             except Exception as e:
                 if verbose:
-                    logging.warning(f"Failed to download image {src}: {e}")
+                    logging.warning(f"Failed to process image {src}: {e}")
                 failed_count += 1
-                # Remove the image if download failed
+                # Remove the image if processing failed
                 img.decompose()
         
-        if verbose:
-            logging.info(f"Image processing complete: {downloaded_count} downloaded/cached, {failed_count} failed")
+        # Log processing statistics
+        if verbose or processed_count > 0:
+            compression_ratio = 0
+            if total_original_size > 0:
+                compression_ratio = (1 - total_optimized_size / total_original_size) * 100
+            
+            logging.info(
+                f"Image processing complete: {processed_count} processed, {cached_count} cached, "
+                f"{skipped_count} skipped, {failed_count} failed. "
+                f"Compression: {total_original_size} -> {total_optimized_size} bytes "
+                f"({compression_ratio:.1f}% reduction)"
+            )
+            
+            # Log cache statistics
+            cache_stats = self.image_cache.get_stats()
+            logging.info(
+                f"Cache status: {cache_stats['total_files']} files, "
+                f"{cache_stats['total_size_mb']:.1f}MB "
+                f"({cache_stats['usage_percentage']:.1f}% of limit)"
+            )
         
         return str(soup)
+    
+    def get_image_cache_stats(self) -> Dict[str, Any]:
+        """Get current image cache statistics"""
+        return self.image_cache.get_stats()
+    
+    def cleanup_image_cache(self, force: bool = False) -> Dict[str, Any]:
+        """
+        Clean up image cache
+        
+        Args:
+            force: If True, clear entire cache. If False, use normal cleanup rules.
+            
+        Returns:
+            Dict with cleanup statistics
+        """
+        stats_before = self.image_cache.get_stats()
+        
+        if force:
+            self.image_cache.clear_all()
+            stats_after = self.image_cache.get_stats()
+            return {
+                'action': 'full_clear',
+                'files_removed': stats_before['total_files'],
+                'size_freed_mb': stats_before['total_size_mb']
+            }
+        else:
+            # Normal cleanup based on cache limits
+            self.image_cache._cleanup_cache()
+            stats_after = self.image_cache.get_stats()
+            
+            files_removed = stats_before['total_files'] - stats_after['total_files']
+            size_freed = stats_before['total_size_mb'] - stats_after['total_size_mb']
+            
+            return {
+                'action': 'smart_cleanup',
+                'files_removed': files_removed,
+                'size_freed_mb': size_freed,
+                'files_remaining': stats_after['total_files'],
+                'size_remaining_mb': stats_after['total_size_mb']
+            }
     
     async def generate_pdf_from_issue(
         self, 
         issue_id: str, 
         days_back: int = 7,
         max_articles_per_publication: int = 5,
+        layout_type: str = 'newspaper',
         output_filename: Optional[str] = None,
         keep_html: bool = False,
         verbose: bool = False
@@ -233,6 +438,7 @@ class PDFService:
             issue_id (str): UUID of the issue
             days_back (int): Number of days to look back for articles
             max_articles_per_publication (int): Maximum articles per publication
+            layout_type (str): Layout type ('newspaper' or 'essay')
             output_filename (str, optional): Custom output filename
             keep_html (bool): Whether to keep the intermediate HTML file
             verbose (bool): Enable verbose output
@@ -265,7 +471,6 @@ class PDFService:
                 return result
             
             issue_info = articles_data['issue']
-            layout_type = issue_info.get('format', 'newspaper')
             
             # Prepare articles for rendering
             articles = []
@@ -330,7 +535,8 @@ class PDFService:
                 'success': True,
                 'pdf_url': supabase_url,
                 'issue_info': issue_info,
-                'articles_count': len(articles)
+                'articles_count': len(articles),
+                'layout_type': layout_type
             })
             
             if verbose:
@@ -418,7 +624,7 @@ class PDFService:
             return self._create_essay_html(articles, issue_info, verbose)
     
     def _create_newspaper_html(self, articles: List[Dict], issue_info: Dict, verbose: bool = False) -> str:
-        """Create newspaper-style HTML with embedded CSS."""
+        """Create newspaper-style HTML using Jinja2 template."""
         
         # Read CSS file
         css_path = self.styles_dir / "newspaper.css"
@@ -429,100 +635,40 @@ class PDFService:
         elif verbose:
             logging.warning(f"CSS file not found: {css_path}")
         
-        # Build HTML
-        html_parts = []
-        html_parts.append(f'''<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{issue_info.get('title', 'Newsletter Digest')}</title>
-    <style>
-{css_content}
-    </style>
-</head>
-<body>''')
-        
-        # Add masthead
-        date_str = datetime.now().strftime("%A, %B %d, %Y")
-        total_articles = len(articles)
-        
-        html_parts.append(f'''
-    <div class="masthead">
-        <h1>{issue_info.get('title', 'THE NEWSLETTER DIGEST')}</h1>
-        <div class="subtitle">Your Collection of Insights and Analysis</div>
-        <div class="date">{date_str} • {total_articles} Articles</div>
-    </div>''')
-        
-        # Start main content
-        html_parts.append('<div class="newspaper-content">')
-        
-        # Add table of contents for multiple articles
-        if len(articles) > 1:
-            html_parts.append('<div class="newspaper-toc">')
-            html_parts.append('<h3>IN THIS EDITION</h3>')
-            html_parts.append('<ul>')
-            
-            for i, article in enumerate(articles, 1):
-                title = article.get('title', f'Article {i}')
-                publication = article.get('publication_name', article.get('feed_title', ''))
-                
-                html_parts.append('<li>')
-                html_parts.append(f'<span class="toc-title">{title}</span>')
-                if publication:
-                    html_parts.append(f'<span class="toc-source"> - {publication}</span>')
-                html_parts.append('</li>')
-            
-            html_parts.append('</ul>')
-            html_parts.append('</div>')
-        
-        # Add articles
-        for i, article in enumerate(articles, 1):
-            title = article.get('title', f'Article {i}')
-            author = article.get('author', '')
-            publication = article.get('publication_name', article.get('feed_title', ''))
+        # Process articles content
+        processed_articles = []
+        for article in articles:
+            processed_article = article.copy()
             content = article.get('content', '')
             
             # Clean and process content
             if content:
                 content = self.clean_html_content(content, verbose=False)
                 content = self.download_and_cache_images(content, verbose=verbose)
+                processed_article['content'] = content
             
-            # Create byline
-            byline_parts = []
-            if author:
-                byline_parts.append(f"By {author}")
-            if publication:
-                if author:
-                    byline_parts.append(f"({publication})")
-                else:
-                    byline_parts.append(f"From {publication}")
-            
-            byline = " ".join(byline_parts) if byline_parts else ""
-            
-            # Add article break for articles after the first
-            article_class = "article-break" if i > 1 else ""
-            
-            html_parts.append(f'<div class="article {article_class}" id="article-{i}">')
-            html_parts.append(f'<div class="headline">{title}</div>')
-            if byline:
-                html_parts.append(f'<div class="byline">{byline}</div>')
-            html_parts.append(f'<div class="article-content">{content}</div>')
-            html_parts.append('</div>')
-            
-            # Add separator between articles (except the last one)
-            if i < len(articles):
-                html_parts.append('<div class="article-separator">• • •</div>')
+            processed_articles.append(processed_article)
         
-        # Close main content and HTML
-        html_parts.append('</div>')  # Close newspaper-content
-        html_parts.append('</body>')
-        html_parts.append('</html>')
+        # Prepare template context
+        context = {
+            'issue_info': issue_info,
+            'articles': processed_articles,
+            'css_content': css_content,
+            'current_date': datetime.now().strftime("%A, %B %d, %Y")
+        }
         
-        return '\n'.join(html_parts)
+        try:
+            # Load and render template
+            template = self.jinja_env.get_template('newspaper.html')
+            return template.render(**context)
+        except Exception as e:
+            if verbose:
+                logging.error(f"Template rendering failed: {e}")
+            # Fallback to original method if template fails
+            return self._create_fallback_html(processed_articles, issue_info, 'newspaper')
     
     def _create_essay_html(self, articles: List[Dict], issue_info: Dict, verbose: bool = False) -> str:
-        """Create essay-style HTML with embedded CSS."""
+        """Create essay-style HTML using Jinja2 template."""
         
         # Read CSS file
         css_path = self.styles_dir / "essay.css"
@@ -533,95 +679,37 @@ class PDFService:
         elif verbose:
             logging.warning(f"CSS file not found: {css_path}")
         
-        # Build HTML
-        html_parts = []
-        html_parts.append(f'''<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{issue_info.get('title', 'Newsletter Collection')}</title>
-    <style>
-{css_content}
-    </style>
-</head>
-<body>''')
-        
-        # Add header for collection
-        html_parts.append(f'''
-    <div class="collection-header">
-        <h1>{issue_info.get('title', 'Newsletter Collection')}</h1>
-        <div class="collection-date">{datetime.now().strftime("%B %d, %Y")}</div>
-        <div class="collection-summary">{len(articles)} articles compiled</div>
-    </div>''')
-        
-        # Add table of contents for multiple articles
-        if len(articles) > 1:
-            html_parts.append('<div class="toc">')
-            html_parts.append('<h2>Table of Contents</h2>')
-            html_parts.append('<ul>')
-            
-            for i, article in enumerate(articles, 1):
-                title = article.get('title', f'Article {i}')
-                author = article.get('author', '')
-                publication = article.get('publication_name', article.get('feed_title', ''))
-                
-                html_parts.append(f'<li>{i}. <a href="#article-{i}">{title}</a>')
-                if author:
-                    html_parts.append(f' <span class="toc-author">by {author}</span>')
-                if publication:
-                    html_parts.append(f' <span class="toc-publication">({publication})</span>')
-                html_parts.append('</li>')
-            
-            html_parts.append('</ul>')
-            html_parts.append('</div>')
-        
-        # Add articles
-        for i, article in enumerate(articles, 1):
-            title = article.get('title', f'Article {i}')
-            author = article.get('author', '')
-            publication = article.get('publication_name', article.get('feed_title', ''))
-            pub_date = article.get('pub_date', article.get('published_date', ''))
-            url = article.get('url', article.get('link', ''))
+        # Process articles content
+        processed_articles = []
+        for article in articles:
+            processed_article = article.copy()
             content = article.get('content', '')
             
             # Clean and process content
             if content:
                 content = self.clean_html_content(content, verbose=False)
                 content = self.download_and_cache_images(content, verbose=verbose)
+                processed_article['content'] = content
             
-            html_parts.append(f'<div class="article" id="article-{i}">')
-            
-            # Article header
-            html_parts.append('<div class="article-header">')
-            html_parts.append(f'<div class="article-title">{title}</div>')
-            
-            if author:
-                html_parts.append(f'<div class="article-meta">Author: {author}</div>')
-            
-            if pub_date:
-                html_parts.append(f'<div class="article-meta">Published: {pub_date}</div>')
-            
-            if publication:
-                html_parts.append(f'<div class="article-meta">Source: {publication}</div>')
-            
-            if url:
-                html_parts.append(f'<div class="article-meta">URL: <a href="{url}">{url}</a></div>')
-            
-            html_parts.append('</div>')  # Close article-header
-            
-            # Article content
-            html_parts.append('<div class="article-content">')
-            html_parts.append(content)
-            html_parts.append('</div>')
-            
-            html_parts.append('</div>')  # Close article
+            processed_articles.append(processed_article)
         
-        # Close HTML
-        html_parts.append('</body>')
-        html_parts.append('</html>')
+        # Prepare template context
+        context = {
+            'issue_info': issue_info,
+            'articles': processed_articles,
+            'css_content': css_content,
+            'current_date': datetime.now().strftime("%B %d, %Y")
+        }
         
-        return '\n'.join(html_parts)
+        try:
+            # Load and render template
+            template = self.jinja_env.get_template('essay.html')
+            return template.render(**context)
+        except Exception as e:
+            if verbose:
+                logging.error(f"Template rendering failed: {e}")
+            # Fallback to original method if template fails
+            return self._create_fallback_html(processed_articles, issue_info, 'essay')
     
     def _create_fallback_html(
         self, 

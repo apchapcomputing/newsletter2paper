@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ issue_info.title or 'Newsletter Digest' }}</title>
+    <style>
+        {
+                {
+                css_content|safe
+            }
+        }
+    </style>
+</head>
+
+<body>
+    {# Masthead #}
+    <div class="masthead">
+        <h1>{{ issue_info.title or 'THE NEWSLETTER DIGEST' }}</h1>
+        <div class="subtitle">Your Collection of Insights and Analysis</div>
+        <div class="date">{{ current_date }} • {{ articles|length }} Articles</div>
+    </div>
+
+    <div class="newspaper-content">
+        {# Table of Contents - only show if multiple articles #}
+        {% if articles|length > 1 %}
+        <div class="newspaper-toc">
+            <h3>IN THIS EDITION</h3>
+            <ul>
+                {% for article in articles %}
+                <li>
+                    <span class="toc-title">{{ article.title or 'Article ' ~ loop.index }}</span>
+                    {% if article.publication_name or article.feed_title %}
+                    <span class="toc-source"> - {{ article.publication_name or article.feed_title }}</span>
+                    {% endif %}
+                </li>
+                {% endfor %}
+            </ul>
+        </div>
+        {% endif %}
+
+        {# Articles #}
+        {% for article in articles %}
+        {% set article_class = "article-break" if not loop.first else "" %}
+        <div class="article {{ article_class }}" id="article-{{ loop.index }}">
+            <div class="headline">{{ article.title or 'Article ' ~ loop.index }}</div>
+
+            {# Create byline #}
+            {% set byline_parts = [] %}
+            {% if article.author %}
+            {% set _ = byline_parts.append("By " ~ article.author) %}
+            {% endif %}
+            {% if article.publication_name or article.feed_title %}
+            {% if article.author %}
+            {% set _ = byline_parts.append("(" ~ (article.publication_name or article.feed_title) ~ ")") %}
+            {% else %}
+            {% set _ = byline_parts.append("From " ~ (article.publication_name or article.feed_title)) %}
+            {% endif %}
+            {% endif %}
+
+            {% if byline_parts %}
+            <div class="byline">{{ byline_parts|join(" ") }}</div>
+            {% endif %}
+
+            <div class="article-content">{{ article.content|safe }}</div>
+        </div>
+
+        {# Add separator between articles (except the last one) #}
+        {% if not loop.last %}
+        <div class="article-separator">• • •</div>
+        {% endif %}
+        {% endfor %}
+    </div>
+
+</body>
+
+</html>
