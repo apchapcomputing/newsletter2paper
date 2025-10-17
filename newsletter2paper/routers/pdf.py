@@ -232,3 +232,73 @@ async def cleanup_old_files(days_old: int = Query(7, description="Delete local f
     except Exception as e:
         logging.error(f"File cleanup failed: {e}")
         raise HTTPException(status_code=500, detail=f"Cleanup failed: {str(e)}")
+
+
+@router.get("/memory/stats")
+async def get_memory_stats():
+    """
+    Get current memory usage statistics for debugging and monitoring.
+    
+    Returns:
+        dict: Memory usage statistics and service information
+    """
+    try:
+        stats = pdf_service.get_service_stats()
+        return {
+            "success": True,
+            "stats": stats,
+            "timestamp": "2025-10-16T00:00:00Z"  # Current timestamp
+        }
+        
+    except Exception as e:
+        logging.error(f"Memory stats retrieval failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Memory stats failed: {str(e)}")
+
+
+@router.post("/memory/cleanup")
+async def force_memory_cleanup():
+    """
+    Force memory cleanup and garbage collection.
+    
+    Returns:
+        dict: Cleanup results and memory freed
+    """
+    try:
+        # Force PDF service cleanup
+        cleanup_result = pdf_service.force_memory_cleanup()
+        
+        # Also cleanup image cache
+        cache_cleanup = pdf_service.cleanup_image_cache(force=False)
+        
+        return {
+            "success": True,
+            "cleanup_result": cleanup_result,
+            "cache_cleanup": cache_cleanup,
+            "message": "Memory cleanup completed"
+        }
+        
+    except Exception as e:
+        logging.error(f"Memory cleanup failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Memory cleanup failed: {str(e)}")
+
+
+@router.delete("/memory/cache")
+async def clear_image_cache():
+    """
+    Clear the entire image cache to free memory.
+    
+    Returns:
+        dict: Cache clearing results
+    """
+    try:
+        cleanup_result = pdf_service.cleanup_image_cache(force=True)
+        
+        return {
+            "success": True,
+            "cleanup_result": cleanup_result,
+            "message": "Image cache cleared successfully"
+        }
+        
+    except Exception as e:
+        logging.error(f"Cache clearing failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Cache clearing failed: {str(e)}")

@@ -13,12 +13,20 @@ from weasyprint import HTML
 from bs4 import BeautifulSoup
 import tempfile
 import logging
+import gc
 from typing import Dict, List, Optional, Any
 from jinja2 import Environment, FileSystemLoader
 
 from services.rss_service import RSSService
 from services.storage_service import StorageService
 from utils.image_optimizer import ImageOptimizer, MemoryEfficientCache
+from utils.memory_manager import (
+    memory_manager, 
+    memory_tracked, 
+    memory_managed_operation,
+    MemoryEfficientProcessor,
+    get_memory_stats
+)
 from config.memory_settings import memory_settings
 
 logger = logging.getLogger(__name__)
@@ -42,11 +50,33 @@ class PDFService:
         self.image_optimizer = ImageOptimizer()
         self.image_cache = MemoryEfficientCache(self.images_dir)
         
+        # Register cleanup callbacks with memory manager
+        memory_manager.register_cleanup_callback(self._emergency_cleanup)
+        
         # Ensure directories exist
         self.images_dir.mkdir(exist_ok=True)
         self.newspapers_dir.mkdir(exist_ok=True)
         self.templates_dir.mkdir(exist_ok=True)
     
+    def _emergency_cleanup(self) -> Dict[str, Any]:
+        """Emergency cleanup callback for memory manager"""
+        try:
+            # Force cache cleanup
+            cache_result = self.cleanup_image_cache(force=True)
+            
+            # Clear Jinja environment cache if it exists
+            if hasattr(self.jinja_env, 'cache') and self.jinja_env.cache:
+                self.jinja_env.cache.clear()
+            
+            return {
+                'cache_cleanup': cache_result,
+                'jinja_cache_cleared': True
+            }
+        except Exception as e:
+            logger.error(f"Emergency cleanup failed: {e}")
+            return {'error': str(e)}
+    
+    @memory_tracked("clean_html_content", force_gc=True)
     def clean_html_content(self, html_content: str, verbose: bool = False) -> str:
         """
         Clean HTML content by removing subscription widgets and formatting footnotes.
@@ -243,6 +273,7 @@ class PDFService:
         
         return str(soup)
     
+    @memory_tracked("download_and_cache_images", force_gc=True)
     def download_and_cache_images(self, html_content: str, verbose: bool = False) -> str:
         """
         Download and optimize images from HTML content with memory-efficient caching.
@@ -421,6 +452,7 @@ class PDFService:
                 'size_remaining_mb': stats_after['total_size_mb']
             }
     
+    @memory_tracked("generate_pdf_from_issue", force_gc=True)
     async def generate_pdf_from_issue(
         self, 
         issue_id: str, 
@@ -758,3 +790,28 @@ class PDFService:
         html_parts.extend(['</body>', '</html>'])
         
         return '\n'.join(html_parts)
+    
+    def get_memory_stats(self) -> Dict[str, Any]:
+        """Get comprehensive memory statistics"""
+        return get_memory_stats()
+    
+    def force_memory_cleanup(self) -> Dict[str, Any]:
+        """Force memory cleanup and garbage collection"""
+        return memory_manager.force_garbage_collection("manual_pdf_service_cleanup")
+    
+    def get_service_stats(self) -> Dict[str, Any]:
+        """Get service-specific statistics including memory and cache"""
+        memory_stats = self.get_memory_stats()
+        cache_stats = self.get_image_cache_stats()
+        
+        return {
+            'memory': memory_stats,
+            'image_cache': cache_stats,
+            'settings': {
+                'max_image_size_mb': memory_settings.MAX_IMAGE_SIZE_MB,
+                'max_cache_size_mb': memory_settings.MAX_CACHE_SIZE_MB,
+                'max_article_length': memory_settings.MAX_ARTICLE_LENGTH,
+                'image_compression_enabled': memory_settings.ENABLE_IMAGE_COMPRESSION,
+                'webp_conversion_enabled': memory_settings.ENABLE_WEBP_CONVERSION
+            }
+        }
