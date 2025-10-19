@@ -1,18 +1,14 @@
 'use client'
 
 import { useState, useEffect } from 'react';
-import Image from "next/image";
 import Button from '@mui/material/Button';
 import Box from '@mui/material/Box';
 import Typography from '@mui/material/Typography';
 import TextField from '@mui/material/TextField';
-import ToggleButton from '@mui/material/ToggleButton';
-import ToggleButtonGroup from '@mui/material/ToggleButtonGroup';
-import Tooltip from '@mui/material/Tooltip';
+import Select from '@mui/material/Select';
+import MenuItem from '@mui/material/MenuItem';
+import FormControl from '@mui/material/FormControl';
 
-import ActionButtons from './components/ActionButtons';
-import PublicationsList from './components/PublicationsList';
-import SelectedPublications from './components/SelectedPublications';
 import SearchModal from './components/SearchModal';
 
 import { getRssFeedUrl } from '../utils/rssUtils';
@@ -292,7 +288,7 @@ export default function Home() {
   // Don't render the form until both contexts are loaded
   if (!isLoaded || !configLoaded) {
     return (
-      <div className="font-sans grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20" style={{ backgroundColor: '#F7F5E2' }}>
+      <div className="font-sans grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20" style={{ backgroundColor: '#ECECEC' }}>
         <main className="flex flex-col gap-[32px] row-start-2 items-center sm:items-start">
           <Typography variant="h4" component="h1" sx={{ textAlign: 'center' }}>
             Loading your newsletter configuration...
@@ -303,139 +299,400 @@ export default function Home() {
   }
 
   return (
-    <div className="font-sans grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20" style={{ backgroundColor: '#F7F5E2' }}>
-      <main className="flex flex-col gap-[32px] row-start-2 items-center sm:items-start">
-        <Typography
-          variant="h2"
-          component="h1"
-          className="font-unifraktur font-bold"
-          sx={{
-            fontFamily: '"UnifrakturCook", cursive',
-            fontWeight: 700,
-            letterSpacing: '0.05em',
-            textAlign: { xs: 'center', sm: 'left' }
-          }}
-        >
-          Your {outputMode === 'newspaper' ? 'Newspaper' : 'Essays'}
-        </Typography>
-        <p>Substack RSS to Newspaper PDF</p>
-
-        {/* Output Mode Toggle and Title Input */}
-        <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 2, alignItems: { xs: 'stretch', sm: 'center' }, width: '100%', maxWidth: 800 }}>
-          <ToggleButtonGroup
-            value={outputMode}
-            exclusive
-            onChange={handleOutputModeChange}
-            aria-label="output mode"
+    <div className="font-sans grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20" style={{ backgroundColor: '#ECECEC' }}>
+      <main className="flex flex-col gap-[32px] row-start-2 items-center sm:items-start max-w-4xl w-full">
+        {/* Header Section */}
+        <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: '100%', textAlign: 'center', mb: 4 }}>
+          <Typography
+            variant="h1"
+            component="h1"
+            className="font-unifraktur font-bold"
             sx={{
-              height: '56px', // Match TextField height
-              '& .MuiToggleButton-root': {
-                px: 3,
-                fontWeight: 'medium',
-                textTransform: 'none',
-                fontSize: '1rem',
-                height: '100%'
-              }
+              fontFamily: '"UnifrakturCook", cursive',
+              fontWeight: 700,
+              letterSpacing: '0.05em',
+              fontSize: { xs: '2.5rem', sm: '3.5rem' },
+              lineHeight: 1.2,
+              mb: 1
             }}
           >
-            <Tooltip title="Horizontal page with 3 columns" placement="top" enterDelay={1000}>
-              <ToggleButton value="newspaper" aria-label="newspaper mode">
-                📰 Newspaper
-              </ToggleButton>
-            </Tooltip>
-            <Tooltip title="Classic APA styling. Vertical format." placement="top" enterDelay={1000}>
-              <ToggleButton value="essay" aria-label="essay mode">
-                📝 Essay
-              </ToggleButton>
-            </Tooltip>
-          </ToggleButtonGroup>
+            The Newsletter Printing Press
+          </Typography>
+          <Typography
+            variant="subtitle1"
+            sx={{
+              fontWeight: 400,
+              letterSpacing: '0.1em',
+              fontSize: { xs: '0.75rem', sm: '0.875rem' },
+              color: 'text.secondary'
+            }}
+          >
+            EST. 2025 • SUBSTACK RSS TO NEWSPAPER PDF • VOLUME 0
+          </Typography>
+        </Box>
 
-          <TextField
-            label={outputMode === 'newspaper' ? 'Newspaper Title' : 'Essay Title'}
-            variant="outlined"
-            value={newspaperTitle}
-            onChange={handleNewspaperTitleChange}
-            placeholder={outputMode === 'newspaper' ? 'Enter your newspaper name...' : 'Enter your essay title...'}
-            sx={{ flexGrow: 1 }}
-          />
+        {/* Configure Your Newspaper Section */}
+        <Box sx={{
+          width: '100%',
+          border: '2px solid black',
+          p: 3,
+          mb: 4
+        }}>
+          <Typography
+            variant="h4"
+            component="h2"
+            sx={{
+              textAlign: 'center',
+              fontWeight: 600,
+              mb: 1,
+              fontSize: { xs: '1.5rem', sm: '2rem' }
+            }}
+          >
+            Configure Your Newspaper
+          </Typography>
+          <Typography
+            variant="body2"
+            sx={{
+              textAlign: 'center',
+              fontStyle: 'italic',
+              color: 'text.secondary',
+              mb: 2
+            }}
+          >
+            Configure the details for your newspaper
+          </Typography>
 
+          <Box sx={{
+            width: '100%',
+            height: '2px',
+            backgroundColor: 'black',
+            mb: 3
+          }} />
+
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+            {/* Title Input */}
+            <Box>
+              <Typography variant="body1" sx={{ mb: 1, fontWeight: 500 }}>
+                TITLE
+              </Typography>
+              <TextField
+                variant="outlined"
+                fullWidth
+                value={newspaperTitle}
+                onChange={handleNewspaperTitleChange}
+                placeholder="e.g., Morning News, Weekly Digest"
+                sx={{
+                  '& .MuiOutlinedInput-root': {
+                    backgroundColor: '#f5f5f5'
+                  }
+                }}
+              />
+            </Box>
+
+            {/* Printing Schedule and Format Row */}
+            <Box sx={{ display: 'flex', gap: 3, flexDirection: { xs: 'column', sm: 'row' } }}>
+              {/* Printing Schedule */}
+              <Box sx={{ flex: 1 }}>
+                <Typography variant="body1" sx={{ mb: 1, fontWeight: 500 }}>
+                  PRINTING SCHEDULE
+                </Typography>
+                <FormControl fullWidth>
+                  <Select
+                    value="weekly"
+                    displayEmpty
+                    sx={{
+                      backgroundColor: '#f5f5f5'
+                    }}
+                  >
+                    <MenuItem value="" disabled>
+                      Select frequency
+                    </MenuItem>
+                    <MenuItem value="daily">Daily</MenuItem>
+                    <MenuItem value="weekly">Weekly</MenuItem>
+                    <MenuItem value="monthly">Monthly</MenuItem>
+                  </Select>
+                </FormControl>
+              </Box>
+
+              {/* Format */}
+              <Box sx={{ flex: 1 }}>
+                <Typography variant="body1" sx={{ mb: 1, fontWeight: 500 }}>
+                  FORMAT
+                </Typography>
+                <FormControl fullWidth>
+                  <Select
+                    value={outputMode}
+                    onChange={(e) => updateOutputMode(e.target.value)}
+                    sx={{
+                      backgroundColor: '#f5f5f5'
+                    }}
+                  >
+                    <MenuItem value="" disabled>
+                      Select format
+                    </MenuItem>
+                    <MenuItem value="newspaper">Newspaper</MenuItem>
+                    <MenuItem value="essay">Essay</MenuItem>
+                  </Select>
+                </FormControl>
+              </Box>
+            </Box>
+          </Box>
+        </Box>
+
+        <Box sx={{
+          width: '100%',
+          height: '2px',
+          backgroundColor: 'black',
+          mb: 2
+        }} />
+
+        {/* Add Publications Section */}
+        <Box sx={{
+          width: '100%',
+          border: '2px solid black',
+          p: 3,
+          mb: 4
+        }}>
+          <Typography
+            variant="h4"
+            component="h2"
+            sx={{
+              textAlign: 'center',
+              fontWeight: 600,
+              mb: 1,
+              fontSize: { xs: '1.5rem', sm: '2rem' }
+            }}
+          >
+            Add Publications
+          </Typography>
+          <Typography
+            variant="body2"
+            sx={{
+              textAlign: 'center',
+              fontStyle: 'italic',
+              color: 'text.secondary',
+              mb: 2
+            }}
+          >
+            Add Substack publications to print in your newspaper
+          </Typography>
+
+          <Box sx={{
+            width: '100%',
+            height: '2px',
+            backgroundColor: 'black',
+            mb: 3
+          }} />
+
+          {/* Add Publication Source Controls */}
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mb: 3 }}>
+            <Typography variant="body1" sx={{ fontWeight: 500 }}>
+              ADD PUBLICATION SOURCE
+            </Typography>
+            <Box sx={{ display: 'flex', gap: 2, flexDirection: { xs: 'column', sm: 'row' } }}>
+              <Button
+                variant="contained"
+                onClick={() => setIsSearchModalOpen(true)}
+                sx={{
+                  flex: 1,
+                  py: 1.5,
+                  fontWeight: 'medium',
+                  textTransform: 'none',
+                  fontSize: '1rem',
+                  backgroundColor: '#f5f5f5',
+                  color: 'black',
+                  border: '1px solid #ccc',
+                  '&:hover': {
+                    // backgroundColor: '#e0e0e0',
+                    borderColor: 'black'
+                  }
+                }}
+              >
+                SEARCH
+              </Button>
+              <Button
+                variant="contained"
+                sx={{
+                  flex: 1,
+                  py: 1.5,
+                  fontWeight: 'medium',
+                  textTransform: 'none',
+                  fontSize: '1rem',
+                  backgroundColor: '#f5f5f5',
+                  color: 'black',
+                  border: '1px solid #ccc',
+                  '&:hover': {
+                    // backgroundColor: '#e0e0e0',
+                    borderColor: 'black'
+                  }
+                }}
+              >
+                ADD VIA URL
+              </Button>
+            </Box>
+          </Box>
+
+          {/* Publications to Print */}
+          <Box>
+            <Typography variant="body1" sx={{ fontWeight: 500, mb: 2 }}>
+              PUBLICATIONS TO PRINT
+            </Typography>
+
+            {/* Selected Publications List */}
+            {selectedPublications.length > 0 ? (
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                {selectedPublications.map((publication, index) => (
+                  <Box
+                    key={publication.id || index}
+                    sx={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      p: 2,
+                      backgroundColor: '#f5f5f5',
+                      border: '1px solid #ccc'
+                    }}
+                  >
+                    <Box sx={{ display: 'flex', flexDirection: 'column' }}>
+                      <Typography variant="body1" sx={{ fontWeight: 500 }}>
+                        {publication.name || publication.title}
+                      </Typography>
+                      <Typography variant="body2" color="text.secondary">
+                        {publication.subscribers ? `${publication.subscribers} • ${publication.handle || ''} subscribers` : publication.handle || publication.url}
+                      </Typography>
+                    </Box>
+                    <Button
+                      onClick={() => removePublication(publication.id || publication.name)}
+                      sx={{
+                        minWidth: 'auto',
+                        p: 1,
+                        color: 'text.secondary',
+                        '&:hover': {
+                          backgroundColor: 'primary'
+                        }
+                      }}
+                    >
+                      ×
+                    </Button>
+                  </Box>
+                ))}
+              </Box>
+            ) : (
+              <Typography variant="body2" color="text.secondary" sx={{ fontStyle: 'italic' }}>
+                No publications selected yet. Use the search or add URL options above to add publications.
+              </Typography>
+            )}
+          </Box>
+        </Box>
+
+        <Box sx={{
+          width: '100%',
+          height: '2px',
+          backgroundColor: 'black',
+          mb: 3
+        }} />
+
+        {/* Action Buttons Section */}
+        <Box sx={{
+          display: 'flex',
+          gap: 3,
+          justifyContent: 'center',
+          flexDirection: { xs: 'column', sm: 'row' },
+          width: '100%',
+          maxWidth: 600,
+          mx: 'auto'
+        }}>
           <Button
             variant="contained"
-            color="primary"
             onClick={handleSaveIssue}
             disabled={isSaving}
             sx={{
-              px: 3,
-              py: 1.5,
-              fontWeight: 'medium',
+              flex: 1,
+              py: 2,
+              px: 4,
+              fontWeight: 600,
               textTransform: 'none',
-              fontSize: '1rem',
-              minWidth: 120
+              fontSize: '1.1rem',
+              backgroundColor: '#f5f5f5',
+              color: 'black',
+              border: '2px solid #ccc',
+              '&:hover': {
+                // backgroundColor: '#e0e0e0'
+                borderColor: 'black'
+              },
+              '&:disabled': {
+                backgroundColor: '#d0d0d0',
+                color: '#666'
+              }
             }}
           >
-            {isSaving ? '💾 Saving...' : currentIssueId ? '💾 Update' : '💾 Save'}
+            {isSaving ? 'SAVING...' : 'SAVE NEWSPAPER'}
           </Button>
-        </Box>
-
-        {/* Action Buttons */}
-        <ActionButtons
-          onGetRssFeed={getRssFeedUrl}
-          onOpenSearch={() => setIsSearchModalOpen(true)}
-        />
-
-        {/* Selected Publications */}
-        <SelectedPublications />
-
-        {/* PDF Generation Section */}
-        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, alignItems: 'center' }}>
-          {!currentIssueId && (
-            <Typography variant="body2" color="text.secondary" sx={{ textAlign: 'center' }}>
-              💡 Save your issue first, then generate your PDF
-            </Typography>
-          )}
-
-          {currentIssueId && (
-            <Typography variant="body2" color="success.main" sx={{ textAlign: 'center' }}>
-              ✅ Newsletter configuration saved! Ready to generate PDF
-            </Typography>
-          )}
 
           <Button
             variant="contained"
-            color="primary"
             onClick={handleGeneratePdf}
             disabled={isGeneratingPdf || !currentIssueId}
             sx={{
-              px: 3,
-              py: 1.5,
-              fontWeight: 'medium',
+              flex: 1,
+              py: 2,
+              px: 4,
+              fontWeight: 600,
               textTransform: 'none',
-              fontSize: '1rem',
-              minWidth: 120
-            }}>
-            {isGeneratingPdf
-              ? '📄 Generating...'
-              : `Create ${outputMode.charAt(0).toUpperCase() + outputMode.slice(1)} Issue File`
-            }
+              fontSize: '1.1rem',
+              backgroundColor: '#f5f5f5',
+              color: 'black',
+              border: '2px solid #ccc',
+              '&:hover': {
+                // backgroundColor: '#e0e0e0'
+                borderColor: 'black'
+              },
+              '&:disabled': {
+                backgroundColor: '#d0d0d0',
+                color: '#666'
+              }
+            }}
+          >
+            {isGeneratingPdf ? 'GENERATING...' : 'PRINT NEWSPAPER'}
           </Button>
-
-          {/* Show PDF URL if available */}
-          {pdfUrl && (
-            <Box sx={{ mt: 2, p: 2, backgroundColor: '#e8f5e8', borderRadius: 1 }}>
-              <Typography variant="body2" color="success.main" sx={{ mb: 1 }}>
-                ✅ PDF generated successfully!
-              </Typography>
-              <Button
-                variant="outlined"
-                size="small"
-                onClick={() => window.open(pdfUrl, '_blank')}
-                sx={{ textTransform: 'none' }}
-              >
-                📄 Open PDF
-              </Button>
-            </Box>
-          )}
         </Box>
+
+        {/* Status Messages */}
+        {!currentIssueId && selectedPublications.length > 0 && (
+          <Typography variant="body2" color="text.secondary" sx={{ textAlign: 'center', mt: 2 }}>
+            💡 Save your newspaper first, then print your PDF
+          </Typography>
+        )}
+
+        {currentIssueId && (
+          <Typography variant="body2" color="success.main" sx={{ textAlign: 'center', mt: 2 }}>
+            ✅ Newspaper configuration saved! Ready to print
+          </Typography>
+        )}
+
+        {/* Show PDF URL if available */}
+        {pdfUrl && (
+          <Box sx={{ mt: 3, p: 3, backgroundColor: '#e8f5e8', border: '1px solid #4caf50', textAlign: 'center' }}>
+            <Typography variant="body1" color="success.main" sx={{ mb: 2, fontWeight: 500 }}>
+              ✅ PDF generated successfully!
+            </Typography>
+            <Button
+              variant="outlined"
+              onClick={() => window.open(pdfUrl, '_blank')}
+              sx={{
+                textTransform: 'none',
+                fontWeight: 500,
+                borderColor: 'success.main',
+                color: 'success.main',
+                '&:hover': {
+                  backgroundColor: 'success.light'
+                }
+              }}
+            >
+              📄 Open PDF
+            </Button>
+          </Box>
+        )}
       </main>
 
       {/* Search Modal */}
@@ -450,53 +707,36 @@ export default function Home() {
         onRemoveFromHistory={removeFromSearchHistory}
       />
 
-      {/* <footer className="row-start-3 flex gap-[24px] flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4 text-primary"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
+      {/* Footer */}
+      <footer className="row-start-3 flex gap-4 flex-wrap items-center justify-center">
+        <Typography
+          variant="body2"
+          sx={{
+            textDecoration: 'underline',
+            cursor: 'pointer',
+            '&:hover': {
+              color: 'primary.main'
+            }
+          }}
         >
-          <Image
-            aria-hidden
-            src="/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4 text-primary"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
+          Feature Request
+        </Typography>
+        <Typography variant="body2" color="text.secondary">
+          •
+        </Typography>
+        <Typography
+          variant="body2"
+          sx={{
+            textDecoration: 'underline',
+            cursor: 'pointer',
+            '&:hover': {
+              color: 'primary.main'
+            }
+          }}
         >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4 text-primary"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer> */}
+          Source Code
+        </Typography>
+      </footer>
     </div>
   );
 }

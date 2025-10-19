@@ -2,19 +2,19 @@
 @import "tailwindcss";
 
 :root {
-  --background: #F7F5E2;
+  --background: #ECECEC;
   --foreground: #291D18;
   --primary: #A44200;
   --secondary: #c5541b;
   --grey: #504f4e;
-  --white: #F7F5E2;
+  --white: #ECECEC;
   --black: #291D18;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
     --background: #291D18;
-    --foreground: #F7F5E2;
+    --foreground: #ECECEC;
   }
 }
 
@@ -22,7 +22,7 @@ html {
   background: var(--background);
   color: var(--foreground);
   font-family: var(--font-geist-sans), Arial, Helvetica, sans-serif;
-  scrollbar-color: #504f4e #F7F5E2;
+  scrollbar-color: #504f4e #ECECEC;
 }
 
 /* Custom scrollbar styling for webkit browsers */
@@ -31,7 +31,7 @@ html {
 }
 
 ::-webkit-scrollbar-track {
-  background: #F7F5E2;
+  background: #ECECEC;
 }
 
 ::-webkit-scrollbar-thumb {
