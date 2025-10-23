@@ -558,7 +558,7 @@ export default function Home() {
                         {publication.name || publication.title}
                       </Typography>
                       <Typography variant="body2" color="text.secondary">
-                        {publication.subscribers ? `${publication.subscribers} • ${publication.handle || ''} subscribers` : publication.handle || publication.url}
+                        {publication.subscribers ? `${publication.subscribers} • ${publication.handle || ''}` : publication.handle || publication.url}
                       </Typography>
                     </Box>
                     <Button
