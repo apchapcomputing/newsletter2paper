@@ -1,4 +1,4 @@
-module newsletter2newspaper
+module pdf-maker
 
 go 1.22.0
 

@@ -8,10 +8,10 @@ import (
 	"strings"
 	"time"
 
-	art "newsletter2newspaper/internal/article"
-	"newsletter2newspaper/internal/fetch"
-	"newsletter2newspaper/internal/images"
-	"newsletter2newspaper/internal/pdf"
+	art "pdf-maker/internal/article"
+	"pdf-maker/internal/fetch"
+	"pdf-maker/internal/images"
+	"pdf-maker/internal/pdf"
 )
 
 func main() {

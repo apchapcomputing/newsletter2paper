@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	art "newsletter2newspaper/internal/article"
+	art "pdf-maker/internal/article"
 )
 
 // GenerateOptions configures PDF generation behavior.

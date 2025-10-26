@@ -7,9 +7,9 @@ import (
 	"time"
 
 	"golang.org/x/sync/errgroup"
-	art "newsletter2newspaper/internal/article"
-	"newsletter2newspaper/internal/clean"
-	"newsletter2newspaper/internal/images"
+	art "pdf-maker/internal/article"
+	"pdf-maker/internal/clean"
+	"pdf-maker/internal/images"
 )
 
 // ArticleResult holds the outcome of a single fetch attempt.

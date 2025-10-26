@@ -8,8 +8,8 @@ import (
 	"strings"
 	"time"
 
-	art "newsletter2newspaper/internal/article"
-	"newsletter2newspaper/internal/fetch"
+	art "pdf-maker/internal/article"
+	"pdf-maker/internal/fetch"
 )
 
 // DefaultArticleURL is the initial target article if none provided via flag.

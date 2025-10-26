@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	art "newsletter2newspaper/internal/article"
+	art "pdf-maker/internal/article"
 )
 
 // AssembleHTML builds the complete HTML document with header, TOC, and article sections.

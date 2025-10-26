@@ -16,9 +16,9 @@ import (
 	"time"
 
 	"github.com/PuerkitoBio/goquery"
-	art "newsletter2newspaper/internal/article"
-	"newsletter2newspaper/internal/clean"
-	"newsletter2newspaper/internal/images"
+	art "pdf-maker/internal/article"
+	"pdf-maker/internal/clean"
+	"pdf-maker/internal/images"
 )
 
 // FetchAndSaveArticle downloads the HTML for the given article URL and saves it to disk.
