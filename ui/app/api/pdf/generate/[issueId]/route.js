@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 
-const BACKEND_URL = process.env.BACKEND_URL || 'http://127.0.0.1:8000';
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL;
 
 export async function POST(request, { params }) {
     try {
@@ -21,7 +21,7 @@ export async function POST(request, { params }) {
         searchParams.append('verbose', url.searchParams.get('verbose') || 'false');
 
         // Make request to the Python backend
-        const backendUrl = `${BACKEND_URL}/pdf/generate/${issueId}?${searchParams.toString()}`;
+        const backendUrl = `${API_BASE_URL}/pdf/generate/${issueId}?${searchParams.toString()}`;
 
         console.log('Making request to backend:', backendUrl);
 
