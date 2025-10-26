@@ -1,6 +1,6 @@
 """
 PDF Router Module
-Handles PDF generation endpoints.
+Handles PDF generation endpoints using Go-based PDF service.
 """
 
 from fastapi import APIRouter, HTTPException, Query
@@ -9,10 +9,10 @@ from typing import Optional
 import logging
 from pathlib import Path
 
-from services.pdf_service import PDFService
+from services.go_pdf_service import GoPDFService
 
 router = APIRouter(prefix="/pdf", tags=["pdf"])
-pdf_service = PDFService()
+pdf_service = GoPDFService(use_docker=True, shared_dir="/shared")
 
 
 @router.post("/generate/{issue_id}")
@@ -26,7 +26,7 @@ async def generate_pdf_for_issue(
     verbose: bool = Query(False, description="Enable verbose logging")
 ):
     """
-    Generate a PDF from an issue's articles.
+    Generate a PDF from an issue's articles using the Go PDF service.
     
     Args:
         issue_id: UUID of the issue
@@ -34,7 +34,7 @@ async def generate_pdf_for_issue(
         max_articles_per_publication: Maximum articles per publication
         layout_type: Layout type ('newspaper' or 'essay')
         output_filename: Custom output filename (without extension)
-        keep_html: Whether to keep the intermediate HTML file
+        keep_html: Whether to keep the intermediate HTML file (Go service handles this)
         verbose: Enable verbose output
         
     Returns:
@@ -44,13 +44,39 @@ async def generate_pdf_for_issue(
         if verbose:
             logging.info(f"Generating PDF for issue {issue_id} with layout {layout_type}")
         
+        # Import RSS service here to avoid circular imports
+        from services.rss_service import RSSService
+        rss_service = RSSService()
+        
+        # Fetch articles for the issue using RSS service
+        articles_data = await rss_service.fetch_recent_articles_for_issue(
+            issue_id,
+            days_back=days_back,
+            max_articles_per_publication=max_articles_per_publication
+        )
+        
+        if not articles_data or articles_data['total_articles'] == 0:
+            raise HTTPException(
+                status_code=404,
+                detail="No articles found for the specified issue and date range"
+            )
+        
+        issue_info = articles_data['issue']
+        
+        # Flatten articles from all publications
+        all_articles = []
+        for pub_id, pub_articles in articles_data['articles_by_publication'].items():
+            all_articles.extend(pub_articles)
+        
+        if verbose:
+            logging.info(f"Found {len(all_articles)} articles across {len(articles_data['articles_by_publication'])} publications")
+        
+        # Generate PDF using Go service
         result = await pdf_service.generate_pdf_from_issue(
             issue_id=issue_id,
-            days_back=days_back,
-            max_articles_per_publication=max_articles_per_publication,
-            layout_type=layout_type,
+            articles=all_articles,
+            issue_info=issue_info,
             output_filename=output_filename,
-            keep_html=keep_html,
             verbose=verbose
         )
         
@@ -59,16 +85,18 @@ async def generate_pdf_for_issue(
         
         return {
             "success": True,
-            "message": "PDF generated successfully",
+            "message": "PDF generated successfully using Go service",
             "pdf_url": result['pdf_url'],
-            "html_path": result.get('html_path'),
             "issue_info": result['issue_info'],
             "articles_count": result['articles_count'],
-            "layout_type": result.get('layout_type', layout_type)
+            "layout_type": result.get('layout_type', layout_type),
+            "service": "go-pdf"
         }
         
+    except HTTPException:
+        raise
     except Exception as e:
-        logging.error(f"PDF generation failed: {e}")
+        logging.error(f"PDF generation failed: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"PDF generation failed: {str(e)}")
 
 
@@ -94,13 +122,36 @@ async def download_pdf(
         RedirectResponse: Redirect to the PDF URL in Supabase storage
     """
     try:
+        # Import RSS service here to avoid circular imports
+        from services.rss_service import RSSService
+        rss_service = RSSService()
+        
+        # Fetch articles for the issue
+        articles_data = await rss_service.fetch_recent_articles_for_issue(
+            issue_id,
+            days_back=days_back,
+            max_articles_per_publication=max_articles_per_publication
+        )
+        
+        if not articles_data or articles_data['total_articles'] == 0:
+            raise HTTPException(
+                status_code=404,
+                detail="No articles found for the specified issue and date range"
+            )
+        
+        issue_info = articles_data['issue']
+        
+        # Flatten articles
+        all_articles = []
+        for pub_id, pub_articles in articles_data['articles_by_publication'].items():
+            all_articles.extend(pub_articles)
+        
+        # Generate PDF
         result = await pdf_service.generate_pdf_from_issue(
             issue_id=issue_id,
-            days_back=days_back,
-            max_articles_per_publication=max_articles_per_publication,
-            layout_type=layout_type,
+            articles=all_articles,
+            issue_info=issue_info,
             output_filename=output_filename,
-            keep_html=False,
             verbose=False
         )
         
@@ -117,7 +168,7 @@ async def download_pdf(
     except HTTPException:
         raise
     except Exception as e:
-        logging.error(f"PDF download failed: {e}")
+        logging.error(f"PDF download failed: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"PDF download failed: {str(e)}")
 
 
@@ -163,21 +214,29 @@ async def test_storage_access():
         # Check bucket access
         bucket_info = pdf_service.storage_service.check_bucket_access()
         
+        # Also test Go service connection
+        go_service_test = pdf_service.test_connection()
+        
         return {
             "storage_test": bucket_info,
+            "go_service_test": go_service_test,
             "supabase_configured": True,
-            "message": "Storage access test completed"
+            "message": "Storage and Go service access test completed"
         }
         
     except Exception as e:
-        logging.error(f"Storage test failed: {e}")
+        logging.error(f"Test failed: {e}")
         return {
             "storage_test": {
                 "success": False,
                 "error": str(e)
             },
+            "go_service_test": {
+                "success": False,
+                "error": str(e)
+            },
             "supabase_configured": False,
-            "message": f"Storage test failed: {str(e)}"
+            "message": f"Test failed: {str(e)}"
         }
 
 
@@ -237,68 +296,50 @@ async def cleanup_old_files(days_old: int = Query(7, description="Delete local f
 @router.get("/memory/stats")
 async def get_memory_stats():
     """
-    Get current memory usage statistics for debugging and monitoring.
+    Get current service status (Go service replaces memory management).
     
     Returns:
-        dict: Memory usage statistics and service information
+        dict: Service status information
     """
     try:
-        stats = pdf_service.get_service_stats()
+        go_status = pdf_service.test_connection()
         return {
             "success": True,
-            "stats": stats,
-            "timestamp": "2025-10-16T00:00:00Z"  # Current timestamp
+            "service": "go-pdf",
+            "go_service_status": go_status,
+            "message": "Using Go-based PDF generation (no Python memory management needed)"
         }
         
     except Exception as e:
-        logging.error(f"Memory stats retrieval failed: {e}")
-        raise HTTPException(status_code=500, detail=f"Memory stats failed: {str(e)}")
+        logging.error(f"Status check failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Status check failed: {str(e)}")
 
 
 @router.post("/memory/cleanup")
 async def force_memory_cleanup():
     """
-    Force memory cleanup and garbage collection.
+    Cleanup endpoint (kept for API compatibility, but Go service manages its own memory).
     
     Returns:
-        dict: Cleanup results and memory freed
+        dict: Cleanup results
     """
-    try:
-        # Force PDF service cleanup
-        cleanup_result = pdf_service.force_memory_cleanup()
-        
-        # Also cleanup image cache
-        cache_cleanup = pdf_service.cleanup_image_cache(force=False)
-        
-        return {
-            "success": True,
-            "cleanup_result": cleanup_result,
-            "cache_cleanup": cache_cleanup,
-            "message": "Memory cleanup completed"
-        }
-        
-    except Exception as e:
-        logging.error(f"Memory cleanup failed: {e}")
-        raise HTTPException(status_code=500, detail=f"Memory cleanup failed: {str(e)}")
+    return {
+        "success": True,
+        "message": "Go PDF service manages its own memory - no manual cleanup needed",
+        "service": "go-pdf"
+    }
 
 
 @router.delete("/memory/cache")
 async def clear_image_cache():
     """
-    Clear the entire image cache to free memory.
+    Clear cache endpoint (kept for API compatibility, but Go service manages its own cache).
     
     Returns:
         dict: Cache clearing results
     """
-    try:
-        cleanup_result = pdf_service.cleanup_image_cache(force=True)
-        
-        return {
-            "success": True,
-            "cleanup_result": cleanup_result,
-            "message": "Image cache cleared successfully"
-        }
-        
-    except Exception as e:
-        logging.error(f"Cache clearing failed: {e}")
-        raise HTTPException(status_code=500, detail=f"Cache clearing failed: {str(e)}")
+    return {
+        "success": True,
+        "message": "Go PDF service manages its own image cache",
+        "service": "go-pdf"
+    }

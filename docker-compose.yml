@@ -1,0 +1,51 @@
+services:
+  # FastAPI Service
+  fastapi:
+    build:
+      context: ./newsletter2paper
+      dockerfile: Dockerfile
+    container_name: newsletter2paper-api
+    ports:
+      - "8000:8000"
+    environment:
+      - SUPABASE_URL=${SUPABASE_URL}
+      - SUPABASE_KEY=${SUPABASE_KEY}
+      - GO_PDF_CONTAINER=pdf-maker
+    volumes:
+      - shared-data:/shared
+      - ./newsletter2paper:/app
+      - /var/run/docker.sock:/var/run/docker.sock # Allow docker exec
+    depends_on:
+      - pdf-maker
+    networks:
+      - newsletter-network
+    command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+    restart: unless-stopped
+
+  # Go PDF Maker Service
+  pdf-maker:
+    build:
+      context: ./pdf-maker
+      dockerfile: Dockerfile
+    container_name: pdf-maker
+    volumes:
+      - shared-data:/shared
+      - shared-images:/app/images
+    networks:
+      - newsletter-network
+    # Keep container running so FastAPI can docker exec into it
+    # Override user to run as root to avoid permission issues with /shared volume
+    user: root
+    entrypoint: []
+    command: tail -f /dev/null
+    restart: unless-stopped
+
+volumes:
+  shared-data:
+    driver: local
+  shared-images:
+    driver: local
+
+networks:
+  newsletter-network:
+    driver: bridge
