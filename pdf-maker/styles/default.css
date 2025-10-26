@@ -1,0 +1,216 @@
+/* Default Newsletter Style */
+body {
+    font-family: Georgia, serif;
+    line-height: 1.6;
+    max-width: 800px;
+    margin: 0 auto;
+    padding: 20px;
+}
+
+.article {
+    margin-bottom: 40px;
+    page-break-after: auto;
+    border-bottom: 2px solid #eee;
+    padding-bottom: 20px;
+}
+
+.article:last-child {
+    border-bottom: none;
+}
+
+.article-header {
+    margin-bottom: 20px;
+    padding: 15px;
+    background-color: #f8f9fa;
+    border-left: 4px solid #007bff;
+}
+
+.article-title {
+    font-size: 24px;
+    font-weight: bold;
+    margin-bottom: 10px;
+    color: #333;
+}
+
+.article-meta {
+    font-size: 14px;
+    color: #666;
+    margin-bottom: 5px;
+}
+
+.article-content {
+    margin-top: 20px;
+}
+
+/* Image handling - ensure all images display properly */
+.article-content img {
+    width: 100%;
+    max-width: 100%;
+    height: auto;
+    display: block;
+    margin: 15px 0;
+    page-break-inside: avoid;
+}
+
+/* Embedded posts styling - make them look like nice cards */
+.article-content .embedded-post-wrap {
+    margin: 20px 0;
+    page-break-inside: avoid;
+}
+
+.article-content .embedded-post {
+    display: block;
+    text-decoration: none;
+    color: inherit;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    padding: 20px;
+    background-color: #f8f9fa;
+    transition: none;
+}
+
+.article-content .embedded-post-header {
+    display: flex;
+    align-items: center;
+    margin-bottom: 12px;
+}
+
+.article-content .embedded-post-publication-logo {
+    width: 40px !important;
+    height: 40px !important;
+    max-width: 40px !important;
+    max-height: 40px !important;
+    min-width: 40px !important;
+    min-height: 40px !important;
+    border-radius: 4px;
+    margin-right: 12px !important;
+    flex-shrink: 0;
+    display: block !important;
+    object-fit: cover;
+}
+
+.article-content .embedded-post-header img {
+    width: 40px !important;
+    height: 40px !important;
+    max-width: 40px !important;
+    max-height: 40px !important;
+    min-width: 40px !important;
+    min-height: 40px !important;
+    border-radius: 4px;
+    margin: 0 12px 0 0 !important;
+    flex-shrink: 0;
+    display: block !important;
+    object-fit: cover;
+}
+
+.article-content .embedded-post-publication-name {
+    font-weight: 600;
+    font-size: 15px;
+    color: #1a1a1a;
+    margin: 0;
+}
+
+.article-content .embedded-post-title-wrapper {
+    margin-bottom: 10px;
+}
+
+.article-content .embedded-post-title {
+    font-weight: 700;
+    font-size: 18px;
+    line-height: 1.4;
+    color: #1a1a1a;
+    margin-bottom: 8px;
+}
+
+.article-content .embedded-post-body {
+    font-size: 14px;
+    line-height: 1.6;
+    color: #666;
+    margin-bottom: 12px;
+}
+
+.article-content .embedded-post-cta-wrapper {
+    display: none; /* Hide the "Read more" button */
+}
+
+.article-content .embedded-post-cta {
+    display: none;
+}
+
+.article-content .embedded-post-meta {
+    font-size: 13px;
+    color: #999;
+    line-height: 1.4;
+}
+
+/* Handle Substack's picture elements and image containers */
+.article-content picture {
+    display: block;
+    width: 100%;
+    max-width: 100%;
+    margin: 15px 0;
+}
+
+.article-content picture img {
+    margin: 0;
+}
+
+/* Substack image wrappers */
+.article-content .image,
+.article-content .image2,
+.article-content [class*="image-"],
+.article-content figure {
+    display: block;
+    width: 100%;
+    max-width: 100%;
+    margin: 15px 0;
+    page-break-inside: avoid;
+}
+
+.article-content figure img {
+    margin: 0;
+}
+
+.article-content figcaption {
+    font-size: 12px;
+    color: #666;
+    font-style: italic;
+    margin-top: 8px;
+    text-align: center;
+}
+
+/* Ensure nested containers don't overflow */
+.article-content div > img,
+.article-content span > img,
+.article-content a > img {
+    max-width: 100%;
+    height: auto;
+}
+
+.toc {
+    background-color: #f8f9fa;
+    padding: 20px;
+    margin-bottom: 30px;
+    border: 1px solid #ddd;
+    page-break-after: always;
+}
+
+.toc h2 {
+    margin-top: 0;
+    color: #333;
+}
+
+.toc ul {
+    list-style-type: none;
+    padding-left: 0;
+}
+
+.toc li {
+    margin-bottom: 8px;
+    padding-left: 20px;
+}
+
+.toc a {
+    text-decoration: none;
+    color: #007bff;
+}
