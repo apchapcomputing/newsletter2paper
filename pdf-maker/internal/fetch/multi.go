@@ -9,7 +9,7 @@ import (
 	"golang.org/x/sync/errgroup"
 	art "pdf-maker/internal/article"
 	"pdf-maker/internal/clean"
-	"pdf-maker/internal/images"
+	"pdf-maker/internal/media"
 )
 
 // ArticleResult holds the outcome of a single fetch attempt.
@@ -30,7 +30,7 @@ func FetchArticlesConcurrent(ctx context.Context, urls []string, maxParallel int
 }
 
 // FetchArticlesConcurrentWithImages fetches multiple articles and optionally downloads images.
-func FetchArticlesConcurrentWithImages(ctx context.Context, urls []string, maxParallel int, imageDownloader *images.Downloader) ([]*art.Article, []error) {
+func FetchArticlesConcurrentWithImages(ctx context.Context, urls []string, maxParallel int, imageDownloader *media.Downloader) ([]*art.Article, []error) {
 	if len(urls) == 0 {
 		return nil, nil
 	}

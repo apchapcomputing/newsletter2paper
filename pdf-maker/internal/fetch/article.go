@@ -18,7 +18,7 @@ import (
 	"github.com/PuerkitoBio/goquery"
 	art "pdf-maker/internal/article"
 	"pdf-maker/internal/clean"
-	"pdf-maker/internal/images"
+	"pdf-maker/internal/media"
 )
 
 // FetchAndSaveArticle downloads the HTML for the given article URL and saves it to disk.
@@ -36,7 +36,7 @@ func FetchArticle(ctx context.Context, pageURL string) (*art.Article, []byte, er
 }
 
 // FetchArticleWithImages retrieves the page, parses fields, and optionally downloads images.
-func FetchArticleWithImages(ctx context.Context, pageURL string, imageDownloader *images.Downloader) (*art.Article, []byte, error) {
+func FetchArticleWithImages(ctx context.Context, pageURL string, imageDownloader *media.Downloader) (*art.Article, []byte, error) {
     if pageURL == "" { return nil, nil, errors.New("empty url") }
 
     if _, ok := ctx.Deadline(); !ok {

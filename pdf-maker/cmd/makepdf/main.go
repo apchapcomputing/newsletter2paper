@@ -10,7 +10,7 @@ import (
 
 	art "pdf-maker/internal/article"
 	"pdf-maker/internal/fetch"
-	"pdf-maker/internal/images"
+	"pdf-maker/internal/media"
 	"pdf-maker/internal/pdf"
 )
 
@@ -38,7 +38,7 @@ func main() {
 	defer cancel()
 
 	// Create image downloader
-	imgDownloader, err := images.NewDownloader("images")
+	imgDownloader, err := media.NewDownloader("images")
 	if err != nil {
 		log.Fatalf("Failed to create image downloader: %v", err)
 	}
@@ -128,7 +128,7 @@ func parseURLs(urls string) []string {
 }
 
 // processArticlesFromJSON loads articles from JSON and fetches content if needed
-func processArticlesFromJSON(ctx context.Context, jsonPath string, imgDownloader *images.Downloader, maxPar int) ([]*art.Article, []error) {
+func processArticlesFromJSON(ctx context.Context, jsonPath string, imgDownloader *media.Downloader, maxPar int) ([]*art.Article, []error) {
 	fmt.Printf("Loading articles from JSON: %s\n", jsonPath)
 	
 	issueInput, err := art.LoadArticlesFromJSON(jsonPath)
