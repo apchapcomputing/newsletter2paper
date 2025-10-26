@@ -1,0 +1,60 @@
+name: Deploy to Digital Ocean
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'pdf-maker/**'
+      - 'newsletter2paper/**'
+      - 'docker-compose.yml'
+      - '.github/workflows/deploy.yml'
+
+jobs:
+  deploy:
+    name: Deploy to Droplet
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Deploy to Digital Ocean Droplet
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.DROPLET_HOST }}
+          username: ${{ secrets.DROPLET_USER }}
+          key: ${{ secrets.DROPLET_SSH_KEY }}
+          script: |
+            set -e
+            
+            echo "📦 Navigating to project directory..."
+            cd ~/newsletter2paper
+            
+            echo "🔄 Pulling latest changes from GitHub..."
+            git pull origin main
+            
+            echo "🛑 Stopping containers..."
+            docker compose down
+            
+            echo "🏗️ Rebuilding and starting containers..."
+            docker compose up -d --build
+            
+            echo "⏳ Waiting for services to be ready..."
+            sleep 10
+            
+            echo "🔍 Checking container status..."
+            docker compose ps
+            
+            echo "✅ Testing API health..."
+            curl -f http://localhost:8000/ || echo "⚠️ API health check failed"
+            
+            echo "🎉 Deployment complete!"
+            
+            echo "📋 Recent logs:"
+            docker compose logs --tail=50
+      
+      - name: Notify on Failure
+        if: failure()
+        run: |
+          echo "❌ Deployment failed! Check the logs above for details."
