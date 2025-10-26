@@ -115,9 +115,9 @@ class GoPDFService:
         timeout = timeout or self.default_timeout
         
         if self.use_docker:
-            # Call via docker exec
+            # Call via docker exec as root to avoid permission issues with /shared volume
             cmd = [
-                "docker", "exec", self.go_container_name,
+                "docker", "exec", "--user", "root", self.go_container_name,
                 self.go_binary_path,
                 "--articles-json", str(json_path),
                 "--output", str(pdf_path),

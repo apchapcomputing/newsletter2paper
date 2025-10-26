@@ -33,12 +33,13 @@ COPY --from=builder /build/makepdf /app/makepdf
 # Copy styles directory
 COPY styles /app/styles
 
-# Create output directories
-RUN mkdir -p /app/newspapers /app/articles
+# Create output directories and shared directory
+RUN mkdir -p /app/newspapers /app/articles /shared
 
 # Run as non-root user for security
 RUN useradd -m -u 1000 appuser && \
-    chown -R appuser:appuser /app
+    chown -R appuser:appuser /app && \
+    chown -R appuser:appuser /shared
 USER appuser
 
 # Default command: generate PDF from provided URLs
