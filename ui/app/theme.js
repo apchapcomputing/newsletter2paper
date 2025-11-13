@@ -6,22 +6,22 @@ const theme = createTheme({
     palette: {
         primary: {
             main: '#A44200', // Primary color
-            contrastText: '#ECECEC', // White color for text on primary
+            contrastText: 'var(--white)', // White color for text on primary
         },
         secondary: {
             main: '#D58936', // Secondary color
             contrastText: '#2A2619', // Black color for text on secondary
         },
         background: {
-            default: '#ECECEC', // White background
-            paper: '#ECECEC', // White paper background
+            default: 'var(--white)', // White background
+            paper: 'var(--white)', // White paper background
         },
         text: {
             primary: '#2A2619', // Black text
             secondary: '#504f4e', // Grey text
         },
         grey: {
-            50: '#ECECEC',
+            50: 'var(--white)',
             100: '#504f4e',
             200: '#504f4e',
             300: '#504f4e',
@@ -91,7 +91,7 @@ const theme = createTheme({
                     borderRadius: 0,
                     '&.Mui-selected': {
                         backgroundColor: '#A44200',
-                        color: '#ECECEC',
+                        color: 'var(--white)',
                         '&:hover': {
                             backgroundColor: '#D58936',
                         },

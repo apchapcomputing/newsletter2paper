@@ -4,16 +4,15 @@ import { useState, useEffect } from 'react';
 import Button from '@mui/material/Button';
 import Box from '@mui/material/Box';
 import Typography from '@mui/material/Typography';
-import TextField from '@mui/material/TextField';
-import Select from '@mui/material/Select';
-import MenuItem from '@mui/material/MenuItem';
-import FormControl from '@mui/material/FormControl';
 import Alert from '@mui/material/Alert';
 import Link from '@mui/material/Link';
 
 import SearchModal from './components/SearchModal';
 import AuthModal from './components/AuthModal';
 import AuthButton from './components/AuthButton';
+import ConfigureNewspaper from './components/ConfigureNewspaper';
+import AddPublications from './components/AddPublications';
+import ActionButtonsSection from './components/ActionButtonsSection';
 
 import { getRssFeedUrl } from '../utils/rssUtils';
 import { searchSubstack } from '../utils/substackUtils';
@@ -99,10 +98,6 @@ export default function Home() {
     if (newMode !== null) {
       updateOutputMode(newMode);
     }
-  };
-
-  const handleNewspaperTitleChange = (event) => {
-    updateTitle(event.target.value);
   };
 
   const handleSaveIssue = async () => {
@@ -281,9 +276,7 @@ export default function Home() {
 
   return (
     <div className="font-sans min-h-screen" style={{ backgroundColor: '#ECECEC' }}>
-      {/* Add Header */}
       <AuthButton />
-
       <main className="flex flex-col gap-[32px] items-center sm:items-start max-w-4xl w-full mx-auto px-8">
         {/* Header Section */}
         <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: '100%', textAlign: 'center', mb: 4, mt: 2 }}>
@@ -318,112 +311,7 @@ export default function Home() {
         </Box>
 
         {/* Configure Your Newspaper Section */}
-        <Box sx={{
-          width: '100%',
-          border: '2px solid black',
-          p: 3,
-          mb: 4
-        }}>
-          <Typography
-            variant="h4"
-            component="h2"
-            sx={{
-              textAlign: 'center',
-              fontWeight: 600,
-              mb: 1,
-              fontSize: { xs: '1.5rem', sm: '2rem' }
-            }}
-          >
-            Configure Your Newspaper
-          </Typography>
-          <Typography
-            variant="body2"
-            sx={{
-              textAlign: 'center',
-              fontStyle: 'italic',
-              color: 'text.secondary',
-              mb: 2
-            }}
-          >
-            Configure the details for your newspaper
-          </Typography>
-
-          <Box sx={{
-            width: '100%',
-            height: '2px',
-            backgroundColor: 'black',
-            mb: 3
-          }} />
-
-          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-            {/* Title Input */}
-            <Box>
-              <Typography variant="body1" sx={{ mb: 1, fontWeight: 500 }}>
-                TITLE
-              </Typography>
-              <TextField
-                variant="outlined"
-                fullWidth
-                value={newspaperTitle}
-                onChange={handleNewspaperTitleChange}
-                placeholder="e.g., Morning News, Weekly Digest"
-                sx={{
-                  '& .MuiOutlinedInput-root': {
-                    backgroundColor: '#f5f5f5'
-                  }
-                }}
-              />
-            </Box>
-
-            {/* Printing Schedule and Format Row */}
-            <Box sx={{ display: 'flex', gap: 3, flexDirection: { xs: 'column', sm: 'row' } }}>
-              {/* Printing Schedule */}
-              <Box sx={{ flex: 1 }}>
-                <Typography variant="body1" sx={{ mb: 1, fontWeight: 500 }}>
-                  PRINTING SCHEDULE
-                </Typography>
-                <FormControl fullWidth>
-                  <Select
-                    value="weekly"
-                    displayEmpty
-                    sx={{
-                      backgroundColor: '#f5f5f5'
-                    }}
-                  >
-                    <MenuItem value="" disabled>
-                      Select frequency
-                    </MenuItem>
-                    <MenuItem value="daily">Daily</MenuItem>
-                    <MenuItem value="weekly">Weekly</MenuItem>
-                    <MenuItem value="monthly">Monthly</MenuItem>
-                  </Select>
-                </FormControl>
-              </Box>
-
-              {/* Format */}
-              <Box sx={{ flex: 1 }}>
-                <Typography variant="body1" sx={{ mb: 1, fontWeight: 500 }}>
-                  FORMAT
-                </Typography>
-                <FormControl fullWidth>
-                  <Select
-                    value={outputMode}
-                    onChange={(e) => updateOutputMode(e.target.value)}
-                    sx={{
-                      backgroundColor: '#f5f5f5'
-                    }}
-                  >
-                    <MenuItem value="" disabled>
-                      Select format
-                    </MenuItem>
-                    <MenuItem value="newspaper">Newspaper</MenuItem>
-                    <MenuItem value="essay">Essay</MenuItem>
-                  </Select>
-                </FormControl>
-              </Box>
-            </Box>
-          </Box>
-        </Box>
+        <ConfigureNewspaper />
 
         <Box sx={{
           width: '100%',
@@ -460,143 +348,7 @@ export default function Home() {
         </Box>
 
         {/* Add Publications Section */}
-        <Box sx={{
-          width: '100%',
-          border: '2px solid black',
-          p: 3,
-          mb: 4
-        }}>
-          <Typography
-            variant="h4"
-            component="h2"
-            sx={{
-              textAlign: 'center',
-              fontWeight: 600,
-              mb: 1,
-              fontSize: { xs: '1.5rem', sm: '2rem' }
-            }}
-          >
-            Add Publications
-          </Typography>
-          <Typography
-            variant="body2"
-            sx={{
-              textAlign: 'center',
-              fontStyle: 'italic',
-              color: 'text.secondary',
-              mb: 2
-            }}
-          >
-            Add Substack publications to print in your newspaper
-          </Typography>
-
-          <Box sx={{
-            width: '100%',
-            height: '2px',
-            backgroundColor: 'black',
-            mb: 3
-          }} />
-
-          {/* Add Publication Source Controls */}
-          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mb: 3 }}>
-            <Typography variant="body1" sx={{ fontWeight: 500 }}>
-              ADD PUBLICATION SOURCE
-            </Typography>
-            <Box sx={{ display: 'flex', gap: 2, flexDirection: { xs: 'column', sm: 'row' } }}>
-              <Button
-                variant="contained"
-                onClick={() => setIsSearchModalOpen(true)}
-                sx={{
-                  flex: 1,
-                  py: 1.5,
-                  fontWeight: 'medium',
-                  textTransform: 'none',
-                  fontSize: '1rem',
-                  backgroundColor: '#f5f5f5',
-                  color: 'black',
-                  border: '1px solid #ccc',
-                  '&:hover': {
-                    // backgroundColor: '#e0e0e0',
-                    borderColor: 'black'
-                  }
-                }}
-              >
-                SEARCH
-              </Button>
-              <Button
-                variant="contained"
-                sx={{
-                  flex: 1,
-                  py: 1.5,
-                  fontWeight: 'medium',
-                  textTransform: 'none',
-                  fontSize: '1rem',
-                  backgroundColor: '#f5f5f5',
-                  color: 'black',
-                  border: '1px solid #ccc',
-                  '&:hover': {
-                    // backgroundColor: '#e0e0e0',
-                    borderColor: 'black'
-                  }
-                }}
-              >
-                ADD VIA URL
-              </Button>
-            </Box>
-          </Box>
-
-          {/* Publications to Print */}
-          <Box>
-            <Typography variant="body1" sx={{ fontWeight: 500, mb: 2 }}>
-              PUBLICATIONS TO PRINT
-            </Typography>
-
-            {/* Selected Publications List */}
-            {selectedPublications.length > 0 ? (
-              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-                {selectedPublications.map((publication, index) => (
-                  <Box
-                    key={publication.id || index}
-                    sx={{
-                      display: 'flex',
-                      justifyContent: 'space-between',
-                      alignItems: 'center',
-                      p: 2,
-                      backgroundColor: '#f5f5f5',
-                      border: '1px solid #ccc'
-                    }}
-                  >
-                    <Box sx={{ display: 'flex', flexDirection: 'column' }}>
-                      <Typography variant="body1" sx={{ fontWeight: 500 }}>
-                        {publication.name || publication.title}
-                      </Typography>
-                      <Typography variant="body2" color="text.secondary">
-                        {publication.subscribers ? `${publication.subscribers} • ${publication.handle || ''}` : publication.handle || publication.url}
-                      </Typography>
-                    </Box>
-                    <Button
-                      onClick={() => removePublication(publication.id || publication.name)}
-                      sx={{
-                        minWidth: 'auto',
-                        p: 1,
-                        color: 'text.secondary',
-                        '&:hover': {
-                          backgroundColor: 'primary'
-                        }
-                      }}
-                    >
-                      ×
-                    </Button>
-                  </Box>
-                ))}
-              </Box>
-            ) : (
-              <Typography variant="body2" color="text.secondary" sx={{ fontStyle: 'italic' }}>
-                No publications selected yet. Use the search or add URL options above to add publications.
-              </Typography>
-            )}
-          </Box>
-        </Box>
+        <AddPublications onOpenSearch={() => setIsSearchModalOpen(true)} />
 
         <Box sx={{
           width: '100%',
@@ -640,106 +392,13 @@ export default function Home() {
         )}
 
         {/* Action Buttons Section */}
-        <Box sx={{
-          display: 'flex',
-          gap: 3,
-          justifyContent: 'center',
-          flexDirection: { xs: 'column', sm: 'row' },
-          width: '100%',
-          maxWidth: 600,
-          mx: 'auto'
-        }}>
-          <Button
-            variant="contained"
-            onClick={handleSaveIssue}
-            disabled={isSaving}
-            sx={{
-              flex: 1,
-              py: 2,
-              px: 4,
-              fontWeight: 600,
-              textTransform: 'none',
-              fontSize: '1.1rem',
-              backgroundColor: '#f5f5f5',
-              color: 'black',
-              border: '2px solid #ccc',
-              '&:hover': {
-                // backgroundColor: '#e0e0e0'
-                borderColor: 'black'
-              },
-              '&:disabled': {
-                backgroundColor: '#d0d0d0',
-                color: '#666'
-              }
-            }}
-          >
-            {isSaving ? 'SAVING...' : 'SAVE NEWSPAPER'}
-          </Button>
-
-          <Button
-            variant="contained"
-            onClick={handleGeneratePdf}
-            disabled={isGeneratingPdf || !currentIssueId}
-            sx={{
-              flex: 1,
-              py: 2,
-              px: 4,
-              fontWeight: 600,
-              textTransform: 'none',
-              fontSize: '1.1rem',
-              backgroundColor: '#f5f5f5',
-              color: 'black',
-              border: '2px solid #ccc',
-              '&:hover': {
-                // backgroundColor: '#e0e0e0'
-                borderColor: 'black'
-              },
-              '&:disabled': {
-                backgroundColor: '#d0d0d0',
-                color: '#666'
-              }
-            }}
-          >
-            {isGeneratingPdf ? 'GENERATING...' : 'PRINT NEWSPAPER'}
-          </Button>
-        </Box>
-
-        {/* Status Messages */}
-        {!currentIssueId && selectedPublications.length > 0 && (
-          <Typography variant="body2" color="text.secondary" sx={{ textAlign: 'center', mt: 2 }}>
-            💡 Save your newspaper first, then print your PDF
-          </Typography>
-        )}
-
-        {currentIssueId && (
-          <Typography variant="body2" color="success.main" sx={{ textAlign: 'center', mt: 2 }}>
-            ✅ Newspaper configuration saved! Ready to print
-          </Typography>
-        )}
-
-        {/* Show PDF URL if available */}
-        {pdfUrl && (
-          <Box sx={{ mt: 3, p: 3, backgroundColor: '#e8f5e8', border: '1px solid #4caf50', textAlign: 'center' }}>
-            <Typography variant="body1" color="success.main" sx={{ mb: 2, fontWeight: 500 }}>
-              ✅ PDF generated successfully!
-            </Typography>
-            <Button
-              variant="outlined"
-              onClick={() => window.open(pdfUrl, '_blank')}
-              sx={{
-                textTransform: 'none',
-                fontWeight: 500,
-                borderColor: 'success.main',
-                color: 'success.main',
-                '&:hover': {
-                  backgroundColor: 'success.light'
-                }
-              }}
-            >
-              📄 Open PDF
-            </Button>
-          </Box>
-        )}
+        <ActionButtonsSection
+          isSaving={isSaving}
+          isGeneratingPdf={isGeneratingPdf}
+          pdfUrl={pdfUrl}
+          onSaveIssue={handleSaveIssue}
+          onGeneratePdf={handleGeneratePdf}
+        />
       </main>
 
       {/* Search Modal */}
@@ -797,6 +456,6 @@ export default function Home() {
           Source Code
         </Typography>
       </footer>
-    </div>
+    </div >
   );
 }

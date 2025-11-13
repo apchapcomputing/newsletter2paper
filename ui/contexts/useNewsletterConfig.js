@@ -109,6 +109,15 @@ export const NewsletterConfigProvider = ({ children }) => {
         setNewspaperTitle('');
         setOutputMode('newspaper');
         setCurrentIssueId(null);
+
+        // Explicitly clear localStorage for anonymous users
+        if (!user) {
+            try {
+                localStorage.removeItem('newsletterConfig');
+            } catch (error) {
+                console.error('Error clearing newsletter config from localStorage:', error);
+            }
+        }
     };
 
     // Save issue to Supabase (for authenticated users)

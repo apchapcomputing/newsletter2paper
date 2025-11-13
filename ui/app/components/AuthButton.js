@@ -57,10 +57,9 @@ export default function AuthButton() {
                                     display: { xs: 'none', sm: 'flex' },
                                     flexDirection: 'column',
                                     alignItems: 'flex-end',
-                                    mr: 1
                                 }}>
                                     <Typography variant="body2" sx={{ fontWeight: 500, color: 'var(--black)' }}>
-                                        {user.email?.split('@')[0]}
+                                        {user.user_metadata?.full_name?.split(' ')[0] || user.email?.split('@')[0]}
                                     </Typography>
                                 </Box>
                                 <UserMenu />

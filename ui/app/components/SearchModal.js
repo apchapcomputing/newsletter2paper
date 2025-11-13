@@ -81,7 +81,7 @@ export default function SearchModal({
             onClose={onClose}
             sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'center', pt: 10 }}
         >
-            <Paper sx={{ width: 600, height: 500, borderRadius: 0, overflow: 'hidden', backgroundColor: '#ECECEC' }}>
+            <Paper sx={{ width: 600, height: 500, borderRadius: 0, overflow: 'hidden', backgroundColor: 'var(--white)' }}>
                 {/* Header */}
                 <Box sx={{ p: 3, borderBottom: 1, borderColor: 'grey.100' }}>
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
@@ -187,6 +187,6 @@ export default function SearchModal({
                     )}
                 </Box>
             </Paper>
-        </Modal>
+        </Modal >
     );
 }
