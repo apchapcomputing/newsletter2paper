@@ -1,0 +1,554 @@
+{
+    "results": [
+        {
+            "type": "user",
+            "user": {
+                "user_id": 672959,
+                "photo_url": "https://substackcdn.com/image/fetch/f_auto,q_auto:good,fl_progressive:steep/https%3A%2F%2Fbucketeer-e05bbc84-baa3-437e-9518-adb32be77984.s3.amazonaws.com%2Fpublic%2Fimages%2Fd51a5247-a8fb-4b8a-8f15-550eab461829_361x331.png",
+                "name": "Cathy Young",
+                "bio": "Russian-Jewish-American writer. Author, Ceasefire: Why Women & Men Must Join Forces to Achieve True Equality (1999). Writer, The Bulwark. Newsday columnist, Reason contributing editor.",
+                "handle": "cathyyoung",
+                "pub": {
+                    "name": "Cathy Young",
+                    "is_personal_mode": false
+                },
+                "publication_name": "Cathy Young",
+                "bestseller_tier": 10000,
+                "subscriber_count_string": "868K+ subscribers",
+                "primary_publication_id": 5065742,
+                "status": {
+                    "bestsellerTier": 10000,
+                    "subscriberTier": 10,
+                    "leaderboard": null,
+                    "vip": false,
+                    "badge": {
+                        "type": "bestseller",
+                        "tier": 10000
+                    }
+                }
+            },
+            "trackingParameters": {
+                "result_count": 20,
+                "search_key": "platform_search",
+                "search_id": "d18349ba-4287-4127-97aa-b2feaa48b3de",
+                "rank": 0,
+                "score": 256.91226,
+                "result_id": "user-672959",
+                "from_server": true
+            }
+        },
+        {
+            "type": "user",
+            "user": {
+                "user_id": 3243051,
+                "photo_url": "https://bucketeer-e05bbc84-baa3-437e-9518-adb32be77984.s3.amazonaws.com/public/images/437feb5d-5f38-4184-83ff-a3ae6fe6bac9_168x168.jpeg",
+                "name": "Young Min Kim",
+                "handle": "young",
+                "pub": {
+                    "name": "Young Reacts",
+                    "is_personal_mode": false
+                },
+                "publication_name": "Young Reacts",
+                "bestseller_tier": 0,
+                "subscriber_count_string": "87 subscribers",
+                "primary_publication_id": 14140,
+                "status": {
+                    "bestsellerTier": null,
+                    "subscriberTier": null,
+                    "leaderboard": null,
+                    "vip": false,
+                    "badge": null
+                }
+            },
+            "trackingParameters": {
+                "result_count": 20,
+                "search_key": "platform_search",
+                "search_id": "d18349ba-4287-4127-97aa-b2feaa48b3de",
+                "rank": 1,
+                "score": 225.81891,
+                "result_id": "user-3243051",
+                "from_server": true
+            }
+        },
+        {
+            "type": "publication",
+            "publication": {
+                "publication_id": 2753385,
+                "name": "Young Money by Jack Raines",
+                "author_name": "320686418",
+                "logo_url": "https://substack-post-media.s3.amazonaws.com/public/images/22016af6-112d-40be-8393-7643324b01bd_200x200.png",
+                "subdomain": "jackraines",
+                "custom_domain": "www.youngmoney.co",
+                "custom_domain_optional": false,
+                "subscriber_count_string": "64K+ subscribers",
+                "author_id": 320686418,
+                "primary_user_id": 250302367
+            },
+            "trackingParameters": {
+                "result_count": 20,
+                "search_key": "platform_search",
+                "search_id": "d18349ba-4287-4127-97aa-b2feaa48b3de",
+                "rank": 2,
+                "score": 219.95317,
+                "result_id": "publication-2753385",
+                "from_server": true
+            }
+        },
+        {
+            "type": "publication",
+            "publication": {
+                "publication_id": 64441,
+                "name": "Julie Young's Newsletter",
+                "author_name": "Julie Young",
+                "subdomain": "julieyoung",
+                "subscriber_count_string": "3.7K+ subscribers",
+                "author_id": 2151860,
+                "primary_user_id": 2151860
+            },
+            "trackingParameters": {
+                "result_count": 20,
+                "search_key": "platform_search",
+                "search_id": "d18349ba-4287-4127-97aa-b2feaa48b3de",
+                "rank": 3,
+                "score": 214.08665,
+                "result_id": "publication-64441",
+                "from_server": true
+            }
+        },
+        {
+            "type": "publication",
+            "publication": {
+                "publication_id": 3454424,
+                "name": "Young Homemakers Club",
+                "author_name": "Anastasia Hounnou",
+                "logo_url": "https://substack-post-media.s3.amazonaws.com/public/images/40aa956f-2f0a-4467-8083-25a70048dfab_1280x1280.png",
+                "subdomain": "younghomemakersclub",
+                "custom_domain": "www.editorial.younghomemakersclub.com",
+                "custom_domain_optional": false,
+                "subscriber_count_string": "21K+ subscribers",
+                "author_id": 200347896,
+                "primary_user_id": 200347896
+            },
+            "trackingParameters": {
+                "result_count": 20,
+                "search_key": "platform_search",
+                "search_id": "d18349ba-4287-4127-97aa-b2feaa48b3de",
+                "rank": 4,
+                "score": 210.86908,
+                "result_id": "publication-3454424",
+                "from_server": true
+            }
+        },
+        {
+            "type": "publication",
+            "publication": {
+                "publication_id": 2714087,
+                "name": "The Alt Media with Adam Parkhomenko and Sam Youngman",
+                "author_name": "Adam Parkhomenko",
+                "logo_url": "https://substack-post-media.s3.amazonaws.com/public/images/569902ce-6063-4b8f-a541-0abac5dcd634_601x601.png",
+                "subdomain": "adamparkhomenko",
+                "custom_domain": "www.thealtmedia.com",
+                "custom_domain_optional": false,
+                "subscriber_count_string": "131K+ subscribers",
+                "author_id": 58177849,
+                "primary_user_id": 58177849
+            },
+            "trackingParameters": {
+                "result_count": 20,
+                "search_key": "platform_search",
+                "search_id": "d18349ba-4287-4127-97aa-b2feaa48b3de",
+                "rank": 5,
+                "score": 210.02309,
+                "result_id": "publication-2714087",
+                "from_server": true
+            }
+        },
+        {
+            "type": "user",
+            "user": {
+                "user_id": 135017624,
+                "photo_url": "https://substack-post-media.s3.amazonaws.com/public/images/d27ce5e4-eddd-4dd0-8182-d00682adf10a_1179x1179.jpeg",
+                "name": "Tini Younger",
+                "bio": "Social Media Chef/Influencer\nContestant on Next Level Chef Season 2\nStar of From Scratch with Tini on YouTube Bite Orginials\n",
+                "handle": "tiniyounger",
+                "pub": {
+                    "name": "Tineke’s Substack",
+                    "is_personal_mode": false
+                },
+                "publication_name": "Tineke’s Substack",
+                "bestseller_tier": 100,
+                "subscriber_count_string": "57K+ subscribers",
+                "primary_publication_id": 2536906,
+                "status": {
+                    "bestsellerTier": 100,
+                    "subscriberTier": null,
+                    "leaderboard": null,
+                    "vip": false,
+                    "badge": {
+                        "type": "bestseller",
+                        "tier": 100
+                    }
+                }
+            },
+            "trackingParameters": {
+                "result_count": 20,
+                "search_key": "platform_search",
+                "search_id": "d18349ba-4287-4127-97aa-b2feaa48b3de",
+                "rank": 6,
+                "score": 208.9322,
+                "result_id": "user-135017624",
+                "from_server": true
+            }
+        },
+        {
+            "type": "user",
+            "user": {
+                "user_id": 23749578,
+                "photo_url": "https://substackcdn.com/image/fetch/$s_!-l3h!,f_auto,q_auto:good,fl_progressive:steep/https%3A%2F%2Fsubstack-post-media.s3.amazonaws.com%2Fpublic%2Fimages%2Fd046b429-b065-4ef2-b513-234fe1b26a7e_462x590.jpeg",
+                "name": "Jennie Young",
+                "bio": "I study words in real life. Writing in humor, education, and dating dynamics. Ph. D. in rhetoric. Prof. @ UW Green Bay.",
+                "handle": "jennieyoung",
+                "pub": {
+                    "name": "Burned Haystack Dating Method",
+                    "is_personal_mode": false
+                },
+                "publication_name": "Burned Haystack Dating Method",
+                "bestseller_tier": 1000,
+                "subscriber_count_string": "43K+ subscribers",
+                "primary_publication_id": 2673531,
+                "status": {
+                    "bestsellerTier": 1000,
+                    "subscriberTier": null,
+                    "leaderboard": null,
+                    "vip": false,
+                    "badge": {
+                        "type": "bestseller",
+                        "tier": 1000
+                    }
+                }
+            },
+            "trackingParameters": {
+                "result_count": 20,
+                "search_key": "platform_search",
+                "search_id": "d18349ba-4287-4127-97aa-b2feaa48b3de",
+                "rank": 7,
+                "score": 199.05432,
+                "result_id": "user-23749578",
+                "from_server": true
+            }
+        },
+        {
+            "type": "user",
+            "user": {
+                "user_id": 9011667,
+                "photo_url": "https://bucketeer-e05bbc84-baa3-437e-9518-adb32be77984.s3.amazonaws.com/public/images/adba1d18-91b0-49d1-aba8-d72a5f6a97d6_240x240.jpeg",
+                "name": "YoungHamilton",
+                "bio": "Analyzing Good Businesses",
+                "handle": "yhamiltonblog",
+                "pub": {
+                    "name": "Analyzing Good Businesses",
+                    "is_personal_mode": false
+                },
+                "publication_name": "Analyzing Good Businesses",
+                "bestseller_tier": 0,
+                "subscriber_count_string": "12K+ subscribers",
+                "primary_publication_id": 61057,
+                "status": {
+                    "bestsellerTier": null,
+                    "subscriberTier": null,
+                    "leaderboard": null,
+                    "vip": false,
+                    "badge": null
+                }
+            },
+            "trackingParameters": {
+                "result_count": 20,
+                "search_key": "platform_search",
+                "search_id": "d18349ba-4287-4127-97aa-b2feaa48b3de",
+                "rank": 8,
+                "score": 197.74364,
+                "result_id": "user-9011667",
+                "from_server": true
+            }
+        },
+        {
+            "type": "publication",
+            "publication": {
+                "publication_id": 2398706,
+                "name": "Young Futures Substack",
+                "author_name": "Young Futures",
+                "logo_url": "https://substack-post-media.s3.amazonaws.com/public/images/b8b05bfe-3abe-440a-821f-afb3fa16f48f_132x132.jpeg",
+                "subdomain": "youngfutures",
+                "author_id": 212121797,
+                "primary_user_id": 212121797
+            },
+            "trackingParameters": {
+                "result_count": 20,
+                "search_key": "platform_search",
+                "search_id": "d18349ba-4287-4127-97aa-b2feaa48b3de",
+                "rank": 9,
+                "score": 195.43481,
+                "result_id": "publication-2398706",
+                "from_server": true
+            }
+        },
+        {
+            "type": "user",
+            "user": {
+                "user_id": 3918221,
+                "photo_url": "https://substack-post-media.s3.amazonaws.com/public/images/2b8a6248-20bc-4f77-b260-128a1ebaf676_602x602.jpeg",
+                "name": "Skottie Young",
+                "bio": "I'm cartoonist who's been writing and drawing comics, illustrating children's books and developing projects for Film and Television for over 20 years!",
+                "handle": "skottieyoung",
+                "pub": {
+                    "name": "Stupid Fresh Mess",
+                    "is_personal_mode": false
+                },
+                "publication_name": "Stupid Fresh Mess",
+                "bestseller_tier": 100,
+                "subscriber_count_string": "26K+ subscribers",
+                "primary_publication_id": 424681,
+                "status": {
+                    "bestsellerTier": 100,
+                    "subscriberTier": null,
+                    "leaderboard": null,
+                    "vip": false,
+                    "badge": {
+                        "type": "bestseller",
+                        "tier": 100
+                    }
+                }
+            },
+            "trackingParameters": {
+                "result_count": 20,
+                "search_key": "platform_search",
+                "search_id": "d18349ba-4287-4127-97aa-b2feaa48b3de",
+                "rank": 10,
+                "score": 192.66705,
+                "result_id": "user-3918221",
+                "from_server": true
+            }
+        },
+        {
+            "type": "publication",
+            "publication": {
+                "publication_id": 5027648,
+                "name": "The Sidenote by Brittany Young ",
+                "author_name": "Brittany Young",
+                "logo_url": "https://substack-post-media.s3.amazonaws.com/public/images/6f4506d1-03d7-44fe-98ef-128d9f14d21c_144x144.png",
+                "subdomain": "brittanyyoungofficial",
+                "subscriber_count_string": "15K+ subscribers",
+                "author_id": 229626043,
+                "primary_user_id": 229626043
+            },
+            "trackingParameters": {
+                "result_count": 20,
+                "search_key": "platform_search",
+                "search_id": "d18349ba-4287-4127-97aa-b2feaa48b3de",
+                "rank": 11,
+                "score": 191.62112,
+                "result_id": "publication-5027648",
+                "from_server": true
+            }
+        },
+        {
+            "type": "publication",
+            "publication": {
+                "publication_id": 1089,
+                "name": "Young Vulgarian",
+                "author_name": "Marie Le Conte",
+                "logo_url": "https://substack-post-media.s3.amazonaws.com/public/images/e1f33c1f-6e35-4656-8853-645264fe597b_320x320.png",
+                "subdomain": "youngvulgarian",
+                "subscriber_count_string": "6.4K+ subscribers",
+                "author_id": 280078,
+                "primary_user_id": 280078
+            },
+            "trackingParameters": {
+                "result_count": 20,
+                "search_key": "platform_search",
+                "search_id": "d18349ba-4287-4127-97aa-b2feaa48b3de",
+                "rank": 12,
+                "score": 190.64801,
+                "result_id": "publication-1089",
+                "from_server": true
+            }
+        },
+        {
+            "type": "user",
+            "user": {
+                "user_id": 49977252,
+                "photo_url": "https://substack-post-media.s3.amazonaws.com/public/images/e1eeaf8c-8020-4892-8a86-d326caa919bc_2401x3600.jpeg",
+                "name": "Jordan Younger",
+                "bio": "Mother, author, intuitive, entrepreneur, spiritual being. Mostly a writer. Here to share my thoughts & spill my heart out. OG wellness influencer but so much more. Working on a fiction book. Mothering my babies. Come along. <3 ",
+                "handle": "thebalancedblonde",
+                "pub": {
+                    "name": "The Balanced Blonde",
+                    "is_personal_mode": false
+                },
+                "publication_name": "The Balanced Blonde",
+                "bestseller_tier": 100,
+                "subscriber_count_string": "22K+ subscribers",
+                "primary_publication_id": 1628357,
+                "status": {
+                    "bestsellerTier": 100,
+                    "subscriberTier": 5,
+                    "leaderboard": {
+                        "ranking": "trending",
+                        "rank": 26,
+                        "publicationName": "The Balanced Blonde",
+                        "label": "Culture",
+                        "categoryId": "96",
+                        "publicationId": 1628357
+                    },
+                    "vip": false,
+                    "badge": {
+                        "type": "bestseller",
+                        "tier": 100
+                    }
+                }
+            },
+            "trackingParameters": {
+                "result_count": 20,
+                "search_key": "platform_search",
+                "search_id": "d18349ba-4287-4127-97aa-b2feaa48b3de",
+                "rank": 13,
+                "score": 188.57837,
+                "result_id": "user-49977252",
+                "from_server": true
+            }
+        },
+        {
+            "type": "user",
+            "user": {
+                "user_id": 40048971,
+                "photo_url": "https://bucketeer-e05bbc84-baa3-437e-9518-adb32be77984.s3.amazonaws.com/public/images/c5c28683-5863-485f-9148-927141b05346_144x144.png",
+                "name": "YoungWallSt",
+                "bio": "Bitcoin",
+                "handle": "youngwallst423064",
+                "pub": {
+                    "name": "Cignals Market Pulse",
+                    "is_personal_mode": false
+                },
+                "publication_name": "Cignals Market Pulse",
+                "bestseller_tier": 0,
+                "subscriber_count_string": "10K+ subscribers",
+                "primary_publication_id": 387053,
+                "status": {
+                    "bestsellerTier": null,
+                    "subscriberTier": null,
+                    "leaderboard": null,
+                    "vip": false,
+                    "badge": null
+                }
+            },
+            "trackingParameters": {
+                "result_count": 20,
+                "search_key": "platform_search",
+                "search_id": "d18349ba-4287-4127-97aa-b2feaa48b3de",
+                "rank": 14,
+                "score": 187.99155,
+                "result_id": "user-40048971",
+                "from_server": true
+            }
+        },
+        {
+            "type": "publication",
+            "publication": {
+                "publication_id": 2057658,
+                "name": "Young Space",
+                "author_name": "Young Space",
+                "logo_url": "https://substack-post-media.s3.amazonaws.com/public/images/12937bc0-2cfc-4c45-97e5-294b9bda20c2_1149x1149.png",
+                "subdomain": "yngspc",
+                "subscriber_count_string": "5.5K+ subscribers",
+                "author_id": 177423295,
+                "primary_user_id": 177423295
+            },
+            "trackingParameters": {
+                "result_count": 20,
+                "search_key": "platform_search",
+                "search_id": "d18349ba-4287-4127-97aa-b2feaa48b3de",
+                "rank": 15,
+                "score": 187.40779,
+                "result_id": "publication-2057658",
+                "from_server": true
+            }
+        },
+        {
+            "type": "user",
+            "user": {
+                "user_id": 191426699,
+                "photo_url": "https://substack-post-media.s3.amazonaws.com/public/images/0520b165-6e59-471d-b8ad-8c9899f1ae9b_1125x1761.jpeg",
+                "name": "Conner Young",
+                "bio": "Talking about everything that makes money",
+                "handle": "smboffmarket",
+                "pub": {
+                    "name": "SMB Off-Market",
+                    "is_personal_mode": false
+                },
+                "publication_name": "SMB Off-Market",
+                "bestseller_tier": 0,
+                "primary_publication_id": 2193424,
+                "status": {
+                    "bestsellerTier": null,
+                    "subscriberTier": null,
+                    "leaderboard": null,
+                    "vip": false,
+                    "badge": null
+                }
+            },
+            "trackingParameters": {
+                "result_count": 20,
+                "search_key": "platform_search",
+                "search_id": "d18349ba-4287-4127-97aa-b2feaa48b3de",
+                "rank": 16,
+                "score": 184.93562,
+                "result_id": "user-191426699",
+                "from_server": true
+            }
+        },
+        {
+            "type": "publication",
+            "publication": {
+                "publication_id": 296253,
+                "name": "Young China Watchers Newsletter",
+                "author_name": "Sam Colombie",
+                "logo_url": "https://bucketeer-e05bbc84-baa3-437e-9518-adb32be77984.s3.amazonaws.com/public/images/89ada6ff-9aa3-4205-99e3-23ad25db1280_945x945.png",
+                "subdomain": "youngchinawatchers",
+                "subscriber_count_string": "8.1K+ subscribers",
+                "author_id": 26242151,
+                "primary_user_id": null
+            },
+            "trackingParameters": {
+                "result_count": 20,
+                "search_key": "platform_search",
+                "search_id": "d18349ba-4287-4127-97aa-b2feaa48b3de",
+                "rank": 18,
+                "score": 184.30258,
+                "result_id": "publication-296253",
+                "from_server": true
+            }
+        },
+        {
+            "type": "publication",
+            "publication": {
+                "publication_id": 1707558,
+                "name": "Steven A. Young",
+                "author_name": "Steven A. Young",
+                "logo_url": "https://substack-post-media.s3.amazonaws.com/public/images/fd3ca756-bb88-46f6-a361-6ae18026fb92_1224x1224.png",
+                "subdomain": "stevenalexanderyoung",
+                "subscriber_count_string": "5.8K+ subscribers",
+                "author_id": 41810776,
+                "primary_user_id": 41810776
+            },
+            "trackingParameters": {
+                "result_count": 20,
+                "search_key": "platform_search",
+                "search_id": "d18349ba-4287-4127-97aa-b2feaa48b3de",
+                "rank": 19,
+                "score": 183.04207,
+                "result_id": "publication-1707558",
+                "from_server": true
+            }
+        }
+    ]
+}

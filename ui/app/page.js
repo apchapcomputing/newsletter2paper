@@ -8,17 +8,23 @@ import TextField from '@mui/material/TextField';
 import Select from '@mui/material/Select';
 import MenuItem from '@mui/material/MenuItem';
 import FormControl from '@mui/material/FormControl';
+import Alert from '@mui/material/Alert';
+import Link from '@mui/material/Link';
 
 import SearchModal from './components/SearchModal';
+import AuthModal from './components/AuthModal';
+import AuthButton from './components/AuthButton';
 
 import { getRssFeedUrl } from '../utils/rssUtils';
 import { searchSubstack } from '../utils/substackUtils';
+import { apiPost } from '../utils/authApi';
 
 import { useSelectedPublications } from '../contexts/useSelectedPublications';
 import { useNewsletterConfig } from '../contexts/useNewsletterConfig';
+import { useAuth } from '../contexts/useAuth';
 
 export default function Home() {
-  const { selectedPublications, addPublication, removePublication, isLoaded } = useSelectedPublications();
+  const { selectedPublications, addPublication, removePublication, clearAllPublications, isLoaded } = useSelectedPublications();
   const {
     newspaperTitle,
     outputMode,
@@ -26,13 +32,18 @@ export default function Home() {
     isLoaded: configLoaded,
     updateTitle,
     updateOutputMode,
-    updateIssueId
+    updateIssueId,
+    resetConfig,
+    saveIssueToSupabase,
+    isAuthenticated
   } = useNewsletterConfig();
+  const { user } = useAuth();
 
   const [publications, setPublications] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [isSearchModalOpen, setIsSearchModalOpen] = useState(false);
+  const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState([]);
   const [searchHistory, setSearchHistory] = useState([]);
@@ -97,52 +108,28 @@ export default function Home() {
   const handleSaveIssue = async () => {
     if (isSaving) return; // Prevent double saves
 
+    // Check if user is authenticated
+    if (!user) {
+      alert('Please sign in to save your newsletter issue');
+      return;
+    }
+
     setIsSaving(true);
     try {
-      // Step 1: Create or update issue
-      let issueId = currentIssueId;
+      // Use Supabase to save the issue
+      const savedIssue = await saveIssueToSupabase({
+        title: newspaperTitle,
+        format: outputMode,
+        frequency: 'weekly'
+      });
 
-      if (!issueId) {
-        // Create new issue
-        const issueResponse = await fetch('/api/issues', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            title: newspaperTitle || null,
-            format: outputMode,
-            frequency: 'weekly'
-            // TODO: set user login email as default target email
-          })
-        });
+      console.log('Issue saved successfully to Supabase!', savedIssue);
 
-        if (!issueResponse.ok) {
-          throw new Error('Failed to create issue');
-        }
+      // TODO: Save selected publications to Supabase
+      // For now, we'll continue with the existing API for publications
+      // Later we can migrate this to work directly with Supabase
 
-        const issueData = await issueResponse.json();
-        issueId = issueData.issue.id;
-        updateIssueId(issueId);
-      } else {
-        // Update existing issue
-        const issueResponse = await fetch(`/api/issues?id=${issueId}`, {
-          method: 'PUT',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            title: newspaperTitle || null,
-            format: outputMode
-          })
-        });
-
-        if (!issueResponse.ok) {
-          throw new Error('Failed to update issue');
-        }
-      }
-
-      // Step 2: Save selected publications
+      // Step 2: Save selected publications (keeping existing logic for now)
       if (selectedPublications.length > 0) {
         // First, ensure all publications exist in the database
         const publicationIds = [];
@@ -172,7 +159,7 @@ export default function Home() {
 
         // Add publications to issue
         if (publicationIds.length > 0) {
-          const pubResponse = await fetch(`/api/issues/${issueId}/publications`, {
+          const pubResponse = await fetch(`/api/issues/${savedIssue.id}/publications`, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
@@ -188,13 +175,9 @@ export default function Home() {
         }
       }
 
-      console.log('Issue saved successfully!');
-      // Configuration is automatically persisted via the context
-      // You could add a success notification here
-
     } catch (error) {
       console.error('Error saving issue:', error);
-      // You could add an error notification here
+      alert(`Failed to save issue: ${error.message}`);
     } finally {
       setIsSaving(false);
     }
@@ -212,19 +195,10 @@ export default function Home() {
     setPdfUrl(null);
 
     try {
-      const response = await fetch(`/api/pdf/generate/${currentIssueId}?layout_type=${outputMode}`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        }
+      // Use authenticated API call to Python backend
+      const data = await apiPost(`/pdf/generate/${currentIssueId}`, {
+        layout_type: outputMode
       });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.message || 'Failed to generate PDF');
-      }
-
-      const data = await response.json();
 
       if (data.success && data.pdf_url) {
         setPdfUrl(data.pdf_url);
@@ -264,6 +238,13 @@ export default function Home() {
     performSearch(term);
   }
 
+  const handleClearAll = () => {
+    // Clear all form fields and selections
+    resetConfig(); // Clears title, output mode, and current issue ID
+    clearAllPublications(); // Clears all selected publications
+    setPdfUrl(null); // Clear any existing PDF URL
+  };
+
   // Create a debounced search function
   const performSearch = async (query) => {
     const results = await searchSubstack(query);
@@ -299,10 +280,13 @@ export default function Home() {
   }
 
   return (
-    <div className="font-sans grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20" style={{ backgroundColor: '#ECECEC' }}>
-      <main className="flex flex-col gap-[32px] row-start-2 items-center sm:items-start max-w-4xl w-full">
+    <div className="font-sans min-h-screen" style={{ backgroundColor: '#ECECEC' }}>
+      {/* Add Header */}
+      <AuthButton />
+
+      <main className="flex flex-col gap-[32px] items-center sm:items-start max-w-4xl w-full mx-auto px-8">
         {/* Header Section */}
-        <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: '100%', textAlign: 'center', mb: 4 }}>
+        <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: '100%', textAlign: 'center', mb: 4, mt: 2 }}>
           <Typography
             variant="h1"
             component="h1"
@@ -313,7 +297,8 @@ export default function Home() {
               letterSpacing: '0.05em',
               fontSize: { xs: '2.5rem', sm: '3.5rem' },
               lineHeight: 1.2,
-              mb: 1
+              mb: 1,
+              color: 'black'
             }}
           >
             The Newsletter Printing Press
@@ -324,7 +309,8 @@ export default function Home() {
               fontWeight: 400,
               letterSpacing: '0.1em',
               fontSize: { xs: '0.75rem', sm: '0.875rem' },
-              color: 'text.secondary'
+              color: 'text.secondary',
+              opacity: 0.8
             }}
           >
             EST. 2025 • SUBSTACK RSS TO NEWSPAPER PDF • VOLUME 0
@@ -445,6 +431,33 @@ export default function Home() {
           backgroundColor: 'black',
           mb: 2
         }} />
+
+        {/* Reset Button */}
+        <Box sx={{ display: 'flex', justifyContent: 'center', mb: 3 }}>
+          <Button
+            variant="outlined"
+            onClick={handleClearAll}
+            disabled={!newspaperTitle && selectedPublications.length === 0}
+            sx={{
+              textTransform: 'none',
+              fontWeight: 500,
+              color: '#d32f2f',
+              borderColor: '#d32f2f',
+              px: 3,
+              py: 1.5,
+              '&:hover': {
+                borderColor: '#b71c1c',
+                backgroundColor: 'rgba(211, 47, 47, 0.04)'
+              },
+              '&:disabled': {
+                color: '#bdbdbd',
+                borderColor: '#e0e0e0'
+              }
+            }}
+          >
+            Reset Newspaper Configuration
+          </Button>
+        </Box>
 
         {/* Add Publications Section */}
         <Box sx={{
@@ -592,6 +605,40 @@ export default function Home() {
           mb: 3
         }} />
 
+        {/* Authentication Status Alert */}
+        {!user && (
+          <Alert
+            severity="info"
+            sx={{
+              width: '100%',
+              mb: 3,
+              borderRadius: 2,
+              '& .MuiAlert-message': {
+                fontSize: '0.9rem'
+              }
+            }}
+          >
+            You&apos;re browsing as a guest.{' '}
+            <Link
+              component="button"
+              variant="body2"
+              onClick={() => setIsAuthModalOpen(true)}
+              sx={{
+                textDecoration: 'underline',
+                color: 'primary.main',
+                cursor: 'pointer',
+                fontWeight: 600,
+                '&:hover': {
+                  color: 'primary.dark'
+                }
+              }}
+            >
+              Sign in
+            </Link>
+            {' '}to save your newsletter configurations and access them later!
+          </Alert>
+        )}
+
         {/* Action Buttons Section */}
         <Box sx={{
           display: 'flex',
@@ -707,21 +754,33 @@ export default function Home() {
         onRemoveFromHistory={removeFromSearchHistory}
       />
 
+      {/* Auth Modal */}
+      <AuthModal
+        open={isAuthModalOpen}
+        onClose={() => setIsAuthModalOpen(false)}
+      />
+
       {/* Footer */}
-      <footer className="row-start-3 flex gap-4 flex-wrap items-center justify-center">
+      <footer className="flex gap-4 flex-wrap items-center justify-center py-8 border-t border-gray-200">
+        <Box sx={{
+          width: '100%',
+          height: '2px',
+          backgroundColor: 'black',
+        }} />
         <Typography
           variant="body2"
           sx={{
             textDecoration: 'underline',
             cursor: 'pointer',
+            color: '#504f4e',
             '&:hover': {
-              color: 'primary.main'
+              color: '#3b82f6'
             }
           }}
         >
           Feature Request
         </Typography>
-        <Typography variant="body2" color="text.secondary">
+        <Typography variant="body2" sx={{ color: '#504f4e' }}>
           •
         </Typography>
         <Typography
@@ -729,8 +788,9 @@ export default function Home() {
           sx={{
             textDecoration: 'underline',
             cursor: 'pointer',
+            color: '#504f4e',
             '&:hover': {
-              color: 'primary.main'
+              color: '#3b82f6'
             }
           }}
         >

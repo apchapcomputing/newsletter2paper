@@ -10,7 +10,7 @@ module.exports = {
         secondary: '#D58936',
         black: '#2A2619',
         grey: '#504f4e',
-        white: '#F7F5E2',
+        white: '#ECECEC',
         // Additional color variations for different use cases
         'primary-light': '#D58936',
         'primary-dark': '#8B3500',

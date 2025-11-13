@@ -54,11 +54,16 @@ export const SelectedPublicationsProvider = ({ children }) => {
         setSelectedPublications((prev) => prev.filter((p) => p.id !== publicationId));
     };
 
+    const clearAllPublications = () => {
+        setSelectedPublications([]);
+    };
+
     return (
         <SelectedPublicationsContext.Provider value={{
             selectedPublications,
             addPublication,
             removePublication,
+            clearAllPublications,
             isLoaded
         }}>
             {children}
