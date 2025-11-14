@@ -38,6 +38,7 @@ export default function Home() {
     updateIssueId,
     resetConfig,
     saveIssueToSupabase,
+    saveGuestIssue,
     loadIssue,
     userIssues,
     isAuthenticated
@@ -111,26 +112,29 @@ export default function Home() {
   const handleSaveIssue = async () => {
     if (isSaving) return; // Prevent double saves
 
-    // Check if user is authenticated
-    if (!user) {
-      alert('Please sign in to save your newsletter issue');
-      return;
-    }
-
     setIsSaving(true);
     try {
-      // Use Supabase to save the issue
-      const savedIssue = await saveIssueToSupabase({
-        title: newspaperTitle,
-        format: outputMode,
-        frequency: 'weekly'
-      });
+      let savedIssue;
 
-      console.log('Issue saved successfully to Supabase!', savedIssue);
+      if (user) {
+        // Authenticated user - use full save functionality
+        savedIssue = await saveIssueToSupabase({
+          title: newspaperTitle,
+          format: outputMode,
+          frequency: 'weekly'
+        });
 
-      // TODO: Save selected publications to Supabase
-      // For now, we'll continue with the existing API for publications
-      // Later we can migrate this to work directly with Supabase
+        console.log('Issue saved successfully to Supabase!', savedIssue);
+      } else {
+        // Guest user - create temporary issue for PDF generation
+        savedIssue = await saveGuestIssue({
+          title: newspaperTitle || 'Guest Newspaper',
+          format: outputMode,
+          frequency: 'once'
+        });
+
+        console.log('Guest issue created successfully!', savedIssue);
+      }
 
       // Step 2: Save selected publications (keeping existing logic for now)
       if (selectedPublications.length > 0) {
@@ -198,10 +202,8 @@ export default function Home() {
     setPdfUrl(null);
 
     try {
-      // Use authenticated API call to Python backend
-      const data = await apiPost(`/pdf/generate/${currentIssueId}`, {
-        layout_type: outputMode
-      });
+      // Use authenticated API call to Python backend with query parameters
+      const data = await apiPost(`/pdf/generate/${currentIssueId}?layout_type=${outputMode}`, {});
 
       if (data.success && data.pdf_url) {
         setPdfUrl(data.pdf_url);
@@ -334,7 +336,7 @@ export default function Home() {
           <Button
             variant="outlined"
             onClick={handleSaveIssue}
-            disabled={isSaving || !user}
+            disabled={isSaving}
             sx={{
               textTransform: 'none',
               fontWeight: 500,

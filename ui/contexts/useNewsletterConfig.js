@@ -25,6 +25,31 @@ export const NewsletterConfigProvider = ({ children }) => {
     const { user, session } = useAuth();
     const supabase = createClient();
 
+    // Validate current issue ID exists in database
+    const validateCurrentIssue = async () => {
+        if (!currentIssueId) return true; // No issue ID to validate
+
+        try {
+            const { data, error } = await supabase
+                .from('issues')
+                .select('id')
+                .eq('id', currentIssueId)
+                .single();
+
+            if (error || !data) {
+                console.warn(`Current issue ID ${currentIssueId} not found in database, clearing it`);
+                setCurrentIssueId(null);
+                return false;
+            }
+
+            return true;
+        } catch (error) {
+            console.error('Error validating current issue:', error);
+            setCurrentIssueId(null);
+            return false;
+        }
+    };
+
     // Load configuration from localStorage and user issues when authentication state changes
     useEffect(() => {
         const loadConfig = async () => {
@@ -45,6 +70,9 @@ export const NewsletterConfigProvider = ({ children }) => {
             if (user && session) {
                 try {
                     setLoading(true);
+
+                    // Validate that the current issue ID still exists in the database
+                    await validateCurrentIssue();
 
                     // Load user's issues using junction table
                     const { data: userIssuesData, error } = await supabase
@@ -68,6 +96,10 @@ export const NewsletterConfigProvider = ({ children }) => {
                     setLoading(false);
                 }
             } else {
+                // For guest users, still validate the current issue exists
+                if (currentIssueId) {
+                    await validateCurrentIssue();
+                }
                 setUserIssues([]);
             }
             setIsLoaded(true);
@@ -145,10 +177,41 @@ export const NewsletterConfigProvider = ({ children }) => {
                     .single();
 
                 if (result.error) {
-                    throw result.error;
-                }
+                    // If the issue doesn't exist anymore (deleted from database), clear the ID and create new
+                    if (result.error.code === 'PGRST116' || result.error.message?.includes('No rows found')) {
+                        console.warn(`Issue ${currentIssueId} not found in database, creating new issue`);
+                        setCurrentIssueId(null); // Clear the invalid issue ID
 
-                savedIssue = result.data;
+                        // Create new issue instead
+                        result = await supabase
+                            .from('issues')
+                            .insert(issuePayload)
+                            .select()
+                            .single();
+
+                        if (result.error) {
+                            throw result.error;
+                        }
+
+                        savedIssue = result.data;
+
+                        // Create the user-issue association
+                        const userIssueResult = await supabase
+                            .from('user_issues')
+                            .insert({
+                                user_id: user.id,
+                                issue_id: savedIssue.id
+                            });
+
+                        if (userIssueResult.error) {
+                            console.error('Error creating user-issue association:', userIssueResult.error);
+                        }
+                    } else {
+                        throw result.error;
+                    }
+                } else {
+                    savedIssue = result.data;
+                }
             } else {
                 // Create new issue
                 result = await supabase
@@ -195,6 +258,82 @@ export const NewsletterConfigProvider = ({ children }) => {
             return savedIssue;
         } catch (error) {
             console.error('Error saving issue to Supabase:', error);
+            throw error;
+        }
+    };
+
+    // Save temporary guest issue (for unauthenticated users)
+    const saveGuestIssue = async (issueData) => {
+        try {
+            // Generate or get a guest session ID
+            let guestSessionId = localStorage.getItem('guestSessionId');
+            if (!guestSessionId) {
+                guestSessionId = `guest_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+                localStorage.setItem('guestSessionId', guestSessionId);
+            }
+
+            const issuePayload = {
+                title: issueData.title || 'Guest Newspaper',
+                format: issueData.format || 'newspaper',
+                frequency: 'once',
+                status: 'guest'
+            };
+
+            let savedIssue;
+            let result;
+
+            if (currentIssueId) {
+                // Update existing guest issue
+                result = await supabase
+                    .from('issues')
+                    .update(issuePayload)
+                    .eq('id', currentIssueId)
+                    .select()
+                    .single();
+
+                if (result.error) {
+                    // If the issue doesn't exist anymore (deleted from database), clear the ID and create new
+                    if (result.error.code === 'PGRST116' || result.error.message?.includes('No rows found')) {
+                        console.warn(`Guest issue ${currentIssueId} not found in database, creating new guest issue`);
+                        setCurrentIssueId(null); // Clear the invalid issue ID
+
+                        // Create new guest issue instead
+                        result = await supabase
+                            .from('issues')
+                            .insert(issuePayload)
+                            .select()
+                            .single();
+
+                        if (result.error) {
+                            throw result.error;
+                        }
+
+                        savedIssue = result.data;
+                    } else {
+                        throw result.error;
+                    }
+                } else {
+                    savedIssue = result.data;
+                }
+            } else {
+                // Create new guest issue
+                result = await supabase
+                    .from('issues')
+                    .insert(issuePayload)
+                    .select()
+                    .single();
+
+                if (result.error) {
+                    throw result.error;
+                }
+
+                savedIssue = result.data;
+            }
+
+            setCurrentIssueId(savedIssue.id);
+            return savedIssue;
+        } catch (error) {
+            console.error('Error saving guest issue to Supabase:', error);
             throw error;
         }
     };
@@ -251,7 +390,9 @@ export const NewsletterConfigProvider = ({ children }) => {
             updateIssueId,
             resetConfig,
             saveIssueToSupabase,
+            saveGuestIssue,
             loadIssue,
+            validateCurrentIssue,
 
             // Auth-related state
             isAuthenticated: !!user

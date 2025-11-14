@@ -3,13 +3,14 @@ PDF Router Module
 Handles PDF generation endpoints using Go-based PDF service.
 """
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Depends
 from fastapi.responses import FileResponse, RedirectResponse
-from typing import Optional
+from typing import Optional, Dict, Any
 import logging
 from pathlib import Path
 
 from services.go_pdf_service import GoPDFService
+from auth import require_auth, optional_auth
 
 router = APIRouter(prefix="/pdf", tags=["pdf"])
 pdf_service = GoPDFService(use_docker=True, shared_dir="/shared")
@@ -18,6 +19,7 @@ pdf_service = GoPDFService(use_docker=True, shared_dir="/shared")
 @router.post("/generate/{issue_id}")
 async def generate_pdf_for_issue(
     issue_id: str,
+    current_user: Optional[Dict[str, Any]] = Depends(optional_auth),  # Allow guest users
     days_back: int = Query(7, description="Number of days to look back for articles"),
     max_articles_per_publication: int = Query(5, description="Maximum articles per publication"),
     layout_type: str = Query("newspaper", description="Layout type: 'newspaper' or 'essay'"),
@@ -27,9 +29,11 @@ async def generate_pdf_for_issue(
 ):
     """
     Generate a PDF from an issue's articles using the Go PDF service.
+    Works for both authenticated users and guest users.
     
     Args:
         issue_id: UUID of the issue
+        current_user: User information (None for guest users)
         days_back: Number of days to look back for articles
         max_articles_per_publication: Maximum articles per publication
         layout_type: Layout type ('newspaper' or 'essay')
@@ -41,8 +45,13 @@ async def generate_pdf_for_issue(
         dict: Result with success status, file paths, and metadata
     """
     try:
+        user_identifier = current_user['email'] if current_user else f"guest_user_{issue_id[:8]}"
+        
         if verbose:
-            logging.info(f"Generating PDF for issue {issue_id} with layout {layout_type}")
+            logging.info(f"User {user_identifier} generating PDF for issue {issue_id} with layout {layout_type}")
+        
+        # TODO: For authenticated users, verify that the user owns this issue by checking Supabase
+        # For guest users, we'll proceed with the generation (guest issues are temporary)
         
         # Import RSS service here to avoid circular imports
         from services.rss_service import RSSService
@@ -90,7 +99,8 @@ async def generate_pdf_for_issue(
             "issue_info": result['issue_info'],
             "articles_count": result['articles_count'],
             "layout_type": result.get('layout_type', layout_type),
-            "service": "go-pdf"
+            "service": "go-pdf",
+            "generated_by": user_identifier
         }
         
     except HTTPException:
@@ -103,6 +113,7 @@ async def generate_pdf_for_issue(
 @router.get("/download/{issue_id}")
 async def download_pdf(
     issue_id: str,
+    current_user: Optional[Dict[str, Any]] = Depends(optional_auth),  # Allow guest users
     days_back: int = Query(7, description="Number of days to look back for articles"),
     max_articles_per_publication: int = Query(5, description="Maximum articles per publication"),
     layout_type: str = Query("newspaper", description="Layout type: 'newspaper' or 'essay'"),
@@ -110,9 +121,11 @@ async def download_pdf(
 ):
     """
     Generate and download a PDF for an issue by redirecting to the Supabase storage URL.
+    Works for both authenticated users and guest users.
     
     Args:
         issue_id: UUID of the issue
+        current_user: User information (None for guest users)
         days_back: Number of days to look back for articles
         max_articles_per_publication: Maximum articles per publication
         layout_type: Layout type ('newspaper' or 'essay')

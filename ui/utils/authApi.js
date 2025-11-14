@@ -14,16 +14,16 @@ export class AuthenticatedAPI {
     async getAuthHeaders() {
         const { data: { session } } = await this.supabase.auth.getSession()
 
-        if (session?.access_token) {
-            return {
-                'Authorization': `Bearer ${session.access_token}`,
-                'Content-Type': 'application/json'
-            }
-        }
-
-        return {
+        const headers = {
             'Content-Type': 'application/json'
         }
+
+        // Only add Authorization header if we have a session
+        if (session?.access_token) {
+            headers['Authorization'] = `Bearer ${session.access_token}`
+        }
+
+        return headers
     }
 
     async makeRequest(endpoint, options = {}) {
