@@ -6,6 +6,9 @@ import Box from '@mui/material/Box';
 import Typography from '@mui/material/Typography';
 import Alert from '@mui/material/Alert';
 import Link from '@mui/material/Link';
+import Menu from '@mui/material/Menu';
+import MenuItem from '@mui/material/MenuItem';
+import ArrowDropDownIcon from '@mui/icons-material/ArrowDropDown';
 
 import SearchModal from './components/SearchModal';
 import AuthModal from './components/AuthModal';
@@ -13,6 +16,7 @@ import AuthButton from './components/AuthButton';
 import ConfigureNewspaper from './components/ConfigureNewspaper';
 import AddPublications from './components/AddPublications';
 import ActionButtonsSection from './components/ActionButtonsSection';
+import DecorativeLine from './components/DecorativeLine';
 
 import { getRssFeedUrl } from '../utils/rssUtils';
 import { searchSubstack } from '../utils/substackUtils';
@@ -34,6 +38,8 @@ export default function Home() {
     updateIssueId,
     resetConfig,
     saveIssueToSupabase,
+    loadIssue,
+    userIssues,
     isAuthenticated
   } = useNewsletterConfig();
   const { user } = useAuth();
@@ -49,6 +55,8 @@ export default function Home() {
   const [isSaving, setIsSaving] = useState(false);
   const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
   const [pdfUrl, setPdfUrl] = useState(null);
+  const [selectAnchorEl, setSelectAnchorEl] = useState(null);
+  const isSelectMenuOpen = Boolean(selectAnchorEl);
 
   useEffect(() => {
     const fetchPublications = async () => {
@@ -213,15 +221,6 @@ export default function Home() {
     }
   };
 
-  const handlePublicationToggle = (publication) => {
-    const isAlreadySelected = selectedPublications.some(p => p.id === publication.id);
-    if (isAlreadySelected) {
-      removePublication(publication.id);
-    } else {
-      addPublication(publication);
-    }
-  }
-
   const handleSearchModalClose = () => {
     setIsSearchModalOpen(false);
     setSearchQuery('');
@@ -238,6 +237,24 @@ export default function Home() {
     resetConfig(); // Clears title, output mode, and current issue ID
     clearAllPublications(); // Clears all selected publications
     setPdfUrl(null); // Clear any existing PDF URL
+  };
+
+  const handleSelectMenuOpen = (event) => {
+    setSelectAnchorEl(event.currentTarget);
+  };
+
+  const handleSelectMenuClose = () => {
+    setSelectAnchorEl(null);
+  };
+
+  const handleSelectIssue = async (issue) => {
+    handleSelectMenuClose();
+    try {
+      await loadIssue(issue.id);
+    } catch (error) {
+      console.error('Error loading issue:', error);
+      alert(`Failed to load issue: ${error.message}`);
+    }
   };
 
   // Create a debounced search function
@@ -291,7 +308,7 @@ export default function Home() {
               fontSize: { xs: '2.5rem', sm: '3.5rem' },
               lineHeight: 1.2,
               mb: 1,
-              color: 'black'
+              color: 'var(--black)'
             }}
           >
             The Newsletter Printing Press
@@ -310,32 +327,27 @@ export default function Home() {
           </Typography>
         </Box>
 
-        {/* Configure Your Newspaper Section */}
-        <ConfigureNewspaper />
+        <DecorativeLine />
 
-        <Box sx={{
-          width: '100%',
-          height: '2px',
-          backgroundColor: 'black',
-          mb: 2
-        }} />
-
-        {/* Reset Button */}
-        <Box sx={{ display: 'flex', justifyContent: 'center', mb: 3 }}>
+        {/* Save, Select, Reset options */}
+        <Box sx={{ display: 'flex', width: '100%', justifyContent: 'space-between', gap: 3 }}>
           <Button
             variant="outlined"
-            onClick={handleClearAll}
-            disabled={!newspaperTitle && selectedPublications.length === 0}
+            onClick={handleSaveIssue}
+            disabled={isSaving || !user}
             sx={{
               textTransform: 'none',
               fontWeight: 500,
-              color: '#d32f2f',
-              borderColor: '#d32f2f',
-              px: 3,
+              fontSize: '1rem',
+              color: 'var(--black)',
+              borderColor: 'var(--black)',
+              borderWidth: '2px',
+              width: '100%',
+              px: 4,
               py: 1.5,
               '&:hover': {
-                borderColor: '#b71c1c',
-                backgroundColor: 'rgba(211, 47, 47, 0.04)'
+                borderColor: 'var(--black)',
+                backgroundColor: 'rgba(0, 0, 0, 0.04)'
               },
               '&:disabled': {
                 color: '#bdbdbd',
@@ -343,19 +355,62 @@ export default function Home() {
               }
             }}
           >
-            Reset Newspaper Configuration
+            {isSaving ? 'SAVING...' : 'SAVE'}
+          </Button>
+          <Button
+            variant="outlined"
+            onClick={handleSelectMenuOpen}
+            disabled={!user || !userIssues || userIssues.length === 0}
+            endIcon={<ArrowDropDownIcon />}
+            sx={{
+              textTransform: 'none',
+              fontWeight: 500,
+              fontSize: '1rem',
+              color: 'var(--black)',
+              borderColor: 'var(--black)',
+              borderWidth: '2px',
+              width: '100%',
+              px: 4,
+              py: 1.5,
+              '&:hover': {
+                borderColor: 'var(--black)',
+                backgroundColor: 'rgba(0, 0, 0, 0.04)'
+              },
+              '&:disabled': {
+                color: '#bdbdbd',
+                borderColor: '#e0e0e0'
+              }
+            }}
+          >
+            SELECT
+          </Button>
+          <Button
+            variant="outlined"
+            onClick={handleClearAll}
+            disabled={!newspaperTitle && selectedPublications.length === 0}
+            sx={{
+              textTransform: 'none',
+              fontWeight: 500,
+              fontSize: '1rem',
+              color: 'var(--black)',
+              borderColor: 'var(--black)',
+              borderWidth: '2px',
+              width: '100%',
+              px: 4,
+              py: 1.5,
+              '&:hover': {
+                borderColor: 'var(--black)',
+                backgroundColor: 'rgba(0, 0, 0, 0.04)'
+              },
+              '&:disabled': {
+                color: '#bdbdbd',
+                borderColor: '#e0e0e0'
+              }
+            }}
+          >
+            RESET
           </Button>
         </Box>
-
-        {/* Add Publications Section */}
-        <AddPublications onOpenSearch={() => setIsSearchModalOpen(true)} />
-
-        <Box sx={{
-          width: '100%',
-          height: '2px',
-          backgroundColor: 'black',
-          mb: 3
-        }} />
 
         {/* Authentication Status Alert */}
         {!user && (
@@ -363,8 +418,14 @@ export default function Home() {
             severity="info"
             sx={{
               width: '100%',
-              mb: 3,
-              borderRadius: 2,
+              borderRadius: 0,
+              backgroundColor: 'var(--background)',
+              border: '1px solid var(--secondary)',
+              borderWidth: 2,
+              color: 'var(--black)',
+              '& .MuiAlert-icon': {
+                color: 'primary.main'
+              },
               '& .MuiAlert-message': {
                 fontSize: '0.9rem'
               }
@@ -373,10 +434,9 @@ export default function Home() {
             You&apos;re browsing as a guest.{' '}
             <Link
               component="button"
-              variant="body2"
               onClick={() => setIsAuthModalOpen(true)}
               sx={{
-                textDecoration: 'underline',
+                textDecoration: 'none',
                 color: 'primary.main',
                 cursor: 'pointer',
                 fontWeight: 600,
@@ -387,9 +447,67 @@ export default function Home() {
             >
               Sign in
             </Link>
-            {' '}to save your newsletter configurations and access them later!
+            {' '}to save your newsletter configurations, access them later, and email your issue PDFs to yourself!
           </Alert>
         )}
+
+        {/* Select Issue Dropdown Menu */}
+        <Menu
+          anchorEl={selectAnchorEl}
+          open={isSelectMenuOpen}
+          onClose={handleSelectMenuClose}
+          MenuListProps={{
+            'aria-labelledby': 'select-issue-button',
+          }}
+          PaperProps={{
+            sx: {
+              maxHeight: 300,
+              width: '300px',
+              border: '1px solid var(--black)'
+            }
+          }}
+        >
+          {userIssues && userIssues.length > 0 ? (
+            userIssues.map((issue) => (
+              <MenuItem
+                key={issue.id}
+                onClick={() => handleSelectIssue(issue)}
+                sx={{
+                  py: 1.5,
+                  px: 2,
+                  '&:hover': {
+                    backgroundColor: 'rgba(0, 0, 0, 0.04)'
+                  }
+                }}
+              >
+                <Box>
+                  <Typography variant="body1" sx={{ fontWeight: 500 }}>
+                    {issue.title || 'Untitled Issue'}
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    {new Date(issue.updated_at || issue.created_at).toLocaleDateString()}
+                  </Typography>
+                </Box>
+              </MenuItem>
+            ))
+          ) : (
+            <MenuItem disabled>
+              <Typography variant="body2" color="text.secondary">
+                No saved issues found
+              </Typography>
+            </MenuItem>
+          )}
+        </Menu>
+
+        {/* Configure Your Newspaper Section */}
+        <ConfigureNewspaper />
+
+        <DecorativeLine />
+
+        {/* Add Publications Section */}
+        <AddPublications onOpenSearch={() => setIsSearchModalOpen(true)} />
+
+        <DecorativeLine />
 
         {/* Action Buttons Section */}
         <ActionButtonsSection
@@ -421,40 +539,43 @@ export default function Home() {
 
       {/* Footer */}
       <footer className="flex gap-4 flex-wrap items-center justify-center py-8 border-t border-gray-200">
+        <DecorativeLine sx={{ mb: 0 }} />
         <Box sx={{
-          width: '100%',
-          height: '2px',
-          backgroundColor: 'black',
-        }} />
-        <Typography
-          variant="body2"
-          sx={{
-            textDecoration: 'underline',
-            cursor: 'pointer',
-            color: '#504f4e',
-            '&:hover': {
-              color: '#3b82f6'
-            }
-          }}
-        >
-          Feature Request
-        </Typography>
-        <Typography variant="body2" sx={{ color: '#504f4e' }}>
-          •
-        </Typography>
-        <Typography
-          variant="body2"
-          sx={{
-            textDecoration: 'underline',
-            cursor: 'pointer',
-            color: '#504f4e',
-            '&:hover': {
-              color: '#3b82f6'
-            }
-          }}
-        >
-          Source Code
-        </Typography>
+          display: 'flex',
+          gap: 2,
+          mt: 2
+        }}>
+          <Typography
+            variant="body2"
+            sx={{
+              textDecoration: 'underline',
+              cursor: 'pointer',
+              color: '#504f4e',
+              '&:hover': {
+                color: '#3b82f6'
+              }
+            }}
+          >
+            Feature Request
+          </Typography>
+          <Typography variant="body2" sx={{ color: '#504f4e' }}>
+            •
+          </Typography>
+          <Typography
+            variant="body2"
+            onClick={() => window.open('https://github.com/apchapcomputing/newsletter2paper', '_blank')}
+            sx={{
+              textDecoration: 'underline',
+              cursor: 'pointer',
+              color: '#504f4e',
+              '&:hover': {
+                color: '#3b82f6'
+              }
+            }}
+          >
+            Source Code
+          </Typography>
+        </Box>
       </footer>
     </div >
   );

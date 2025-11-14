@@ -25,50 +25,49 @@ export const NewsletterConfigProvider = ({ children }) => {
     const { user, session } = useAuth();
     const supabase = createClient();
 
-    // Load configuration when user authentication state changes
+    // Load configuration from localStorage and user issues when authentication state changes
     useEffect(() => {
         const loadConfig = async () => {
+            // Always load current working config from localStorage first
+            try {
+                const savedConfig = localStorage.getItem('newsletterConfig');
+                if (savedConfig) {
+                    const config = JSON.parse(savedConfig);
+                    setNewspaperTitle(config.title || '');
+                    setOutputMode(config.outputMode || 'newspaper');
+                    setCurrentIssueId(config.issueId || null);
+                }
+            } catch (error) {
+                console.error('Error loading newsletter config from localStorage:', error);
+            }
+
+            // If user is authenticated, also load their saved issues list
             if (user && session) {
-                // User is authenticated - load from Supabase
                 try {
                     setLoading(true);
 
-                    // Load user's issues
-                    const { data: issues, error } = await supabase
-                        .from('issues')
-                        .select('*')
-                        .order('updated_at', { ascending: false });
+                    // Load user's issues using junction table
+                    const { data: userIssuesData, error } = await supabase
+                        .from('user_issues')
+                        .select(`
+                            issue_id,
+                            issues (*)
+                        `)
+                        .eq('user_id', user.id)
+                        .order('created_at', { ascending: false });
 
                     if (error) {
                         console.error('Error loading user issues:', error);
                     } else {
-                        setUserIssues(issues || []);
-
-                        // If there's a current issue, load its config
-                        const currentIssue = issues?.find(issue => issue.id === currentIssueId);
-                        if (currentIssue) {
-                            setNewspaperTitle(currentIssue.title || '');
-                            setOutputMode(currentIssue.format || 'newspaper');
-                        }
+                        const issues = userIssuesData?.map(ui => ui.issues) || [];
+                        setUserIssues(issues);
                     }
                 } catch (error) {
-                    console.error('Error loading configuration from Supabase:', error);
+                    console.error('Error loading user issues from Supabase:', error);
                 } finally {
                     setLoading(false);
                 }
             } else {
-                // User not authenticated - load from localStorage
-                try {
-                    const savedConfig = localStorage.getItem('newsletterConfig');
-                    if (savedConfig) {
-                        const config = JSON.parse(savedConfig);
-                        setNewspaperTitle(config.title || '');
-                        setOutputMode(config.outputMode || 'newspaper');
-                        setCurrentIssueId(config.issueId || null);
-                    }
-                } catch (error) {
-                    console.error('Error loading newsletter config from localStorage:', error);
-                }
                 setUserIssues([]);
             }
             setIsLoaded(true);
@@ -77,9 +76,9 @@ export const NewsletterConfigProvider = ({ children }) => {
         loadConfig();
     }, [user, session]); // Reload when auth state changes
 
-    // Save to localStorage for anonymous users
+    // Save to localStorage whenever config changes
     useEffect(() => {
-        if (isLoaded && !user) {
+        if (isLoaded) {
             try {
                 const config = {
                     title: newspaperTitle,
@@ -91,7 +90,7 @@ export const NewsletterConfigProvider = ({ children }) => {
                 console.error('Error saving newsletter config to localStorage:', error);
             }
         }
-    }, [newspaperTitle, outputMode, currentIssueId, isLoaded, user]);
+    }, [newspaperTitle, outputMode, currentIssueId, isLoaded]);
 
     const updateTitle = (title) => {
         setNewspaperTitle(title);
@@ -110,13 +109,11 @@ export const NewsletterConfigProvider = ({ children }) => {
         setOutputMode('newspaper');
         setCurrentIssueId(null);
 
-        // Explicitly clear localStorage for anonymous users
-        if (!user) {
-            try {
-                localStorage.removeItem('newsletterConfig');
-            } catch (error) {
-                console.error('Error clearing newsletter config from localStorage:', error);
-            }
+        // Clear localStorage
+        try {
+            localStorage.removeItem('newsletterConfig');
+        } catch (error) {
+            console.error('Error clearing newsletter config from localStorage:', error);
         }
     };
 
@@ -128,7 +125,6 @@ export const NewsletterConfigProvider = ({ children }) => {
 
         try {
             const issuePayload = {
-                user_id: user.id,
                 title: issueData.title || null,
                 format: issueData.format || 'newspaper',
                 frequency: issueData.frequency || 'weekly',
@@ -136,16 +132,23 @@ export const NewsletterConfigProvider = ({ children }) => {
                 status: 'draft'
             };
 
+            let savedIssue;
             let result;
+
             if (currentIssueId) {
                 // Update existing issue
                 result = await supabase
                     .from('issues')
                     .update(issuePayload)
                     .eq('id', currentIssueId)
-                    .eq('user_id', user.id) // Ensure user owns this issue
                     .select()
                     .single();
+
+                if (result.error) {
+                    throw result.error;
+                }
+
+                savedIssue = result.data;
             } else {
                 // Create new issue
                 result = await supabase
@@ -153,22 +156,41 @@ export const NewsletterConfigProvider = ({ children }) => {
                     .insert(issuePayload)
                     .select()
                     .single();
+
+                if (result.error) {
+                    throw result.error;
+                }
+
+                savedIssue = result.data;
+
+                // Create the user-issue association
+                const userIssueResult = await supabase
+                    .from('user_issues')
+                    .insert({
+                        user_id: user.id,
+                        issue_id: savedIssue.id
+                    });
+
+                if (userIssueResult.error) {
+                    console.error('Error creating user-issue association:', userIssueResult.error);
+                    // Don't throw here - the issue was created successfully, association failed
+                }
             }
 
-            if (result.error) {
-                throw result.error;
-            }
-
-            const savedIssue = result.data;
             setCurrentIssueId(savedIssue.id);
 
-            // Refresh user issues
+            // Refresh user issues by getting all issues associated with this user
             const { data: refreshedIssues } = await supabase
-                .from('issues')
-                .select('*')
-                .order('updated_at', { ascending: false });
+                .from('user_issues')
+                .select(`
+                    issue_id,
+                    issues (*)
+                `)
+                .eq('user_id', user.id)
+                .order('created_at', { ascending: false });
 
-            setUserIssues(refreshedIssues || []);
+            const userIssues = refreshedIssues?.map(ui => ui.issues) || [];
+            setUserIssues(userIssues);
 
             return savedIssue;
         } catch (error) {
@@ -182,17 +204,26 @@ export const NewsletterConfigProvider = ({ children }) => {
         if (!user || !session) return;
 
         try {
-            const { data: issue, error } = await supabase
-                .from('issues')
-                .select('*')
-                .eq('id', issueId)
+            // Check if user has access to this issue via user_issues junction table
+            const { data: userIssue, error: accessError } = await supabase
+                .from('user_issues')
+                .select(`
+                    issue_id,
+                    issues (*)
+                `)
                 .eq('user_id', user.id)
+                .eq('issue_id', issueId)
                 .single();
 
-            if (error) {
-                throw error;
+            if (accessError) {
+                throw accessError;
             }
 
+            if (!userIssue) {
+                throw new Error('Issue not found or access denied');
+            }
+
+            const issue = userIssue.issues;
             setNewspaperTitle(issue.title || '');
             setOutputMode(issue.format || 'newspaper');
             setCurrentIssueId(issue.id);

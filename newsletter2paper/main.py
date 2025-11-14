@@ -1,4 +1,5 @@
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 import os
 from routers import rss, issues, publications, articles, pdf
 
@@ -12,6 +13,15 @@ app = FastAPI(
     title="Newsletter2Paper API",
     description="API for converting newsletters to paper format",
     version="1.0.0"
+)
+
+# Add CORS middleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],  # Frontend URLs
+    allow_credentials=True,
+    allow_methods=["*"],  # Allow all methods including OPTIONS
+    allow_headers=["*"],  # Allow all headers including authorization
 )
 
 # Include routers

@@ -15,7 +15,7 @@ export default function ConfigureNewspaper() {
             width: '100%',
             border: '2px solid black',
             p: 3,
-            mb: 4
+            mb: 2
         }}>
             <Typography
                 variant="h4"
@@ -44,7 +44,7 @@ export default function ConfigureNewspaper() {
             <Box sx={{
                 width: '100%',
                 height: '2px',
-                backgroundColor: 'black',
+                backgroundColor: 'var(--black)',
                 mb: 3
             }} />
 
@@ -69,7 +69,7 @@ export default function ConfigureNewspaper() {
                 </Box>
 
                 {/* Printing Schedule and Format Row */}
-                <Box sx={{ display: 'flex', gap: 3, flexDirection: { xs: 'column', sm: 'row' } }}>
+                <Box sx={{ display: 'flex', gap: 2, flexDirection: { xs: 'column', sm: 'row' } }}>
                     {/* Printing Schedule */}
                     <Box sx={{ flex: 1 }}>
                         <Typography variant="body1" sx={{ mb: 1, fontWeight: 500 }}>

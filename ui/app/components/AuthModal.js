@@ -82,7 +82,7 @@ export default function AuthModal({ open, onClose }) {
             maxWidth="sm"
             fullWidth
             PaperProps={{
-                sx: { borderRadius: 2, p: 1 }
+                sx: { borderRadius: 0, p: 1 }
             }}
         >
             <DialogTitle sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', pb: 1 }}>

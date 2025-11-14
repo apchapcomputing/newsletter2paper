@@ -11,7 +11,7 @@ export default function AddPublications({ onOpenSearch }) {
             width: '100%',
             border: '2px solid black',
             p: 3,
-            mb: 4
+            mb: 2
         }}>
             <Typography
                 variant="h4"
@@ -40,7 +40,7 @@ export default function AddPublications({ onOpenSearch }) {
             <Box sx={{
                 width: '100%',
                 height: '2px',
-                backgroundColor: 'black',
+                backgroundColor: 'var(--black)',
                 mb: 3
             }} />
 
@@ -60,10 +60,10 @@ export default function AddPublications({ onOpenSearch }) {
                             textTransform: 'none',
                             fontSize: '1rem',
                             backgroundColor: '#f5f5f5',
-                            color: 'black',
+                            color: 'var(--black)',
                             border: '1px solid #ccc',
                             '&:hover': {
-                                borderColor: 'black'
+                                borderColor: 'var(--black)'
                             }
                         }}
                     >
@@ -78,10 +78,10 @@ export default function AddPublications({ onOpenSearch }) {
                             textTransform: 'none',
                             fontSize: '1rem',
                             backgroundColor: '#f5f5f5',
-                            color: 'black',
+                            color: 'var(--black)',
                             border: '1px solid #ccc',
                             '&:hover': {
-                                borderColor: 'black'
+                                borderColor: 'var(--black)'
                             }
                         }}
                     >
