@@ -295,41 +295,41 @@ export default function Home() {
 
   return (
     <div className="font-sans min-h-screen" style={{ backgroundColor: '#ECECEC' }}>
+      {/* Header Section */}
       <AuthButton />
-      <main className="flex flex-col gap-[32px] items-center sm:items-start max-w-4xl w-full mx-auto px-8">
-        {/* Header Section */}
-        <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: '100%', textAlign: 'center', mb: 4, mt: 2 }}>
-          <Typography
-            variant="h1"
-            component="h1"
-            className="font-unifraktur font-bold"
-            sx={{
-              fontFamily: '"UnifrakturCook", cursive',
-              fontWeight: 700,
-              letterSpacing: '0.05em',
-              fontSize: { xs: '2.5rem', sm: '3.5rem' },
-              lineHeight: 1.2,
-              mb: 1,
-              color: 'var(--black)'
-            }}
-          >
-            The Newsletter Printing Press
-          </Typography>
-          <Typography
-            variant="subtitle1"
-            sx={{
-              fontWeight: 400,
-              letterSpacing: '0.1em',
-              fontSize: { xs: '0.75rem', sm: '0.875rem' },
-              color: 'text.secondary',
-              opacity: 0.8
-            }}
-          >
-            EST. 2025 • SUBSTACK RSS TO NEWSPAPER PDF • VOLUME 0
-          </Typography>
-        </Box>
+      <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: '100%', textAlign: 'center', mb: 4, mt: -4 }}>
+        <Typography
+          variant="h1"
+          component="h1"
+          className="font-unifraktur font-bold"
+          sx={{
+            fontFamily: '"UnifrakturCook", cursive',
+            fontWeight: 700,
+            letterSpacing: '0.05em',
+            fontSize: { xs: '2.5rem', sm: '3.5rem' },
+            lineHeight: 1.2,
+            mb: 1,
+            color: 'var(--black)'
+          }}
+        >
+          The Newsletter Printing Press
+        </Typography>
+        <Typography
+          variant="subtitle1"
+          sx={{
+            fontWeight: 400,
+            letterSpacing: '0.1em',
+            fontSize: { xs: '0.75rem', sm: '0.875rem' },
+            color: 'text.secondary',
+            opacity: 0.8
+          }}
+        >
+          EST. 2025 • SUBSTACK RSS TO NEWSPAPER PDF • VOLUME 0
+        </Typography>
+      </Box>
+      <DecorativeLine sx={{ width: "95%", mb: 4, mx: 'auto' }} />
 
-        <DecorativeLine />
+      <main className="flex flex-col gap-[32px] items-center sm:items-start max-w-4xl w-full mx-auto px-8">
 
         {/* Save, Select, Reset options */}
         <Box sx={{ display: 'flex', width: '100%', justifyContent: 'space-between', gap: 3 }}>
@@ -540,8 +540,8 @@ export default function Home() {
       />
 
       {/* Footer */}
-      <footer className="flex gap-4 flex-wrap items-center justify-center py-8 border-t border-gray-200">
-        <DecorativeLine sx={{ mb: 0 }} />
+      <footer className="flex gap-4 flex-wrap items-center justify-center py-8">
+        <DecorativeLine sx={{ width: "95%", mb: 0, mx: 'auto' }} />
         <Box sx={{
           display: 'flex',
           gap: 2,

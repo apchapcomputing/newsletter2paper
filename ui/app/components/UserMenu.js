@@ -16,9 +16,10 @@ export default function UserMenu() {
             onClick={handleSignOut}
             size="medium"
             sx={{
-                color: 'text.secondary',
+                color: 'var(--black)',
+                border: '1px solid transparent',
                 '&:hover': {
-                    color: 'text.primary',
+                    borderColor: 'var(--black)',
                     backgroundColor: 'rgba(0, 0, 0, 0.04)'
                 }
             }}

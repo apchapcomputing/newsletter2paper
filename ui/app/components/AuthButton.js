@@ -14,23 +14,14 @@ export default function AuthButton() {
     if (loading) {
         return (
             <Box sx={{
-                width: '100%',
-                borderBottom: '1px solid #e0e0e0',
-                backgroundColor: 'white',
-                py: 2
+                display: 'flex',
+                justifyContent: 'flex-end',
+                py: 2,
+                px: 4
             }}>
-                <Container maxWidth="lg">
-                    <Box sx={{
-                        display: 'flex',
-                        justifyContent: 'flex-end',
-                        alignItems: 'center',
-                        minHeight: 48
-                    }}>
-                        <Typography variant="body2" color="text.secondary">
-                            Loading...
-                        </Typography>
-                    </Box>
-                </Container>
+                <Typography variant="body2" color="text.secondary">
+                    Loading...
+                </Typography>
             </Box>
         )
     }
@@ -38,57 +29,50 @@ export default function AuthButton() {
     return (
         <>
             <Box sx={{
-                width: '100%',
+                display: 'flex',
+                justifyContent: 'flex-end',
+                alignItems: 'center',
                 py: 2,
+                px: 4,
+                gap: 2
             }}>
-                <Container maxWidth="lg">
-                    <Box sx={{
-                        display: 'flex',
-                        justifyContent: 'space-between',
-                        alignItems: 'center',
-                        gap: 2
-                    }}>
-                        {/* Logo/Brand Space - Empty for now */}
-                        <Box />
-
-                        {user ? (
-                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                                <Box sx={{
-                                    display: { xs: 'none', sm: 'flex' },
-                                    flexDirection: 'column',
-                                    alignItems: 'flex-end',
-                                }}>
-                                    <Typography variant="body2" sx={{ fontWeight: 500, color: 'var(--black)' }}>
-                                        {user.user_metadata?.full_name?.split(' ')[0] || user.email?.split('@')[0]}
-                                    </Typography>
-                                </Box>
-                                <UserMenu />
-                            </Box>
-                        ) : (
-                            <Button
-                                variant="outlined"
-                                startIcon={<LoginIcon />}
-                                onClick={() => setAuthModalOpen(true)}
-                                sx={{
-                                    textTransform: 'none',
-                                    fontWeight: 500,
-                                    px: 3,
-                                    py: 1.25,
-                                    borderRadius: 2,
-                                    borderColor: 'transparent',
-                                    color: 'var(--black)',
-                                    backgroundColor: 'transparent',
-                                    '&:hover': {
-                                        borderColor: 'var(--black)',
-                                        backgroundColor: 'transparent',
-                                    }
-                                }}
-                            >
-                                Get Started
-                            </Button>
-                        )}
-                    </Box>
-                </Container>
+                {user ? (
+                    <>
+                        <Typography
+                            variant="body2"
+                            sx={{
+                                fontWeight: 500,
+                                color: 'var(--black)',
+                                display: { xs: 'none', sm: 'block' }
+                            }}
+                        >
+                            {user.user_metadata?.full_name?.split(' ')[0] || user.email?.split('@')[0]}
+                        </Typography>
+                        <UserMenu />
+                    </>
+                ) : (
+                    <Button
+                        variant="outlined"
+                        startIcon={<LoginIcon />}
+                        onClick={() => setAuthModalOpen(true)}
+                        sx={{
+                            textTransform: 'none',
+                            fontWeight: 500,
+                            px: 3,
+                            py: 1.25,
+                            borderRadius: 2,
+                            borderColor: 'transparent',
+                            color: 'var(--black)',
+                            backgroundColor: 'transparent',
+                            '&:hover': {
+                                borderColor: 'var(--black)',
+                                backgroundColor: 'rgba(0, 0, 0, 0.04)'
+                            },
+                        }}
+                    >
+                        Get Started
+                    </Button>
+                )}
             </Box>
 
             <AuthModal
