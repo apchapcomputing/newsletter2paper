@@ -58,10 +58,29 @@ func CleanHTML(htmlContent string, verbose bool) (string, Stats, error) {
 		})
 	}
 
-	// Remove image control icons (expand, refresh buttons)
+	// Remove image control icons (expand, refresh buttons) and media controls
 	imageControlSelectors := []string{
 		".lucide-maximize2",
 		".lucide-refresh-cw",
+		".lucide-play",
+		".lucide-pause",
+		".lucide-volume",
+		".lucide-speaker",
+		"[class*='play-icon']",
+		"[class*='pause-icon']",
+		"[class*='media-icon']",
+		"[data-testid*='play']",
+		"[data-testid*='pause']",
+		"[data-testid*='audio']",
+		"[data-testid*='video']",
+		".fa-play", // FontAwesome icons
+		".fa-pause",
+		".fa-volume-up",
+		".fa-volume-down",
+		".image-link-expand", // Substack image expansion buttons
+		".restack-image",     // Restack image button
+		".view-image",        // View image button
+		".icon-container",    // Generic icon containers in image controls
 	}
 	for _, selector := range imageControlSelectors {
 		doc.Find(selector).Each(func(i int, s *goquery.Selection) {
@@ -86,7 +105,7 @@ func CleanHTML(htmlContent string, verbose bool) (string, Stats, error) {
 			stats.ImageIcons++
 		})
 	}
-	
+
 	// Remove buttons containing lucide-link SVG icons
 	doc.Find("button").Each(func(i int, s *goquery.Selection) {
 		if s.Find("svg.lucide-link").Length() > 0 {
@@ -140,6 +159,12 @@ func CleanHTML(htmlContent string, verbose bool) (string, Stats, error) {
 		"[data-component-name='VideoEmbedPlayer']", // Substack video players
 		"[aria-label='Audio embed player']",
 		"[aria-label='Video embed player']",
+		"[role='application']", // Many media players use this role
+		".media-controls",
+		".player-controls",
+		"[class*='play-button']",
+		"[class*='pause-button']",
+		"[class*='media-control']",
 	}
 	for _, selector := range mediaPlayerSelectors {
 		doc.Find(selector).Each(func(i int, s *goquery.Selection) {
@@ -147,6 +172,36 @@ func CleanHTML(htmlContent string, verbose bool) (string, Stats, error) {
 			stats.ImageIcons++
 		})
 	}
+
+	// Remove buttons and elements containing media control symbols (play, pause, etc.)
+	doc.Find("button, div, span").Each(func(i int, s *goquery.Selection) {
+		text := s.Text()
+		// Check for common media control symbols
+		if strings.Contains(text, "⏸") || // pause symbol
+			strings.Contains(text, "▶") || // play symbol
+			strings.Contains(text, "⏯") || // play/pause symbol
+			strings.Contains(text, "⏭") || // next track
+			strings.Contains(text, "⏮") || // previous track
+			strings.Contains(text, "⏹") || // stop symbol
+			strings.Contains(text, "🔊") || // volume symbol
+			strings.Contains(text, "🔇") { // mute symbol
+			s.Remove()
+			stats.ImageIcons++
+		}
+
+		// Also check aria-label attributes for media controls
+		if ariaLabel, exists := s.Attr("aria-label"); exists {
+			lowerLabel := strings.ToLower(ariaLabel)
+			if strings.Contains(lowerLabel, "play") ||
+				strings.Contains(lowerLabel, "pause") ||
+				strings.Contains(lowerLabel, "audio") ||
+				strings.Contains(lowerLabel, "video") ||
+				strings.Contains(lowerLabel, "media") {
+				s.Remove()
+				stats.ImageIcons++
+			}
+		}
+	})
 
 	// Format footnotes: convert multi-line footnotes to inline format
 	doc.Find("div.footnote").Each(func(i int, footnote *goquery.Selection) {
@@ -203,5 +258,36 @@ func CleanHTML(htmlContent string, verbose bool) (string, Stats, error) {
 		cleaned = strings.TrimSpace(cleaned)
 	}
 
+	// Post-process: normalize whitespace and remove excessive line breaks
+	// This fixes issues where removed inline elements leave behind newlines
+	cleaned = normalizeWhitespace(cleaned)
+
 	return cleaned, stats, nil
+}
+
+// normalizeWhitespace cleans up excessive whitespace and newlines in HTML
+// while preserving intentional spacing and structure
+func normalizeWhitespace(html string) string {
+	// Replace multiple consecutive newlines with single newline
+	html = strings.ReplaceAll(html, "\n\n\n", "\n\n")
+	html = strings.ReplaceAll(html, "\r\n\r\n\r\n", "\r\n\r\n")
+
+	// Remove newlines that appear within inline text contexts
+	// This regex finds newlines between text that aren't at tag boundaries
+	html = strings.ReplaceAll(html, " \n ", " ")
+	html = strings.ReplaceAll(html, " \n", " ")
+	html = strings.ReplaceAll(html, "\n ", " ")
+
+	// Clean up spaces around tags
+	html = strings.ReplaceAll(html, "> <", "><")
+	html = strings.ReplaceAll(html, ">\n<", "><")
+	html = strings.ReplaceAll(html, ">\n\n<", "><")
+
+	// Remove trailing/leading whitespace from paragraphs
+	html = strings.ReplaceAll(html, "<p> ", "<p>")
+	html = strings.ReplaceAll(html, " </p>", "</p>")
+	html = strings.ReplaceAll(html, "<p>\n", "<p>")
+	html = strings.ReplaceAll(html, "\n</p>", "</p>")
+
+	return html
 }

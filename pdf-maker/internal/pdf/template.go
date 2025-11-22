@@ -11,11 +11,21 @@ import (
 )
 
 // AssembleHTML builds the complete HTML document with header, TOC, and article sections.
-func AssembleHTML(articles []*art.Article, title string) (string, error) {
+// layoutType can be "essay" or "newspaper" (default)
+func AssembleHTML(articles []*art.Article, title string, layoutType ...string) (string, error) {
 	var sb strings.Builder
 
+	// Determine which CSS to use based on layout type
+	// Default to "newspaper" if not specified
+	layout := "newspaper"
+	if len(layoutType) > 0 && layoutType[0] != "" {
+		if layoutType[0] == "essay" || layoutType[0] == "newspaper" {
+			layout = layoutType[0]
+		}
+	}
+
 	// Determine absolute path to CSS for file:// reference
-	cssPath, _ := filepath.Abs("styles/default.css")
+	cssPath, _ := filepath.Abs(fmt.Sprintf("styles/%s.css", layout))
 
 	// HTML header
 	sb.WriteString("<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n")
@@ -28,29 +38,68 @@ func AssembleHTML(articles []*art.Article, title string) (string, error) {
 	// Header section
 	sb.WriteString("<div class=\"pdf-header\">\n")
 	sb.WriteString(fmt.Sprintf("  <h1>%s</h1>\n", html.EscapeString(title)))
-	sb.WriteString(fmt.Sprintf("  <p class=\"date\">%s</p>\n", time.Now().Format("Monday, January 2, 2006")))
+	articleCount := len(articles)
+	articleWord := "Article"
+	if articleCount != 1 {
+		articleWord = "Articles"
+	}
+	sb.WriteString(fmt.Sprintf("  <p class=\"date\">%s • %d %s</p>\n",
+		time.Now().Format("Monday, January 2, 2006"), articleCount, articleWord))
 	sb.WriteString("</div>\n\n")
 
-	// Table of Contents
-	sb.WriteString("<div class=\"toc\">\n")
-	sb.WriteString("  <h2>Table of Contents</h2>\n")
-	sb.WriteString("  <ul>\n")
-	for i, a := range articles {
-		sb.WriteString(fmt.Sprintf("    <li><a href=\"#article-%d\">%s</a>", i+1, html.EscapeString(a.Title)))
-		if a.Author != "" {
-			sb.WriteString(fmt.Sprintf(" <span class=\"toc-author\">by %s</span>", html.EscapeString(a.Author)))
+	// For newspaper layout, use grid structure with TOC on left
+	// For essay layout, use standard vertical layout
+	if layout == "newspaper" {
+		// Newspaper: Grid layout with TOC in left column
+		sb.WriteString("<div class=\"newspaper-content\">\n\n")
+
+		// TOC box in left column
+		sb.WriteString("<div class=\"toc\">\n")
+		sb.WriteString("  <h2>IN THIS EDITION</h2>\n")
+		sb.WriteString("  <ul>\n")
+		for i, a := range articles {
+			sb.WriteString("    <li>\n")
+			sb.WriteString(fmt.Sprintf("      <a href=\"#article-%d\">\n", i+1))
+			sb.WriteString(fmt.Sprintf("        <span class=\"toc-title\">%s</span>\n", html.EscapeString(a.Title)))
+			if a.Publication != "" {
+				sb.WriteString(fmt.Sprintf("        <span class=\"toc-publication\">%s</span>\n", html.EscapeString(a.Publication)))
+			}
+			sb.WriteString("      </a>\n")
+			sb.WriteString("    </li>\n")
 		}
-		if a.Publication != "" {
-			sb.WriteString(fmt.Sprintf(" <span class=\"toc-publication\">— %s</span>", html.EscapeString(a.Publication)))
+		sb.WriteString("  </ul>\n")
+		sb.WriteString("</div>\n\n")
+
+		// Articles container spans the right columns
+		sb.WriteString("<div class=\"articles-container\">\n")
+	} else {
+		// Essay: Standard vertical TOC
+		sb.WriteString("<div class=\"toc\">\n")
+		sb.WriteString("  <h2>Table of Contents</h2>\n")
+		sb.WriteString("  <ul>\n")
+		for i, a := range articles {
+			sb.WriteString(fmt.Sprintf("    <li><a href=\"#article-%d\">%s</a>", i+1, html.EscapeString(a.Title)))
+			if a.Author != "" {
+				sb.WriteString(fmt.Sprintf(" <span class=\"toc-author\">by %s</span>", html.EscapeString(a.Author)))
+			}
+			if a.Publication != "" {
+				sb.WriteString(fmt.Sprintf(" <span class=\"toc-publication\">— %s</span>", html.EscapeString(a.Publication)))
+			}
+			sb.WriteString("</li>\n")
 		}
-		sb.WriteString("</li>\n")
+		sb.WriteString("  </ul>\n")
+		sb.WriteString("</div>\n\n")
 	}
-	sb.WriteString("  </ul>\n")
-	sb.WriteString("</div>\n\n")
 
 	// Articles
 	for i, a := range articles {
 		sb.WriteString(renderArticle(a, i+1))
+	}
+
+	// Close newspaper layout wrappers if needed
+	if layout == "newspaper" {
+		sb.WriteString("</div>\n") // Close articles-container
+		sb.WriteString("</div>\n") // Close newspaper-content
 	}
 
 	// Close HTML

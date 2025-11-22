@@ -3,8 +3,8 @@ module pdf-maker
 go 1.22.0
 
 require (
-    github.com/PuerkitoBio/goquery v1.8.1
-    golang.org/x/sync v0.6.0
+	github.com/PuerkitoBio/goquery v1.8.1
+	golang.org/x/sync v0.6.0
 )
 
 require (

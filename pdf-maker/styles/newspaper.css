@@ -1,0 +1,296 @@
+/* Newspaper Style - 3 Column Layout */
+@page {
+    size: A4 landscape;
+    margin: 0.5in;
+}
+
+body {
+    font-family: "Times New Roman", "Liberation Serif", serif;
+    font-size: 10pt;
+    line-height: 1.4;
+    margin: 0;
+    padding: 0;
+    text-align: justify;
+    hyphens: auto;
+    -webkit-hyphens: auto;
+}
+
+/* PDF Header - full width at top */
+.pdf-header {
+    text-align: center;
+    border-bottom: 3px solid #000;
+    margin-bottom: 20px;
+    padding-bottom: 15px;
+    width: 100%;
+}
+
+.pdf-header h1 {
+    font-family: "Old English Text MT", "UnifrakturCook", serif;
+    font-size: 42pt;
+    font-weight: bold;
+    margin: 0 0 10px 0;
+    letter-spacing: 1px;
+}
+
+.pdf-header .date {
+    font-size: 11pt;
+    margin: 5px 0 0 0;
+    color: #333;
+    font-weight: normal;
+}
+
+/* Table of Contents - float left */
+.toc {
+    border: 2px solid #000;
+    padding: 15px;
+    background-color: #f9f9f9;
+    width: 200px;
+    float: left;
+    margin-right: 20px;
+    margin-bottom: 20px;
+    box-sizing: border-box;
+}
+
+.toc h2 {
+    font-size: 12pt;
+    font-weight: bold;
+    margin: 0 0 10px 0;
+    text-align: center;
+    border-bottom: 2px solid #000;
+    padding-bottom: 5px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.toc ul {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    font-size: 8.5pt;
+    line-height: 1.3;
+}
+
+.toc li {
+    margin-bottom: 8px;
+    padding-bottom: 6px;
+    border-bottom: 1px solid #ddd;
+}
+
+.toc li:last-child {
+    border-bottom: none;
+    margin-bottom: 0;
+}
+
+.toc-title {
+    font-weight: bold;
+    display: block;
+    margin-bottom: 2px;
+    line-height: 1.2;
+}
+
+.toc-author {
+    font-style: italic;
+    color: #666;
+    font-size: 7.5pt;
+    display: block;
+}
+
+.toc-publication {
+    color: #888;
+    font-size: 7.5pt;
+    display: block;
+}
+
+.toc a {
+    text-decoration: none;
+    color: inherit;
+}
+
+/* Don't use grid or flex - wkhtmltopdf doesn't support them well */
+.newspaper-content {
+    width: 100%;
+    overflow: hidden;
+    /* This container holds both TOC and articles */
+}
+
+/* Articles container - 3 columns using wkhtmltopdf-compatible approach */
+/* See: https://github.com/wkhtmltopdf/wkhtmltopdf/issues/1872#issuecomment-50742814 */
+.articles-container {
+    /* WebKit columns with dummy values (required by wkhtmltopdf quirk) */
+    -webkit-columns: 0 0;
+    /* Column count via width: 50% = 2 cols, 33.33% = 3 cols, 25% = 4 cols */
+    width: 33.33%;
+    /* Gap and rule do work with -webkit prefix */
+    -webkit-column-gap: 20px;
+    -webkit-column-rule: 1px solid #ccc;
+
+    /* Standard CSS columns as fallback for modern browsers */
+    columns: 3;
+    column-count: 3;
+    column-gap: 20px;
+    column-rule: 1px solid #ccc;
+
+    text-align: justify;
+    /* Content will flow around the floated TOC */
+}
+
+/* Individual article styling */
+.article {
+    -webkit-column-break-inside: avoid;
+    break-inside: avoid-column;
+    page-break-inside: avoid;
+    margin-bottom: 15px;
+}
+
+.article-header {
+    margin-bottom: 10px;
+}
+
+.article-title {
+    font-size: 14pt;
+    font-weight: bold;
+    line-height: 1.2;
+    margin: 0 0 5px 0;
+    text-align: left;
+    border-bottom: 2px solid #000;
+    padding-bottom: 3px;
+}
+
+.article-subtitle {
+    font-size: 11pt;
+    font-style: italic;
+    margin: 5px 0;
+    color: #555;
+}
+
+.article-meta {
+    font-size: 9pt;
+    font-style: italic;
+    color: #666;
+    margin: 5px 0 10px 0;
+}
+
+.article-content {
+    text-align: justify;
+    hyphens: auto;
+    -webkit-hyphens: auto;
+}
+
+.article-content p {
+    margin-bottom: 6px;
+    text-indent: 1em;
+    orphans: 2;
+    widows: 2;
+}
+
+/* First paragraph styling with drop cap */
+.article-content p:first-of-type {
+    text-indent: 0;
+}
+
+.article-content p:first-of-type::first-letter {
+    float: left;
+    font-size: 3.5em;
+    line-height: 0.9;
+    font-weight: bold;
+    margin: 0.05em 0.1em 0 0;
+}
+
+/* Headings within content */
+h2,
+h3 {
+    font-size: 11pt;
+    font-weight: bold;
+    margin: 10px 0 5px 0;
+    text-align: left;
+    -webkit-column-break-after: avoid;
+    break-after: avoid-column;
+}
+
+/* Images */
+img {
+    width: 100%;
+    max-width: 100%;
+    height: auto;
+    display: block;
+    margin: 10px 0;
+    -webkit-column-break-inside: avoid;
+    break-inside: avoid-column;
+    page-break-inside: avoid;
+}
+
+/* Image container styling - ensures images fit within column width */
+.captioned-image-container,
+figure {
+    width: 100%;
+    margin: 12px 0;
+    -webkit-column-break-inside: avoid;
+    break-inside: avoid-column;
+    page-break-inside: avoid;
+    box-sizing: border-box;
+}
+
+.captioned-image-container img,
+figure img {
+    width: 100%;
+    height: auto;
+    display: block;
+    box-sizing: border-box;
+}
+
+/* Image wrapper elements */
+.image2-inset,
+picture {
+    width: 100%;
+    display: block;
+    box-sizing: border-box;
+}
+
+.image2-inset img,
+picture img {
+    width: 100%;
+    height: auto;
+    box-sizing: border-box;
+}
+
+/* Lists */
+.article-content ul,
+.article-content ol {
+    margin: 6px 0;
+    padding-left: 1.2em;
+}
+
+.article-content li {
+    margin-bottom: 3px;
+    padding-left: 0;
+}
+
+.article-content li p {
+    text-indent: 0;
+    margin-bottom: 3px;
+}
+
+/* Blockquotes */
+.article-content blockquote {
+    margin: 8px 0;
+    padding: 8px 0 8px 12px;
+    border-left: 3px solid #333;
+    font-style: italic;
+    font-size: 9pt;
+    -webkit-column-break-inside: avoid;
+    break-inside: avoid-column;
+}
+
+.article-content blockquote p {
+    text-indent: 0;
+    margin-bottom: 4px;
+}
+
+/* Footnotes */
+.footnote {
+    font-size: 8pt;
+    margin-top: 5px;
+    color: #666;
+}
+
+/* Remove old newspaper-toc styles since we're using .toc now */

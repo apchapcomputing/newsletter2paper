@@ -19,6 +19,7 @@ func main() {
 	articlesJSON := flag.String("articles-json", "", "Path to JSON file containing article data (alternative to --urls)")
 	output := flag.String("output", "", "Output PDF path (default: newspapers/articles_TIMESTAMP.pdf)")
 	title := flag.String("title", "Your Articles", "PDF header title")
+	layoutType := flag.String("layout-type", "newspaper", "PDF layout type: 'newspaper' or 'essay' (used with --urls, ignored with --articles-json)")
 	keepHTML := flag.Bool("keep-html", false, "Keep intermediate HTML file for debugging")
 	cleanupImages := flag.Bool("cleanup-images", true, "Delete downloaded images after PDF generation")
 	maxPar := flag.Int("max-par", 4, "Maximum parallel fetches")
@@ -42,7 +43,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("Failed to create image downloader: %v", err)
 	}
-	
+
 	// Cleanup images after PDF generation if requested
 	if *cleanupImages {
 		defer func() {
@@ -55,19 +56,27 @@ func main() {
 
 	var articles []*art.Article
 	var errs []error
+	var layout string // The actual layout type to use
 
 	// Process based on input method
 	if *articlesJSON != "" {
-		// Load articles from JSON file
-		articles, errs = processArticlesFromJSON(ctx, *articlesJSON, imgDownloader, *maxPar)
+		// Load articles from JSON file - layout type comes from JSON
+		articles, errs, layout = processArticlesFromJSON(ctx, *articlesJSON, imgDownloader, *maxPar)
 	} else {
-		// Original URL-based processing
+		// Original URL-based processing - layout type comes from flag
 		urlList := parseURLs(*urls)
 		if len(urlList) == 0 {
 			log.Fatal("no valid URLs provided")
 		}
+
+		// Validate layout type flag
+		if *layoutType != "newspaper" && *layoutType != "essay" {
+			log.Fatalf("Invalid layout type '%s'. Must be 'newspaper' or 'essay'", *layoutType)
+		}
+
 		fmt.Printf("Fetching %d articles (max parallel=%d)...\n", len(urlList), *maxPar)
 		articles, errs = fetch.FetchArticlesConcurrentWithImages(ctx, urlList, *maxPar, imgDownloader)
+		layout = *layoutType // Use the flag value
 	}
 
 	if len(errs) > 0 {
@@ -93,6 +102,7 @@ func main() {
 		OutputPath: *output,
 		Title:      *title,
 		KeepHTML:   *keepHTML,
+		LayoutType: layout,
 	}
 
 	result := pdf.GeneratePDF(ctx, articles, opts)
@@ -128,15 +138,21 @@ func parseURLs(urls string) []string {
 }
 
 // processArticlesFromJSON loads articles from JSON and fetches content if needed
-func processArticlesFromJSON(ctx context.Context, jsonPath string, imgDownloader *media.Downloader, maxPar int) ([]*art.Article, []error) {
+func processArticlesFromJSON(ctx context.Context, jsonPath string, imgDownloader *media.Downloader, maxPar int) ([]*art.Article, []error, string) {
 	fmt.Printf("Loading articles from JSON: %s\n", jsonPath)
-	
+
 	issueInput, err := art.LoadArticlesFromJSON(jsonPath)
 	if err != nil {
 		log.Fatalf("Failed to load JSON: %v", err)
 	}
 
 	fmt.Printf("Loaded %d articles from issue: %s\n", len(issueInput.Articles), issueInput.IssueTitle)
+
+	// Get layout type from JSON (default to "newspaper" if not specified)
+	layoutType := issueInput.LayoutType
+	if layoutType == "" {
+		layoutType = "newspaper"
+	}
 
 	articles := make([]*art.Article, 0, len(issueInput.Articles))
 	errs := make([]error, 0)
@@ -170,7 +186,7 @@ func processArticlesFromJSON(ctx context.Context, jsonPath string, imgDownloader
 	if len(articlesToFetch) > 0 {
 		fmt.Printf("\nFetching %d articles (max parallel=%d)...\n", len(articlesToFetch), maxPar)
 		fetchedArticles, fetchErrs := fetch.FetchArticlesConcurrentWithImages(ctx, articlesToFetch, maxPar, imgDownloader)
-		
+
 		// Map fetched articles back to their positions
 		fetchedIndex := 0
 		for i, idx := range articleIndices {
@@ -178,7 +194,7 @@ func processArticlesFromJSON(ctx context.Context, jsonPath string, imgDownloader
 				// Merge fetched content with existing metadata
 				original := articles[idx]
 				fetched := fetchedArticles[fetchedIndex]
-				
+
 				// Keep original metadata if it was provided, use fetched as fallback
 				if original.Title == "" {
 					original.Title = fetched.Title
@@ -190,7 +206,7 @@ func processArticlesFromJSON(ctx context.Context, jsonPath string, imgDownloader
 					original.Publication = fetched.Publication
 				}
 				original.Content = fetched.Content
-				
+
 				articles[idx] = original
 				fetchedIndex++
 			} else {
@@ -200,7 +216,7 @@ func processArticlesFromJSON(ctx context.Context, jsonPath string, imgDownloader
 				}
 			}
 		}
-		
+
 		// Add any remaining fetch errors
 		if len(fetchErrs) > len(articleIndices) {
 			errs = append(errs, fetchErrs[len(articleIndices):]...)
@@ -215,5 +231,5 @@ func processArticlesFromJSON(ctx context.Context, jsonPath string, imgDownloader
 		}
 	}
 
-	return validArticles, errs
+	return validArticles, errs, layoutType
 }

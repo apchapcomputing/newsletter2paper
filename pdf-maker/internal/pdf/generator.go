@@ -18,6 +18,7 @@ type GenerateOptions struct {
 	TempHTMLPath    string        // Optional: path to save intermediate HTML (for debugging)
 	KeepHTML        bool          // Whether to preserve intermediate HTML file
 	Title           string        // PDF metadata title (default: "Your Articles")
+	LayoutType      string        // Layout type: "essay" or "newspaper" (default)
 	PageSize        string        // e.g., "Letter", "A4" (default: Letter)
 	MarginTop       string        // e.g., "10mm"
 	MarginBottom    string        // e.g., "10mm"
@@ -83,7 +84,7 @@ func GeneratePDF(ctx context.Context, articles []*art.Article, opts GenerateOpti
 	}
 
 	// Generate combined HTML
-	html, err := AssembleHTML(articles, opts.Title)
+	html, err := AssembleHTML(articles, opts.Title, opts.LayoutType)
 	if err != nil {
 		result.Error = fmt.Errorf("assemble html: %w", err)
 		return result
@@ -174,12 +175,12 @@ func GeneratePDF(ctx context.Context, articles []*art.Article, opts GenerateOpti
 func fixImagePaths(htmlContent string, absImagesDir string) string {
 	// Simple string replacement approach - replace relative image paths with absolute file:// URLs
 	// This handles the common case where images are in "images/filename.ext"
-	
+
 	// Replace src="images/ with src="file:///absolute/path/to/images/
 	htmlContent = strings.ReplaceAll(htmlContent, `src="images/`, fmt.Sprintf(`src="file://%s/`, absImagesDir))
-	
+
 	// Also handle single quotes
 	htmlContent = strings.ReplaceAll(htmlContent, `src='images/`, fmt.Sprintf(`src='file://%s/`, absImagesDir))
-	
+
 	return htmlContent
 }
