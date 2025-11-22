@@ -33,41 +33,73 @@ export default function SearchModal({
     const { selectedPublications, addPublication, removePublication } = useSelectedPublications();
 
     const handlePublicationToggle = async (searchResult) => {
-        // if result is type user, make a secondary search with the publication's name to get the publication domain
-        console.log('res', searchResult)
+        try {
+            // if result is type user, make a secondary search with the publication's name to get the publication domain
+            console.log('res', searchResult)
 
-        let url;
-        if (searchResult.type === 'publication') {
-            url = searchResult.domain;
-        } else if (searchResult.type === 'user') {
-            const results = await searchSubstack(searchResult.name);
-            if (results.length > 0) {
-                url = results[0].custom_domain || results[0].domain;
+            let url;
+            if (searchResult.type === 'publication') {
+                url = searchResult.domain;
+            } else if (searchResult.type === 'user') {
+                // For user results, construct the URL from their handle
+                // Substack user publications are typically at: username.substack.com
+                if (searchResult.handle) {
+                    url = `https://${searchResult.handle}.substack.com`;
+                } else {
+                    // Fallback: search for the publication to get the domain
+                    const results = await searchSubstack(searchResult.name);
+                    const publicationResult = results.find(r => r.type === 'publication');
+                    if (publicationResult) {
+                        url = publicationResult.domain;
+                    }
+                }
             }
-        }
-        // add 'https://' prefix if missing
-        if (url && !url.startsWith('http')) {
-            url = `https://${url}`;
-        }
-        console.log(url);
-        const feedUrl = await getRssFeedUrl(url);
 
-        // Convert search result to publication format
-        const publication = {
-            id: searchResult.handle || searchResult.subdomain, // Use handle or subdomain as unique ID
-            title: searchResult.name,
-            url: url,
-            publisher: searchResult.publisher || searchResult.handle || 'Unknown Author',
-            feed_url: feedUrl,
-            handle: searchResult.handle,
-            subscribers: searchResult.subscribers
-        };
+            // Ensure URL has https:// prefix
+            if (url && !url.startsWith('http')) {
+                url = `https://${url}`;
+            }
 
-        const isAlreadySelected = selectedPublications.some(p => p.id === publication.id);
-        if (isAlreadySelected) {
-            removePublication(publication.id);
-        } else {
-            addPublication(publication);
+            if (!url) {
+                console.error('Could not determine URL for publication:', searchResult);
+                alert('Unable to determine the publication URL. Please try searching for the publication directly.');
+                return;
+            }
+
+            console.log('Publication URL:', url);
+
+            // Get RSS feed URL with error handling
+            let feedUrl;
+            try {
+                feedUrl = await getRssFeedUrl(url);
+            } catch (error) {
+                console.error('Error getting RSS feed URL:', error);
+                // Fallback to default Substack RSS feed pattern
+                feedUrl = `${url}/feed`;
+                console.log('Using default feed URL:', feedUrl);
+            }
+
+            // Convert search result to publication format
+            const publication = {
+                id: searchResult.handle || searchResult.subdomain || `pub-${Date.now()}`, // Use handle/subdomain as unique ID
+                name: searchResult.name,
+                title: searchResult.name,
+                url: url,
+                publisher: searchResult.publisher || searchResult.handle || 'Unknown Author',
+                feed_url: feedUrl,
+                handle: searchResult.handle || searchResult.subdomain,
+                subscribers: searchResult.subscribers
+            };
+
+            const isAlreadySelected = selectedPublications.some(p => p.id === publication.id);
+            if (isAlreadySelected) {
+                removePublication(publication.id);
+            } else {
+                addPublication(publication);
+            }
+        } catch (error) {
+            console.error('Error toggling publication:', error);
+            alert(`Failed to add publication: ${error.message}`);
         }
     };
 

@@ -25,10 +25,11 @@ export const searchSubstack = async (query) => {
             if (result.type === 'user') {
                 const u = result.user;
                 return {
-                    name: u?.publication_name || 'Unknown Publication',
+                    name: u?.publication_name || u?.name || 'Unknown Publication',
                     publisher: u?.name || 'Unknown Publisher',
                     type: 'user',
                     handle: u?.handle,
+                    subdomain: u?.handle, // For constructing URLs
                     subscribers: u?.subscriber_count_string
                 };
             } else if (result.type === 'publication') {
