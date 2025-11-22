@@ -202,8 +202,8 @@ export default function Home() {
     setPdfUrl(null);
 
     try {
-      // Use authenticated API call to Python backend with query parameters
-      const data = await apiPost(`/pdf/generate/${currentIssueId}?layout_type=${outputMode}`, {});
+      // Use authenticated API call to Python backend
+      const data = await apiPost(`/pdf/generate/${currentIssueId}`, {});
 
       if (data.success && data.pdf_url) {
         setPdfUrl(data.pdf_url);

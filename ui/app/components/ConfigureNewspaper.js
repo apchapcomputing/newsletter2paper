@@ -78,6 +78,7 @@ export default function ConfigureNewspaper() {
                         <FormControl fullWidth>
                             <Select
                                 value="weekly"
+                                disabled
                                 displayEmpty
                                 sx={{
                                     backgroundColor: '#f5f5f5'
@@ -86,9 +87,9 @@ export default function ConfigureNewspaper() {
                                 <MenuItem value="" disabled>
                                     Select frequency
                                 </MenuItem>
-                                <MenuItem value="daily">Daily</MenuItem>
-                                <MenuItem value="weekly">Weekly</MenuItem>
-                                <MenuItem value="monthly">Monthly</MenuItem>
+                                <MenuItem value="daily">Last 24 Hours</MenuItem>
+                                <MenuItem value="weekly">Last Week</MenuItem>
+                                <MenuItem value="monthly">Last Month</MenuItem>
                             </Select>
                         </FormControl>
                     </Box>
@@ -101,6 +102,7 @@ export default function ConfigureNewspaper() {
                         <FormControl fullWidth>
                             <Select
                                 value={outputMode}
+                                disabled
                                 onChange={(e) => updateOutputMode(e.target.value)}
                                 sx={{
                                     backgroundColor: '#f5f5f5'

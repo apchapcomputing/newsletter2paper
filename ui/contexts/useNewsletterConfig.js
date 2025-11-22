@@ -16,7 +16,7 @@ export const useNewsletterConfig = () => {
 
 export const NewsletterConfigProvider = ({ children }) => {
     const [newspaperTitle, setNewspaperTitle] = useState('');
-    const [outputMode, setOutputMode] = useState('newspaper');
+    const [outputMode, setOutputMode] = useState('essay');
     const [currentIssueId, setCurrentIssueId] = useState(null);
     const [isLoaded, setIsLoaded] = useState(false);
     const [userIssues, setUserIssues] = useState([]);
@@ -138,7 +138,7 @@ export const NewsletterConfigProvider = ({ children }) => {
 
     const resetConfig = () => {
         setNewspaperTitle('');
-        setOutputMode('newspaper');
+        setOutputMode('essay');
         setCurrentIssueId(null);
 
         // Clear localStorage

@@ -10,9 +10,11 @@ export async function POST(request, { params }) {
         // Extract query parameters from the frontend request
         const searchParams = new URLSearchParams();
 
-        // Get layout_type from query params, default to 'newspaper'
-        const layoutType = url.searchParams.get('layout_type') || 'newspaper';
-        searchParams.append('layout_type', layoutType);
+        // Only pass layout_type if explicitly provided (to override DB value)
+        const layoutType = url.searchParams.get('layout_type');
+        if (layoutType) {
+            searchParams.append('layout_type', layoutType);
+        }
 
         // Add other optional parameters with defaults
         searchParams.append('days_back', url.searchParams.get('days_back') || '7');
