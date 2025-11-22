@@ -211,6 +211,27 @@ export const NewsletterConfigProvider = ({ children }) => {
                     }
                 } else {
                     savedIssue = result.data;
+
+                    // Ensure user-issue association exists for updated issue
+                    const { data: existingAssociation } = await supabase
+                        .from('user_issues')
+                        .select('id')
+                        .eq('user_id', user.id)
+                        .eq('issue_id', savedIssue.id)
+                        .single();
+
+                    if (!existingAssociation) {
+                        const userIssueResult = await supabase
+                            .from('user_issues')
+                            .insert({
+                                user_id: user.id,
+                                issue_id: savedIssue.id
+                            });
+
+                        if (userIssueResult.error) {
+                            console.error('Error creating user-issue association:', userIssueResult.error);
+                        }
+                    }
                 }
             } else {
                 // Create new issue
@@ -364,7 +385,7 @@ export const NewsletterConfigProvider = ({ children }) => {
 
             const issue = userIssue.issues;
             setNewspaperTitle(issue.title || '');
-            setOutputMode(issue.format || 'newspaper');
+            setOutputMode(issue.format || 'essay');
             setCurrentIssueId(issue.id);
 
             return issue;

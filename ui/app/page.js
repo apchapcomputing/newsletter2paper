@@ -252,7 +252,31 @@ export default function Home() {
   const handleSelectIssue = async (issue) => {
     handleSelectMenuClose();
     try {
+      // Load the issue configuration
       await loadIssue(issue.id);
+
+      // Load the publications associated with this issue
+      const pubResponse = await fetch(`/api/issues/${issue.id}/publications`);
+      if (pubResponse.ok) {
+        const pubData = await pubResponse.json();
+
+        // Clear existing publications and add the loaded ones
+        clearAllPublications();
+
+        if (pubData.publications && pubData.publications.length > 0) {
+          for (const pub of pubData.publications) {
+            addPublication({
+              id: pub.id,
+              name: pub.title,
+              title: pub.title,
+              url: pub.url,
+              publisher: pub.publisher,
+              feed_url: pub.rss_feed_url,
+              handle: pub.publisher
+            });
+          }
+        }
+      }
     } catch (error) {
       console.error('Error loading issue:', error);
       alert(`Failed to load issue: ${error.message}`);
@@ -487,7 +511,7 @@ export default function Home() {
                     {issue.title || 'Untitled Issue'}
                   </Typography>
                   <Typography variant="body2" color="text.secondary">
-                    {new Date(issue.updated_at || issue.created_at).toLocaleDateString()}
+                    {issue.frequency} • {issue.format} • updated {new Date(issue.updated_at || issue.created_at).toLocaleDateString()}
                   </Typography>
                 </Box>
               </MenuItem>
@@ -549,6 +573,7 @@ export default function Home() {
         }}>
           <Typography
             variant="body2"
+            onClick={() => window.open('https://docs.google.com/forms/d/e/1FAIpQLScqMWrxF2SikunyJhR2VXkw2xfYAb950DT2bu0J8KtaTkcY7g/viewform?usp=sharing&ouid=112836351698515957727', '_blank')}
             sx={{
               textDecoration: 'underline',
               cursor: 'pointer',
