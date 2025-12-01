@@ -445,15 +445,16 @@ export default function Home() {
             sx={{
               width: '100%',
               borderRadius: 0,
-              backgroundColor: 'var(--background)',
-              border: '1px solid var(--secondary)',
+              backgroundColor: '#ECECEC',
+              border: '1px solid #c5541b',
               borderWidth: 2,
-              color: 'var(--black)',
+              color: '#291D18',
               '& .MuiAlert-icon': {
-                color: 'primary.main'
+                color: '#A44200'
               },
               '& .MuiAlert-message': {
-                fontSize: '0.9rem'
+                fontSize: '0.9rem',
+                color: '#291D18'
               }
             }}
           >
@@ -463,11 +464,11 @@ export default function Home() {
               onClick={() => setIsAuthModalOpen(true)}
               sx={{
                 textDecoration: 'none',
-                color: 'primary.main',
+                color: '#A44200',
                 cursor: 'pointer',
                 fontWeight: 600,
                 '&:hover': {
-                  color: 'primary.dark'
+                  color: '#8B3500'
                 }
               }}
             >
