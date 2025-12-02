@@ -58,6 +58,36 @@ export default function Home() {
   const [pdfUrl, setPdfUrl] = useState(null);
   const [selectAnchorEl, setSelectAnchorEl] = useState(null);
   const isSelectMenuOpen = Boolean(selectAnchorEl);
+  const [autoSaveTimer, setAutoSaveTimer] = useState(null);
+
+  // Auto-save effect - triggers when title, outputMode, or publications change
+  useEffect(() => {
+    // Don't auto-save until both contexts are loaded
+    if (!isLoaded || !configLoaded) return;
+
+    // Don't auto-save if there's no content to save
+    if (!newspaperTitle && selectedPublications.length === 0) return;
+
+    // Clear any existing timer
+    if (autoSaveTimer) {
+      clearTimeout(autoSaveTimer);
+    }
+
+    // Set a new timer to auto-save after 1 second of inactivity
+    const timer = setTimeout(() => {
+      console.log('Auto-saving issue...');
+      handleSaveIssue();
+    }, 1000);
+
+    setAutoSaveTimer(timer);
+
+    // Cleanup function
+    return () => {
+      if (timer) {
+        clearTimeout(timer);
+      }
+    };
+  }, [newspaperTitle, outputMode, selectedPublications, isLoaded, configLoaded]);
 
   useEffect(() => {
     const fetchPublications = async () => {
@@ -192,7 +222,7 @@ export default function Home() {
 
   const handleGeneratePdf = async () => {
     if (!currentIssueId) {
-      alert('Please save your issue first before generating a PDF');
+      alert('Your newspaper is being saved. Please wait a moment and try again.');
       return;
     }
 
@@ -355,34 +385,28 @@ export default function Home() {
 
       <main className="flex flex-col gap-[32px] items-center sm:items-start max-w-4xl w-full mx-auto px-8">
 
-        {/* Save, Select, Reset options */}
-        <Box sx={{ display: 'flex', width: '100%', justifyContent: 'space-between', gap: 3 }}>
-          <Button
-            variant="outlined"
-            onClick={handleSaveIssue}
-            disabled={isSaving}
+        {/* Auto-save Status Indicator */}
+        <Box sx={{
+          width: '100%',
+          display: 'flex',
+          justifyContent: 'center',
+          mb: -2
+        }}>
+          <Typography
+            variant="body2"
             sx={{
-              textTransform: 'none',
-              fontWeight: 500,
-              fontSize: '1rem',
-              color: 'var(--black)',
-              borderColor: 'var(--black)',
-              borderWidth: '2px',
-              width: '100%',
-              px: 4,
-              py: 1.5,
-              '&:hover': {
-                borderColor: 'var(--black)',
-                backgroundColor: 'rgba(0, 0, 0, 0.04)'
-              },
-              '&:disabled': {
-                color: '#bdbdbd',
-                borderColor: '#e0e0e0'
-              }
+              color: isSaving ? '#A44200' : '#666',
+              fontStyle: 'italic',
+              fontSize: '0.85rem',
+              opacity: 0.8
             }}
           >
-            {isSaving ? 'SAVING...' : 'SAVE'}
-          </Button>
+            {isSaving ? '💾 Saving changes...' : ''}
+          </Typography>
+        </Box>
+
+        {/* Select and Reset options */}
+        <Box sx={{ display: 'flex', width: '100%', justifyContent: 'space-between', gap: 3 }}>
           <Button
             variant="outlined"
             onClick={handleSelectMenuOpen}
@@ -541,7 +565,6 @@ export default function Home() {
           isSaving={isSaving}
           isGeneratingPdf={isGeneratingPdf}
           pdfUrl={pdfUrl}
-          onSaveIssue={handleSaveIssue}
           onGeneratePdf={handleGeneratePdf}
         />
       </main>

@@ -1,10 +1,13 @@
 'use client'
 
+import { useState } from 'react'
 import { Box, Typography, Button } from '@mui/material'
 import { useSelectedPublications } from '../../contexts/useSelectedPublications'
+import AddUrlModal from './AddUrlModal'
 
 export default function AddPublications({ onOpenSearch }) {
     const { selectedPublications, removePublication } = useSelectedPublications()
+    const [isUrlModalOpen, setIsUrlModalOpen] = useState(false)
 
     return (
         <Box sx={{
@@ -60,10 +63,10 @@ export default function AddPublications({ onOpenSearch }) {
                             textTransform: 'none',
                             fontSize: '1rem',
                             backgroundColor: '#f5f5f5',
-                            color: 'var(--black)',
+                            color: '#291D18',
                             border: '1px solid #ccc',
                             '&:hover': {
-                                borderColor: 'var(--black)'
+                                borderColor: '#291D18'
                             }
                         }}
                     >
@@ -71,6 +74,7 @@ export default function AddPublications({ onOpenSearch }) {
                     </Button>
                     <Button
                         variant="contained"
+                        onClick={() => setIsUrlModalOpen(true)}
                         sx={{
                             flex: 1,
                             py: 1.5,
@@ -78,10 +82,10 @@ export default function AddPublications({ onOpenSearch }) {
                             textTransform: 'none',
                             fontSize: '1rem',
                             backgroundColor: '#f5f5f5',
-                            color: 'var(--black)',
+                            color: '#291D18',
                             border: '1px solid #ccc',
                             '&:hover': {
-                                borderColor: 'var(--black)'
+                                borderColor: '#291D18'
                             }
                         }}
                     >
@@ -116,7 +120,7 @@ export default function AddPublications({ onOpenSearch }) {
                                         {publication.name || publication.title}
                                     </Typography>
                                     <Typography variant="body2" color="text.secondary">
-                                        {publication.subscribers ? `${publication.subscribers} • ${publication.handle || ''}` : publication.handle || publication.url}
+                                        {publication.publisher || publication.handle || publication.url}
                                     </Typography>
                                 </Box>
                                 <Button
@@ -141,6 +145,12 @@ export default function AddPublications({ onOpenSearch }) {
                     </Typography>
                 )}
             </Box>
+
+            {/* Add URL Modal */}
+            <AddUrlModal
+                open={isUrlModalOpen}
+                onClose={() => setIsUrlModalOpen(false)}
+            />
         </Box>
     )
 }

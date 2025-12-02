@@ -88,7 +88,6 @@ export default function SearchModal({
                 publisher: searchResult.publisher || searchResult.handle || 'Unknown Author',
                 feed_url: feedUrl,
                 handle: searchResult.handle || searchResult.subdomain,
-                subscribers: searchResult.subscribers
             };
 
             const isAlreadySelected = selectedPublications.some(p => p.id === publication.id);

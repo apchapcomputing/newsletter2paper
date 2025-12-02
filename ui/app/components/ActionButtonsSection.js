@@ -8,7 +8,6 @@ export default function ActionButtonsSection({
     isSaving,
     isGeneratingPdf,
     pdfUrl,
-    onSaveIssue,
     onGeneratePdf
 }) {
     const { currentIssueId, newspaperTitle } = useNewsletterConfig()
@@ -16,174 +15,76 @@ export default function ActionButtonsSection({
 
     return (
         <>
-            {/* Save and Print buttons */}
+            {/* Section with Print button and PDF access */}
             <Box sx={{
-                display: 'flex',
-                gap: 3,
-                justifyContent: 'space-between',
-                flexDirection: { xs: 'column', sm: 'row' },
                 width: '100%',
+                border: '2px solid black',
+                p: 3,
+                mb: 2
             }}>
-                <Button
-                    variant="outlined"
-                    onClick={onSaveIssue}
-                    disabled={isSaving}
+                <Typography
+                    variant="h4"
+                    component="h2"
                     sx={{
-                        flex: 1,
-                        py: 2,
-                        px: 4,
-                        fontWeight: 500,
-                        textTransform: 'none',
-                        fontSize: '1rem',
-                        color: 'var(--black)',
-                        borderColor: 'var(--black)',
-                        borderWidth: 2,
-                        width: '100%',
-                        '&:hover': {
-                            borderColor: 'var(--black)',
-                            backgroundColor: 'rgba(0, 0, 0, 0.04)'
-                        },
-                        '&:disabled': {
-                            backgroundColor: '#d0d0d0',
-                            color: '#666'
-                        }
+                        textAlign: 'center',
+                        fontWeight: 600,
+                        mb: 1,
+                        fontSize: { xs: '1.5rem', sm: '2rem' }
                     }}
                 >
-                    {isSaving ? 'SAVING...' : 'SAVE NEWSPAPER'}
-                </Button>
-
-                <Button
-                    variant="outlined"
-                    onClick={onGeneratePdf}
-                    disabled={isGeneratingPdf || !currentIssueId}
+                    {pdfUrl ? 'Access Your Newspaper Issue' : 'Print Your Newspaper Issue'}
+                </Typography>
+                <Typography
+                    variant="body2"
                     sx={{
-                        flex: 1,
-                        py: 2,
-                        px: 4,
-                        fontWeight: 500,
-                        textTransform: 'none',
-                        fontSize: '1rem',
-                        color: 'var(--black)',
-                        borderColor: 'var(--black)',
-                        borderWidth: 2,
-                        width: '100%',
-                        '&:hover': {
-                            borderColor: 'var(--black)',
-                            backgroundColor: 'rgba(0, 0, 0, 0.04)'
-                        },
-                        '&:disabled': {
-                            backgroundColor: '#d0d0d0',
-                            color: '#666'
-                        }
+                        textAlign: 'center',
+                        fontStyle: 'italic',
+                        color: 'text.secondary',
+                        mb: 2
                     }}
                 >
-                    {isGeneratingPdf ? 'GENERATING...' : 'PRINT NEWSPAPER'}
-                </Button>
-            </Box>
+                    {pdfUrl ? 'Open or download your newspaper issue as a PDF' : 'Generate your newspaper as a PDF'}
+                </Typography>
 
-            {/* Final section with PDF access */}
-            {(pdfUrl || currentIssueId) && (
                 <Box sx={{
                     width: '100%',
-                    border: '2px solid black',
-                    p: 3,
-                    mb: 2
-                }}>
-                    <Typography
-                        variant="h4"
-                        component="h2"
+                    height: '2px',
+                    backgroundColor: 'var(--black)',
+                    mb: 3
+                }} />
+
+                <Box sx={{ display: 'flex', gap: 2, width: '100%', justifyContent: 'center' }}>
+                    <Button
+                        variant="outlined"
+                        onClick={onGeneratePdf}
+                        disabled={isGeneratingPdf || !currentIssueId}
                         sx={{
-                            textAlign: 'center',
-                            fontWeight: 600,
-                            mb: 1,
-                            fontSize: { xs: '1.5rem', sm: '2rem' }
+                            flex: 1,
+                            maxWidth: '400px',
+                            py: 2,
+                            px: 4,
+                            fontSize: '1rem',
+                            backgroundColor: '#f5f5f5',
+                            color: '#291D18',
+                            border: '1px solid #ccc',
+                            '&:hover': {
+                                borderColor: '#291D18'
+                            }
                         }}
                     >
-                        Access Your Newspaper Issue
-                    </Typography>
-                    <Typography
-                        variant="body2"
-                        sx={{
-                            textAlign: 'center',
-                            fontStyle: 'italic',
-                            color: 'text.secondary',
-                            mb: 2
-                        }}
-                    >
-                        Open or download your newspaper issue as a PDF
-                    </Typography>
-
-                    <Box sx={{
-                        width: '100%',
-                        height: '2px',
-                        backgroundColor: 'var(--black)',
-                        mb: 3
-                    }} />
-                    <Typography variant="body1" sx={{ mb: 3, fontWeight: 500 }}>
-                        {newspaperTitle.toUpperCase() || 'The Title of Your Newspaper'}
-                    </Typography>
-
-                    <Box sx={{ display: 'flex', gap: 2, width: '100%', justifyContent: 'space-between' }}>
-                        <Button
-                            variant="outlined"
-                            onClick={() => pdfUrl && window.open(pdfUrl, '_blank')}
-                            disabled={!pdfUrl}
-                            sx={{
-                                textTransform: 'none',
-                                fontWeight: 500,
-                                color: 'var(--black)',
-                                borderColor: 'var(--black)',
-                                borderWidth: 1,
-                                px: 4,
-                                py: 1.5,
-                                width: '100%',
-                                '&:hover': {
-                                    borderColor: 'var(--black)',
-                                    backgroundColor: 'rgba(0, 0, 0, 0.04)'
-                                },
-                                '&:disabled': {
-                                    color: '#bdbdbd',
-                                    borderColor: '#e0e0e0'
-                                }
-                            }}
-                        >
-                            OPEN URL
-                        </Button>
-                        <Button
-                            variant="outlined"
-                            onClick={() => pdfUrl && window.open(pdfUrl, '_blank')}
-                            disabled={!pdfUrl}
-                            sx={{
-                                textTransform: 'none',
-                                fontWeight: 500,
-                                color: 'var(--black)',
-                                borderColor: 'var(--black)',
-                                borderWidth: 1,
-                                px: 4,
-                                py: 1.5,
-                                width: '100%',
-                                '&:hover': {
-                                    borderColor: 'var(--black)',
-                                    backgroundColor: 'rgba(0, 0, 0, 0.04)'
-                                },
-                                '&:disabled': {
-                                    color: '#bdbdbd',
-                                    borderColor: '#e0e0e0'
-                                }
-                            }}
-                        >
-                            DOWNLOAD FILE
-                        </Button>
-                    </Box>
+                        {isGeneratingPdf ? `GENERATING ${newspaperTitle.toUpperCase()}...` : `PRINT ${newspaperTitle.toUpperCase()}`}
+                    </Button>
                 </Box>
-            )}
+            </Box >
 
             {/* Status Messages */}
-            {!currentIssueId && selectedPublications.length > 0 && (
-                <Typography variant="body2" color="text.secondary" sx={{ textAlign: 'center', mt: 2 }}>
-                    💡 Save your newspaper first, then print your PDF
-                </Typography>
-            )}
+            {
+                !currentIssueId && selectedPublications.length > 0 && (
+                    <Typography variant="body2" color="text.secondary" sx={{ textAlign: 'center', mt: 2 }}>
+                        💡 Your newspaper will auto-save, then you can print it
+                    </Typography>
+                )
+            }
         </>
     )
 }
