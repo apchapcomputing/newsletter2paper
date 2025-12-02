@@ -150,7 +150,8 @@ body {
     margin-top: 0;
 }
 
-.article-content p:first-of-type::first-letter {
+/* Only apply drop cap to first paragraph if it's actually the first child (not after a list/heading) */
+.article-content>p:first-child::first-letter {
     font-size: 3.5em;
     line-height: 0.9;
     float: left;
@@ -240,6 +241,15 @@ body {
 
 .article-content li {
     margin-bottom: 6px;
+}
+
+/* Prevent drop cap styling on list items */
+.article-content li::first-letter {
+    font-size: inherit;
+    line-height: inherit;
+    float: none;
+    margin: 0;
+    font-weight: inherit;
 }
 
 /* Blockquotes */
