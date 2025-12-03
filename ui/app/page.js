@@ -375,7 +375,10 @@ export default function Home() {
             letterSpacing: '0.1em',
             fontSize: { xs: '0.75rem', sm: '0.875rem' },
             color: 'text.secondary',
-            opacity: 0.8
+            opacity: 0.8,
+            px: { xs: 3, sm: 0 },
+            textAlign: 'center',
+            lineHeight: 1.6
           }}
         >
           EST. 2025 • SUBSTACK RSS TO NEWSPAPER PDF • VOLUME 0
@@ -404,6 +407,46 @@ export default function Home() {
             {isSaving ? '💾 Saving changes...' : ''}
           </Typography>
         </Box>
+
+        {/* Authentication Status Alert */}
+        {!user && (
+          <Alert
+            severity="info"
+            sx={{
+              width: '100%',
+              borderRadius: 0,
+              backgroundColor: '#ECECEC',
+              border: '1px solid #c5541b',
+              borderWidth: 2,
+              color: '#291D18',
+              '& .MuiAlert-icon': {
+                color: '#A44200'
+              },
+              '& .MuiAlert-message': {
+                fontSize: '0.9rem',
+                color: '#291D18'
+              }
+            }}
+          >
+            You&apos;re browsing as a guest.{' '}
+            <Link
+              component="button"
+              onClick={() => setIsAuthModalOpen(true)}
+              sx={{
+                textDecoration: 'none',
+                color: '#A44200',
+                cursor: 'pointer',
+                fontWeight: 600,
+                '&:hover': {
+                  color: '#8B3500'
+                }
+              }}
+            >
+              Sign in
+            </Link>
+            {' '}to save your newsletter configurations, access them later, and email your issue PDFs to yourself!
+          </Alert>
+        )}
 
         {/* Select and Reset options */}
         <Box sx={{ display: 'flex', width: '100%', justifyContent: 'space-between', gap: 3 }}>
@@ -461,46 +504,6 @@ export default function Home() {
             RESET
           </Button>
         </Box>
-
-        {/* Authentication Status Alert */}
-        {!user && (
-          <Alert
-            severity="info"
-            sx={{
-              width: '100%',
-              borderRadius: 0,
-              backgroundColor: '#ECECEC',
-              border: '1px solid #c5541b',
-              borderWidth: 2,
-              color: '#291D18',
-              '& .MuiAlert-icon': {
-                color: '#A44200'
-              },
-              '& .MuiAlert-message': {
-                fontSize: '0.9rem',
-                color: '#291D18'
-              }
-            }}
-          >
-            You&apos;re browsing as a guest.{' '}
-            <Link
-              component="button"
-              onClick={() => setIsAuthModalOpen(true)}
-              sx={{
-                textDecoration: 'none',
-                color: '#A44200',
-                cursor: 'pointer',
-                fontWeight: 600,
-                '&:hover': {
-                  color: '#8B3500'
-                }
-              }}
-            >
-              Sign in
-            </Link>
-            {' '}to save your newsletter configurations, access them later, and email your issue PDFs to yourself!
-          </Alert>
-        )}
 
         {/* Select Issue Dropdown Menu */}
         <Menu

@@ -33,7 +33,7 @@ export default function AuthButton() {
                 justifyContent: 'flex-end',
                 alignItems: 'center',
                 py: 2,
-                px: 4,
+                px: { xs: 2, sm: 4 },
                 gap: 2
             }}>
                 {user ? (
@@ -53,13 +53,13 @@ export default function AuthButton() {
                 ) : (
                     <Button
                         variant="outlined"
-                        startIcon={<LoginIcon />}
                         onClick={() => setAuthModalOpen(true)}
                         sx={{
                             textTransform: 'none',
                             fontWeight: 500,
-                            px: 3,
+                            px: { xs: 1.5, sm: 3 },
                             py: 1.25,
+                            minWidth: { xs: 'auto', sm: 'auto' },
                             borderRadius: 2,
                             borderColor: 'transparent',
                             color: 'var(--black)',
@@ -70,7 +70,11 @@ export default function AuthButton() {
                             },
                         }}
                     >
-                        Get Started
+                        <LoginIcon sx={{ display: { xs: 'block', sm: 'none' } }} />
+                        <Box sx={{ display: { xs: 'none', sm: 'flex' }, alignItems: 'center', gap: 1 }}>
+                            <LoginIcon />
+                            Get Started
+                        </Box>
                     </Button>
                 )}
             </Box>
