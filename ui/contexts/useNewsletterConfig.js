@@ -53,7 +53,7 @@ export const NewsletterConfigProvider = ({ children }) => {
     // Migrate guest issue to authenticated user issue
     const migrateGuestIssueToUser = async (issueId, userId) => {
         try {
-            console.log('🔄 Migrating guest issue to authenticated user:', issueId);
+            console.log('🔄 Migrating guest issue to authenticated user:', issueId, 'userId:', userId);
 
             // Check if this is a guest issue
             const { data: issue, error: fetchError } = await supabase
@@ -62,17 +62,31 @@ export const NewsletterConfigProvider = ({ children }) => {
                 .eq('id', issueId)
                 .single();
 
-            if (fetchError || !issue) {
-                console.warn('Issue not found, skipping migration');
+            if (fetchError) {
+                console.error('❌ Error fetching issue:', fetchError);
                 return false;
             }
+
+            if (!issue) {
+                console.warn('⚠️ Issue not found, skipping migration');
+                return false;
+            }
+
+            console.log('📄 Issue found:', {
+                id: issue.id,
+                status: issue.status,
+                frequency: issue.frequency,
+                title: issue.title
+            });
 
             // Only migrate if status is 'guest'
             if (issue.status !== 'guest') {
-                console.log('Issue is not a guest issue, skipping migration');
+                console.log('ℹ️ Issue is not a guest issue (status:', issue.status + '), skipping migration');
                 return false;
             }
 
+            console.log('🔧 Updating issue status and frequency...');
+            
             // Update issue: status='guest' -> 'draft', frequency='once' -> 'weekly'
             const { error: updateError } = await supabase
                 .from('issues')
@@ -84,9 +98,12 @@ export const NewsletterConfigProvider = ({ children }) => {
                 .eq('id', issueId);
 
             if (updateError) {
-                console.error('Error updating guest issue:', updateError);
+                console.error('❌ Error updating guest issue:', updateError);
                 return false;
             }
+
+            console.log('✅ Issue updated successfully');
+            console.log('🔗 Creating user-issue association...');
 
             // Create user-issue association
             const { error: associationError } = await supabase
@@ -99,14 +116,14 @@ export const NewsletterConfigProvider = ({ children }) => {
                 });
 
             if (associationError) {
-                console.error('Error creating user-issue association:', associationError);
+                console.error('❌ Error creating user-issue association:', associationError);
                 return false;
             }
 
-            console.log('✅ Successfully migrated guest issue to user');
+            console.log('✅ Successfully migrated guest issue to user!');
             return true;
         } catch (error) {
-            console.error('Error migrating guest issue:', error);
+            console.error('❌ Error migrating guest issue:', error);
             return false;
         }
     };
@@ -114,28 +131,34 @@ export const NewsletterConfigProvider = ({ children }) => {
     // Load configuration from localStorage and user issues when authentication state changes
     useEffect(() => {
         const loadConfig = async () => {
-            // If user just logged out (user is null but we had data), clear everything
-            if (!user && !session) {
-                console.log('🧹 User logged out, clearing newsletter config state');
-                setNewspaperTitle('');
-                setOutputMode('essay');
-                setCurrentIssueId(null);
-                setUserIssues([]);
-                setIsLoaded(true);
-                return;
-            }
-
             // Always load current working config from localStorage first
+            let localIssueId = null;
             try {
                 const savedConfig = localStorage.getItem('newsletterConfig');
                 if (savedConfig) {
                     const config = JSON.parse(savedConfig);
                     setNewspaperTitle(config.title || '');
                     setOutputMode(config.outputMode || 'newspaper');
-                    setCurrentIssueId(config.issueId || null);
+                    localIssueId = config.issueId || null;
+                    setCurrentIssueId(localIssueId);
+                    console.log('📋 Loaded from localStorage - issueId:', localIssueId);
+                } else {
+                    // No config in localStorage, clear state
+                    console.log('ℹ️ No config found in localStorage');
+                    setNewspaperTitle('');
+                    setOutputMode('essay');
+                    setCurrentIssueId(null);
                 }
             } catch (error) {
                 console.error('Error loading newsletter config from localStorage:', error);
+            }
+
+            // If user just logged out (user is null but we had data), clear everything
+            if (!user && !session) {
+                console.log('🧹 User logged out, clearing user issues');
+                setUserIssues([]);
+                setIsLoaded(true);
+                return;
             }
 
             // If user is authenticated, also load their saved issues list
@@ -143,9 +166,12 @@ export const NewsletterConfigProvider = ({ children }) => {
                 try {
                     setLoading(true);
 
-                    // If there's a current issue ID, check if it's a guest issue and migrate it
-                    if (currentIssueId) {
-                        await migrateGuestIssueToUser(currentIssueId, user.id);
+                    // If there's a current issue ID (from localStorage), check if it's a guest issue and migrate it
+                    if (localIssueId) {
+                        console.log('🔍 Checking issue for migration:', localIssueId);
+                        await migrateGuestIssueToUser(localIssueId, user.id);
+                    } else {
+                        console.log('ℹ️ No issue ID found in localStorage to migrate');
                     }
 
                     // Validate that the current issue ID still exists in the database
