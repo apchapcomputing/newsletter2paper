@@ -108,6 +108,13 @@ export function AuthProvider({ children }) {
             setUser(null)
             setSession(null)
 
+            // Clear all localStorage data related to the issue configuration
+            localStorage.removeItem('newsletterConfig')
+            localStorage.removeItem('selectedPublications')
+            localStorage.removeItem('guestSessionId')
+
+            console.log('🧹 Cleared localStorage: newsletterConfig, selectedPublications, guestSessionId')
+
             return { success: true }
         } catch (error) {
             console.error('Error signing out:', error)

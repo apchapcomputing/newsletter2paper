@@ -1,5 +1,6 @@
 // create context
 import { createContext, useContext, useState, useEffect } from "react";
+import { useAuth } from './useAuth';
 
 const SelectedPublicationsContext = createContext();
 
@@ -15,6 +16,7 @@ export const useSelectedPublications = () => {
 export const SelectedPublicationsProvider = ({ children }) => {
     const [selectedPublications, setSelectedPublications] = useState([]);
     const [isLoaded, setIsLoaded] = useState(false);
+    const { user, session } = useAuth();
 
     // Load from localStorage on initial mount
     // For guest users: This is the primary data source
@@ -31,6 +33,14 @@ export const SelectedPublicationsProvider = ({ children }) => {
             setIsLoaded(true);
         }
     }, []);
+
+    // Clear publications when user logs out
+    useEffect(() => {
+        if (!user && !session && isLoaded) {
+            console.log('🧹 User logged out, clearing selected publications');
+            setSelectedPublications([]);
+        }
+    }, [user, session, isLoaded]);
 
     // Save to localStorage whenever selectedPublications changes
     // For guest users: Primary persistence mechanism

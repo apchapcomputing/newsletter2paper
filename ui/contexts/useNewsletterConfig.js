@@ -50,9 +50,81 @@ export const NewsletterConfigProvider = ({ children }) => {
         }
     };
 
+    // Migrate guest issue to authenticated user issue
+    const migrateGuestIssueToUser = async (issueId, userId) => {
+        try {
+            console.log('🔄 Migrating guest issue to authenticated user:', issueId);
+
+            // Check if this is a guest issue
+            const { data: issue, error: fetchError } = await supabase
+                .from('issues')
+                .select('*')
+                .eq('id', issueId)
+                .single();
+
+            if (fetchError || !issue) {
+                console.warn('Issue not found, skipping migration');
+                return false;
+            }
+
+            // Only migrate if status is 'guest'
+            if (issue.status !== 'guest') {
+                console.log('Issue is not a guest issue, skipping migration');
+                return false;
+            }
+
+            // Update issue: status='guest' -> 'draft', frequency='once' -> 'weekly'
+            const { error: updateError } = await supabase
+                .from('issues')
+                .update({
+                    status: 'draft',
+                    frequency: 'weekly',
+                    target_email: user.email // Also set the user's email
+                })
+                .eq('id', issueId);
+
+            if (updateError) {
+                console.error('Error updating guest issue:', updateError);
+                return false;
+            }
+
+            // Create user-issue association
+            const { error: associationError } = await supabase
+                .from('user_issues')
+                .upsert({
+                    user_id: userId,
+                    issue_id: issueId
+                }, {
+                    onConflict: 'user_id,issue_id'
+                });
+
+            if (associationError) {
+                console.error('Error creating user-issue association:', associationError);
+                return false;
+            }
+
+            console.log('✅ Successfully migrated guest issue to user');
+            return true;
+        } catch (error) {
+            console.error('Error migrating guest issue:', error);
+            return false;
+        }
+    };
+
     // Load configuration from localStorage and user issues when authentication state changes
     useEffect(() => {
         const loadConfig = async () => {
+            // If user just logged out (user is null but we had data), clear everything
+            if (!user && !session) {
+                console.log('🧹 User logged out, clearing newsletter config state');
+                setNewspaperTitle('');
+                setOutputMode('essay');
+                setCurrentIssueId(null);
+                setUserIssues([]);
+                setIsLoaded(true);
+                return;
+            }
+
             // Always load current working config from localStorage first
             try {
                 const savedConfig = localStorage.getItem('newsletterConfig');
@@ -70,6 +142,11 @@ export const NewsletterConfigProvider = ({ children }) => {
             if (user && session) {
                 try {
                     setLoading(true);
+
+                    // If there's a current issue ID, check if it's a guest issue and migrate it
+                    if (currentIssueId) {
+                        await migrateGuestIssueToUser(currentIssueId, user.id);
+                    }
 
                     // Validate that the current issue ID still exists in the database
                     await validateCurrentIssue();
@@ -195,12 +272,14 @@ export const NewsletterConfigProvider = ({ children }) => {
 
                         savedIssue = result.data;
 
-                        // Create the user-issue association
+                        // Create the user-issue association (upsert to handle duplicates)
                         const userIssueResult = await supabase
                             .from('user_issues')
-                            .insert({
+                            .upsert({
                                 user_id: user.id,
                                 issue_id: savedIssue.id
+                            }, {
+                                onConflict: 'user_id,issue_id'
                             });
 
                         if (userIssueResult.error) {
@@ -223,9 +302,11 @@ export const NewsletterConfigProvider = ({ children }) => {
                     if (!existingAssociation) {
                         const userIssueResult = await supabase
                             .from('user_issues')
-                            .insert({
+                            .upsert({
                                 user_id: user.id,
                                 issue_id: savedIssue.id
+                            }, {
+                                onConflict: 'user_id,issue_id'
                             });
 
                         if (userIssueResult.error) {
@@ -247,12 +328,14 @@ export const NewsletterConfigProvider = ({ children }) => {
 
                 savedIssue = result.data;
 
-                // Create the user-issue association
+                // Create the user-issue association (upsert to handle duplicates)
                 const userIssueResult = await supabase
                     .from('user_issues')
-                    .insert({
+                    .upsert({
                         user_id: user.id,
                         issue_id: savedIssue.id
+                    }, {
+                        onConflict: 'user_id,issue_id'
                     });
 
                 if (userIssueResult.error) {
