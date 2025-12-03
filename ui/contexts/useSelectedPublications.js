@@ -16,7 +16,9 @@ export const SelectedPublicationsProvider = ({ children }) => {
     const [selectedPublications, setSelectedPublications] = useState([]);
     const [isLoaded, setIsLoaded] = useState(false);
 
-    // Load from localStorage on mount
+    // Load from localStorage on initial mount
+    // For guest users: This is the primary data source
+    // For logged-in users: This is temporary until database loads (via page.js effect)
     useEffect(() => {
         try {
             const saved = localStorage.getItem('selectedPublications');
@@ -31,6 +33,8 @@ export const SelectedPublicationsProvider = ({ children }) => {
     }, []);
 
     // Save to localStorage whenever selectedPublications changes
+    // For guest users: Primary persistence mechanism
+    // For logged-in users: Cache only (database is source of truth)
     useEffect(() => {
         if (isLoaded) {
             try {

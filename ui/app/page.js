@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import Button from '@mui/material/Button';
 import Box from '@mui/material/Box';
 import Typography from '@mui/material/Typography';
@@ -59,11 +59,15 @@ export default function Home() {
   const [selectAnchorEl, setSelectAnchorEl] = useState(null);
   const isSelectMenuOpen = Boolean(selectAnchorEl);
   const [autoSaveTimer, setAutoSaveTimer] = useState(null);
+  const isLoadingPublications = useRef(false);
 
   // Auto-save effect - triggers when title, outputMode, or publications change
   useEffect(() => {
     // Don't auto-save until both contexts are loaded
     if (!isLoaded || !configLoaded) return;
+
+    // Don't auto-save if we're currently loading publications from database
+    if (isLoadingPublications.current) return;
 
     // Don't auto-save if there's no content to save
     if (!newspaperTitle && selectedPublications.length === 0) return;
@@ -88,6 +92,69 @@ export default function Home() {
       }
     };
   }, [newspaperTitle, outputMode, selectedPublications, isLoaded, configLoaded]);
+
+  // Load publications from database when issue ID changes (logged-in users only)
+  // Guest users rely on localStorage for publications (handled by useSelectedPublications context)
+  // Logged-in users load publications from issue_publications table in database
+  useEffect(() => {
+    const loadPublicationsForIssue = async () => {
+      // Only load from database if user is logged in
+      if (!user) {
+        console.log('Guest user - publications managed via localStorage');
+        return;
+      }
+
+      if (!currentIssueId || !configLoaded) {
+        console.log('Waiting for issue ID or config...', { currentIssueId, configLoaded });
+        return;
+      }
+
+      try {
+        isLoadingPublications.current = true;
+        console.log(`🔄 Loading publications for issue: ${currentIssueId}`);
+        const pubResponse = await fetch(`/api/issues/${currentIssueId}/publications`);
+
+        if (pubResponse.ok) {
+          const pubData = await pubResponse.json();
+          console.log(`📊 Received publications data:`, pubData);
+
+          // Clear existing publications and add the loaded ones
+          clearAllPublications();
+          console.log('🗑️  Cleared all publications');
+
+          if (pubData.publications && pubData.publications.length > 0) {
+            console.log(`➕ Adding ${pubData.publications.length} publications from database`);
+            for (const pub of pubData.publications) {
+              addPublication({
+                id: pub.id,
+                name: pub.title,
+                title: pub.title,
+                url: pub.url,
+                publisher: pub.publisher,
+                feed_url: pub.rss_feed_url,
+                handle: pub.publisher
+              });
+            }
+            console.log(`✅ Loaded ${pubData.publications.length} publications from database`);
+          } else {
+            console.log('ℹ️  No publications found for this issue');
+          }
+        } else {
+          console.error('❌ Failed to fetch publications:', pubResponse.status, pubResponse.statusText);
+        }
+      } catch (error) {
+        console.error('❌ Error loading publications for issue:', error);
+      } finally {
+        // Use setTimeout to ensure the flag is reset after state updates complete
+        setTimeout(() => {
+          isLoadingPublications.current = false;
+          console.log('✓ Publications loading complete');
+        }, 100);
+      }
+    };
+
+    loadPublicationsForIssue();
+  }, [currentIssueId, configLoaded, user]);
 
   useEffect(() => {
     const fetchPublications = async () => {
@@ -166,51 +233,57 @@ export default function Home() {
         console.log('Guest issue created successfully!', savedIssue);
       }
 
-      // Step 2: Save selected publications (keeping existing logic for now)
-      if (selectedPublications.length > 0) {
-        // First, ensure all publications exist in the database
-        const publicationIds = [];
+      // Step 2: Save selected publications
+      // Always sync publications to database, even if empty (to handle deletions)
+      console.log(`💾 Syncing ${selectedPublications.length} publications to issue ${savedIssue.id}`);
 
-        for (const publication of selectedPublications) {
-          const pubResponse = await fetch('/api/publications-db?action=find-or-create', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              title: publication.name || publication.title,
-              url: publication.url,
-              rss_feed_url: publication.feed_url || publication.url + '/feed',
-              publisher: publication.publisher || publication.handle || 'Unknown'
-            })
-          });
+      const publicationIds = [];
 
-          if (!pubResponse.ok) {
-            console.error(`Failed to create/find publication: ${publication.name}`);
-            continue;
-          }
+      // First, ensure all publications exist in the database
+      for (const publication of selectedPublications) {
+        const pubResponse = await fetch('/api/publications-db?action=find-or-create', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            title: publication.name || publication.title,
+            url: publication.url,
+            rss_feed_url: publication.feed_url || publication.url + '/feed',
+            publisher: publication.publisher || publication.handle || 'Unknown'
+          })
+        });
 
-          const pubData = await pubResponse.json();
-          publicationIds.push(pubData.publication.id);
+        if (!pubResponse.ok) {
+          console.error(`Failed to create/find publication: ${publication.name}`);
+          continue;
         }
 
-        // Add publications to issue
-        if (publicationIds.length > 0) {
-          const pubResponse = await fetch(`/api/issues/${savedIssue.id}/publications`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              publication_ids: publicationIds
-            })
-          });
-
-          if (!pubResponse.ok) {
-            throw new Error('Failed to save publications to issue');
-          }
-        }
+        const pubData = await pubResponse.json();
+        publicationIds.push(pubData.publication.id);
       }
+
+      console.log(`📋 Publication IDs to save:`, publicationIds);
+
+      // Update publications for this issue (this will clear old ones and add new ones)
+      const pubResponse = await fetch(`/api/issues/${savedIssue.id}/publications`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          publication_ids: publicationIds
+        })
+      });
+
+      if (!pubResponse.ok) {
+        const errorText = await pubResponse.text();
+        console.error('❌ Failed to save publications:', errorText);
+        throw new Error('Failed to save publications to issue');
+      }
+
+      const result = await pubResponse.json();
+      console.log('✅ Publications saved successfully:', result);
 
     } catch (error) {
       console.error('Error saving issue:', error);
@@ -282,31 +355,8 @@ export default function Home() {
   const handleSelectIssue = async (issue) => {
     handleSelectMenuClose();
     try {
-      // Load the issue configuration
+      // Load the issue configuration (this will trigger the useEffect to load publications)
       await loadIssue(issue.id);
-
-      // Load the publications associated with this issue
-      const pubResponse = await fetch(`/api/issues/${issue.id}/publications`);
-      if (pubResponse.ok) {
-        const pubData = await pubResponse.json();
-
-        // Clear existing publications and add the loaded ones
-        clearAllPublications();
-
-        if (pubData.publications && pubData.publications.length > 0) {
-          for (const pub of pubData.publications) {
-            addPublication({
-              id: pub.id,
-              name: pub.title,
-              title: pub.title,
-              url: pub.url,
-              publisher: pub.publisher,
-              feed_url: pub.rss_feed_url,
-              handle: pub.publisher
-            });
-          }
-        }
-      }
     } catch (error) {
       console.error('Error loading issue:', error);
       alert(`Failed to load issue: ${error.message}`);
