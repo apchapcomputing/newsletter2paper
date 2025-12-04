@@ -62,7 +62,6 @@ export default function SearchModal({
 
             if (!url) {
                 console.error('Could not determine URL for publication:', searchResult);
-                alert('Unable to determine the publication URL. Please try searching for the publication directly.');
                 return;
             }
 
@@ -98,7 +97,6 @@ export default function SearchModal({
             }
         } catch (error) {
             console.error('Error toggling publication:', error);
-            alert(`Failed to add publication: ${error.message}`);
         }
     };
 

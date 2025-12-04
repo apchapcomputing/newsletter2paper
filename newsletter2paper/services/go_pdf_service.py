@@ -58,13 +58,14 @@ class GoPDFService:
             except Exception as e:
                 logger.warning(f"Failed to clean up {path}: {e}")
     
-    def _prepare_article_json(self, articles: List[Dict], issue_info: Dict) -> Dict:
+    def _prepare_article_json(self, articles: List[Dict], issue_info: Dict, layout_type: str = "newspaper") -> Dict:
         """
         Prepare the JSON payload for the Go CLI.
         
         Args:
             articles: List of article dictionaries
             issue_info: Issue metadata dictionary
+            layout_type: Layout type ("essay" or "newspaper")
             
         Returns:
             Dictionary ready for JSON serialization
@@ -92,13 +93,14 @@ class GoPDFService:
             "issue_title": issue_info.get("title", "Newsletter Digest"),
             "issue_description": issue_info.get("description", ""),
             "articles": article_inputs,
-            "layout_type": "newspaper"  # Default layout
+            "layout_type": layout_type
         }
     
     def _execute_go_cli(
         self, 
         json_path: Path, 
-        pdf_path: Path, 
+        pdf_path: Path,
+        keep_html: bool = False,
         timeout: int = None
     ) -> subprocess.CompletedProcess:
         """
@@ -107,6 +109,7 @@ class GoPDFService:
         Args:
             json_path: Path to JSON input file
             pdf_path: Path where PDF should be written
+            keep_html: Whether to keep intermediate HTML file
             timeout: Command timeout in seconds
             
         Returns:
@@ -123,6 +126,8 @@ class GoPDFService:
                 "--output", str(pdf_path),
                 "--cleanup-images=false",  # Let Go handle its own cleanup
             ]
+            if keep_html:
+                cmd.append("--keep-html")
         else:
             # Call directly (for local development)
             cmd = [
@@ -131,6 +136,8 @@ class GoPDFService:
                 "--output", str(pdf_path),
                 "--cleanup-images=false",
             ]
+            if keep_html:
+                cmd.append("--keep-html")
         
         logger.info(f"Executing Go CLI: {' '.join(cmd)}")
         
@@ -167,6 +174,8 @@ class GoPDFService:
         articles: List[Dict],
         issue_info: Dict,
         output_filename: Optional[str] = None,
+        layout_type: str = "newspaper",
+        keep_html: bool = False,
         timeout: int = None,
         verbose: bool = False
     ) -> Dict[str, Any]:
@@ -178,6 +187,8 @@ class GoPDFService:
             articles: List of article dictionaries with content
             issue_info: Issue metadata dictionary
             output_filename: Custom output filename (without extension)
+            layout_type: Layout type ("essay" or "newspaper")
+            keep_html: Whether to keep the intermediate HTML file for debugging
             timeout: Command timeout in seconds
             verbose: Enable verbose logging
             
@@ -187,6 +198,7 @@ class GoPDFService:
         result = {
             'success': False,
             'pdf_url': None,
+            'html_path': None,
             'issue_info': issue_info,
             'articles_count': len(articles),
             'error': None
@@ -197,6 +209,7 @@ class GoPDFService:
         
         json_path = None
         pdf_path = None
+        html_path = None
         
         try:
             if not articles:
@@ -208,8 +221,12 @@ class GoPDFService:
             # Generate temporary file paths
             json_path, pdf_path = self._generate_temp_paths()
             
+            # HTML file will have same name as PDF but with .html extension
+            if keep_html:
+                html_path = pdf_path.with_suffix('.html')
+            
             # Prepare article JSON
-            article_json = self._prepare_article_json(articles, issue_info)
+            article_json = self._prepare_article_json(articles, issue_info, layout_type)
             
             # Write JSON to shared volume
             logger.debug(f"Writing article data to: {json_path}")
@@ -218,7 +235,7 @@ class GoPDFService:
             
             # Execute Go CLI
             logger.info("Calling Go PDF generator...")
-            cli_result = self._execute_go_cli(json_path, pdf_path, timeout)
+            cli_result = self._execute_go_cli(json_path, pdf_path, keep_html, timeout)
             
             # Check if command succeeded
             if cli_result.returncode != 0:
@@ -257,8 +274,13 @@ class GoPDFService:
             result.update({
                 'success': True,
                 'pdf_url': supabase_url,
-                'layout_type': 'newspaper'
+                'layout_type': layout_type
             })
+            
+            # If keep_html is true and HTML exists, add its path to result
+            if keep_html and html_path and html_path.exists():
+                result['html_path'] = str(html_path)
+                logger.info(f"HTML file kept at: {html_path}")
             
             logger.info(f"PDF uploaded successfully: {supabase_url}")
             
@@ -269,9 +291,11 @@ class GoPDFService:
             result['error'] = f"PDF generation failed: {str(e)}"
             logger.error(f"Error generating PDF: {e}", exc_info=True)
         finally:
-            # Always cleanup temporary files
-            if json_path or pdf_path:
-                self._cleanup_temp_files(json_path, pdf_path)
+            # Cleanup temporary files (but keep HTML if requested)
+            files_to_cleanup = [json_path, pdf_path]
+            if not keep_html and html_path:
+                files_to_cleanup.append(html_path)
+            self._cleanup_temp_files(*[f for f in files_to_cleanup if f is not None])
         
         return result
     

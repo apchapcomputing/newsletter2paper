@@ -1,5 +1,6 @@
 import click
-from services import rss_service, content_service, pdf_service, email_service
+from services import rss_service
+
 
 @click.group()
 def cli():
