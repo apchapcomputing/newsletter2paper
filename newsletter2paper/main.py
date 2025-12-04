@@ -31,7 +31,20 @@ app.include_router(publications.router)
 app.include_router(articles.router)
 app.include_router(pdf.router)
 
-# Optional: Add a root endpoint
+# Root endpoint
 @app.get("/")
 async def root():
     return {"message": "Welcome to Newsletter2Paper API"}
+
+# Health check endpoint
+@app.get("/health")
+async def health_check():
+    """
+    Health check endpoint for monitoring and deployment verification.
+    Returns the service status and version.
+    """
+    return {
+        "status": "healthy",
+        "service": "newsletter2paper-api",
+        "version": "1.0.0"
+    }

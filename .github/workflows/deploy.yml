@@ -41,13 +41,32 @@ jobs:
             docker compose up -d --build
             
             echo "⏳ Waiting for services to be ready..."
-            sleep 10
+            sleep 15
             
             echo "🔍 Checking container status..."
             docker compose ps
             
-            echo "✅ Testing API health..."
-            curl -f http://localhost:8000/ || echo "⚠️ API health check failed"
+            echo "✅ Testing API health endpoint..."
+            max_attempts=5
+            attempt=0
+            while [ $attempt -lt $max_attempts ]; do
+              if curl -f -s http://localhost:8000/health | grep -q "healthy"; then
+                echo "✅ Health check passed!"
+                curl http://localhost:8000/health
+                break
+              else
+                attempt=$((attempt + 1))
+                echo "⏳ Health check attempt $attempt/$max_attempts failed, retrying in 3s..."
+                sleep 3
+              fi
+            done
+            
+            if [ $attempt -eq $max_attempts ]; then
+              echo "❌ Health check failed after $max_attempts attempts"
+              echo "📋 API Logs:"
+              docker compose logs --tail=100 newsletter2paper-api
+              exit 1
+            fi
             
             echo "🎉 Deployment complete!"
             
