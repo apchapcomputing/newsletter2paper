@@ -3,14 +3,13 @@ PDF Router Module
 Handles PDF generation endpoints using Go-based PDF service.
 """
 
-from fastapi import APIRouter, HTTPException, Query, Depends
+from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import FileResponse, RedirectResponse
 from typing import Optional, Dict, Any
 import logging
 from pathlib import Path
 
 from services.go_pdf_service import GoPDFService
-from auth import require_auth, optional_auth
 
 router = APIRouter(prefix="/pdf", tags=["pdf"])
 pdf_service = GoPDFService(use_docker=True, shared_dir="/shared")
@@ -19,24 +18,22 @@ pdf_service = GoPDFService(use_docker=True, shared_dir="/shared")
 @router.post("/generate/{issue_id}")
 async def generate_pdf_for_issue(
     issue_id: str,
-    current_user: Optional[Dict[str, Any]] = Depends(optional_auth),  # Allow guest users
     days_back: int = Query(7, description="Number of days to look back for articles"),
     max_articles_per_publication: int = Query(5, description="Maximum articles per publication"),
-    layout_type: str = Query("newspaper", description="Layout type: 'newspaper' or 'essay'"),
+    layout_type: Optional[str] = Query(None, description="Layout type: 'newspaper' or 'essay' (overrides DB value if provided)"),
     output_filename: Optional[str] = Query(None, description="Custom output filename"),
     keep_html: bool = Query(False, description="Whether to keep intermediate HTML file"),
     verbose: bool = Query(False, description="Enable verbose logging")
 ):
     """
     Generate a PDF from an issue's articles using the Go PDF service.
-    Works for both authenticated users and guest users.
+    Available to all users (authenticated and guests).
     
     Args:
         issue_id: UUID of the issue
-        current_user: User information (None for guest users)
         days_back: Number of days to look back for articles
         max_articles_per_publication: Maximum articles per publication
-        layout_type: Layout type ('newspaper' or 'essay')
+        layout_type: Layout type ('newspaper' or 'essay') - if not provided, uses value from DB
         output_filename: Custom output filename (without extension)
         keep_html: Whether to keep the intermediate HTML file (Go service handles this)
         verbose: Enable verbose output
@@ -45,13 +42,7 @@ async def generate_pdf_for_issue(
         dict: Result with success status, file paths, and metadata
     """
     try:
-        user_identifier = current_user['email'] if current_user else f"guest_user_{issue_id[:8]}"
-        
-        if verbose:
-            logging.info(f"User {user_identifier} generating PDF for issue {issue_id} with layout {layout_type}")
-        
-        # TODO: For authenticated users, verify that the user owns this issue by checking Supabase
-        # For guest users, we'll proceed with the generation (guest issues are temporary)
+        user_identifier = f"user_{issue_id[:8]}"
         
         # Import RSS service here to avoid circular imports
         from services.rss_service import RSSService
@@ -72,6 +63,16 @@ async def generate_pdf_for_issue(
         
         issue_info = articles_data['issue']
         
+        # Use layout_type from query parameter if provided, otherwise use format from DB
+        effective_layout_type = layout_type if layout_type is not None else issue_info.get('format', 'newspaper')
+        
+        if verbose:
+            logging.info(f"User {user_identifier} generating PDF for issue {issue_id} with layout {effective_layout_type}")
+            if layout_type is not None:
+                logging.info(f"Layout type overridden via query parameter: {layout_type}")
+            else:
+                logging.info(f"Using layout type from database: {effective_layout_type}")
+        
         # Flatten articles from all publications
         all_articles = []
         for pub_id, pub_articles in articles_data['articles_by_publication'].items():
@@ -86,22 +87,31 @@ async def generate_pdf_for_issue(
             articles=all_articles,
             issue_info=issue_info,
             output_filename=output_filename,
+            layout_type=effective_layout_type,
+            keep_html=keep_html,
             verbose=verbose
         )
         
         if not result['success']:
             raise HTTPException(status_code=400, detail=result.get('error', 'PDF generation failed'))
         
-        return {
+        response = {
             "success": True,
             "message": "PDF generated successfully using Go service",
             "pdf_url": result['pdf_url'],
             "issue_info": result['issue_info'],
             "articles_count": result['articles_count'],
-            "layout_type": result.get('layout_type', layout_type),
+            "layout_type": result.get('layout_type', effective_layout_type),
             "service": "go-pdf",
             "generated_by": user_identifier
         }
+        
+        # Include HTML path if it was kept
+        if result.get('html_path'):
+            response['html_path'] = result['html_path']
+            response['message'] += f" (HTML file kept at: {result['html_path']})"
+        
+        return response
         
     except HTTPException:
         raise
@@ -113,22 +123,20 @@ async def generate_pdf_for_issue(
 @router.get("/download/{issue_id}")
 async def download_pdf(
     issue_id: str,
-    current_user: Optional[Dict[str, Any]] = Depends(optional_auth),  # Allow guest users
     days_back: int = Query(7, description="Number of days to look back for articles"),
     max_articles_per_publication: int = Query(5, description="Maximum articles per publication"),
-    layout_type: str = Query("newspaper", description="Layout type: 'newspaper' or 'essay'"),
+    layout_type: Optional[str] = Query(None, description="Layout type: 'newspaper' or 'essay' (overrides DB value if provided)"),
     output_filename: Optional[str] = Query(None, description="Custom output filename")
 ):
     """
     Generate and download a PDF for an issue by redirecting to the Supabase storage URL.
-    Works for both authenticated users and guest users.
+    Available to all users (authenticated and guests).
     
     Args:
         issue_id: UUID of the issue
-        current_user: User information (None for guest users)
         days_back: Number of days to look back for articles
         max_articles_per_publication: Maximum articles per publication
-        layout_type: Layout type ('newspaper' or 'essay')
+        layout_type: Layout type ('newspaper' or 'essay') - if not provided, uses value from DB
         output_filename: Custom output filename (without extension)
         
     Returns:
@@ -154,6 +162,9 @@ async def download_pdf(
         
         issue_info = articles_data['issue']
         
+        # Use layout_type from query parameter if provided, otherwise use format from DB
+        effective_layout_type = layout_type if layout_type is not None else issue_info.get('format', 'newspaper')
+        
         # Flatten articles
         all_articles = []
         for pub_id, pub_articles in articles_data['articles_by_publication'].items():
@@ -165,6 +176,7 @@ async def download_pdf(
             articles=all_articles,
             issue_info=issue_info,
             output_filename=output_filename,
+            layout_type=effective_layout_type,
             verbose=False
         )
         
