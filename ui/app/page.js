@@ -287,7 +287,6 @@ export default function Home() {
 
     } catch (error) {
       console.error('Error saving issue:', error);
-      alert(`Failed to save issue: ${error.message}`);
     } finally {
       setIsSaving(false);
     }
@@ -295,7 +294,6 @@ export default function Home() {
 
   const handleGeneratePdf = async () => {
     if (!currentIssueId) {
-      alert('Your newspaper is being saved. Please wait a moment and try again.');
       return;
     }
 
@@ -305,8 +303,15 @@ export default function Home() {
     setPdfUrl(null);
 
     try {
-      // Use authenticated API call to Python backend
-      const data = await apiPost(`/pdf/generate/${currentIssueId}`, {});
+      // Call Next.js API route, which proxies to Python backend
+      const response = await fetch(`/api/pdf/generate/${currentIssueId}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+
+      const data = await response.json();
 
       if (data.success && data.pdf_url) {
         setPdfUrl(data.pdf_url);
@@ -320,7 +325,6 @@ export default function Home() {
 
     } catch (error) {
       console.error('Error generating PDF:', error);
-      alert(`Failed to generate PDF: ${error.message}`);
     } finally {
       setIsGeneratingPdf(false);
     }
@@ -359,7 +363,6 @@ export default function Home() {
       await loadIssue(issue.id);
     } catch (error) {
       console.error('Error loading issue:', error);
-      alert(`Failed to load issue: ${error.message}`);
     }
   };
 
