@@ -82,9 +82,10 @@ class GoPDFService:
                 "content_url": article.get("content_url"),
                 "content": article.get("content"),  # Raw HTML if already fetched
                 "publication_id": article.get("publication_id"),
+                "remove_images": article.get("remove_images", False),  # Per-publication image removal
             }
             
-            # Remove None values to keep JSON clean
+            # Remove None values to keep JSON clean (but keep False booleans)
             article_input = {k: v for k, v in article_input.items() if v is not None}
             article_inputs.append(article_input)
         
@@ -101,7 +102,9 @@ class GoPDFService:
         json_path: Path, 
         pdf_path: Path,
         keep_html: bool = False,
-        timeout: int = None
+        timeout: int = None,
+        remove_images: bool = False,
+        has_per_article_settings: bool = False
     ) -> subprocess.CompletedProcess:
         """
         Execute the Go CLI to generate PDF.
@@ -111,6 +114,8 @@ class GoPDFService:
             pdf_path: Path where PDF should be written
             keep_html: Whether to keep intermediate HTML file
             timeout: Command timeout in seconds
+            remove_images: Whether to remove all images from the PDF (global override)
+            has_per_article_settings: Whether articles have individual remove_images settings
             
         Returns:
             CompletedProcess object with returncode, stdout, stderr
@@ -128,6 +133,10 @@ class GoPDFService:
             ]
             if keep_html:
                 cmd.append("--keep-html")
+            # Only apply global remove_images if no per-article settings exist
+            # (per-article settings take precedence)
+            if remove_images and not has_per_article_settings:
+                cmd.append("--remove-images")
         else:
             # Call directly (for local development)
             cmd = [
@@ -138,6 +147,9 @@ class GoPDFService:
             ]
             if keep_html:
                 cmd.append("--keep-html")
+            # Only apply global remove_images if no per-article settings exist
+            if remove_images and not has_per_article_settings:
+                cmd.append("--remove-images")
         
         logger.info(f"Executing Go CLI: {' '.join(cmd)}")
         
@@ -175,6 +187,7 @@ class GoPDFService:
         issue_info: Dict,
         output_filename: Optional[str] = None,
         layout_type: str = "newspaper",
+        remove_images: bool = False,
         keep_html: bool = False,
         timeout: int = None,
         verbose: bool = False
@@ -188,6 +201,7 @@ class GoPDFService:
             issue_info: Issue metadata dictionary
             output_filename: Custom output filename (without extension)
             layout_type: Layout type ("essay" or "newspaper")
+            remove_images: Whether to remove all images from the PDF
             keep_html: Whether to keep the intermediate HTML file for debugging
             timeout: Command timeout in seconds
             verbose: Enable verbose logging
@@ -228,6 +242,11 @@ class GoPDFService:
             # Prepare article JSON
             article_json = self._prepare_article_json(articles, issue_info, layout_type)
             
+            # Check if any articles have individual remove_images settings
+            has_per_article_settings = any(
+                article.get('remove_images', False) for article in articles
+            )
+            
             # Write JSON to shared volume
             logger.debug(f"Writing article data to: {json_path}")
             with open(json_path, 'w', encoding='utf-8') as f:
@@ -235,7 +254,9 @@ class GoPDFService:
             
             # Execute Go CLI
             logger.info("Calling Go PDF generator...")
-            cli_result = self._execute_go_cli(json_path, pdf_path, keep_html, timeout)
+            if has_per_article_settings:
+                logger.info("Using per-article image removal settings")
+            cli_result = self._execute_go_cli(json_path, pdf_path, keep_html, timeout, remove_images, has_per_article_settings)
             
             # Check if command succeeded
             if cli_result.returncode != 0:

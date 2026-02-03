@@ -16,6 +16,12 @@ export async function POST(request, { params }) {
             searchParams.append('layout_type', layoutType);
         }
 
+        // Only pass remove_images if explicitly provided (to override DB value)
+        const removeImages = url.searchParams.get('remove_images');
+        if (removeImages !== null) {
+            searchParams.append('remove_images', removeImages);
+        }
+
         // Add other optional parameters with defaults
         searchParams.append('days_back', url.searchParams.get('days_back') || '7');
         searchParams.append('max_articles_per_publication', url.searchParams.get('max_articles_per_publication') || '5');

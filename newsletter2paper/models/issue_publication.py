@@ -14,6 +14,7 @@ class IssuePublication(SQLModel, table=True):
 
     issue_id: UUID = Field(foreign_key="issues.id", primary_key=True)
     publication_id: UUID = Field(foreign_key="publications.id", primary_key=True)
+    remove_images: bool = Field(default=False, description="Remove images from this publication's articles in PDFs")
     created_at: Optional[datetime] = Field(
         default=None,
         nullable=True,

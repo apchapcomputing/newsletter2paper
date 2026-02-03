@@ -14,6 +14,7 @@ type Stats struct {
 	SubscriptionElems   int
 	ImageIcons          int
 	FootnotesFormatted  int
+	ImagesRemoved       int
 }
 
 // CleanHTML removes subscription widgets, forms, and formats footnotes for better PDF rendering.
@@ -290,4 +291,60 @@ func normalizeWhitespace(html string) string {
 	html = strings.ReplaceAll(html, "\n</p>", "</p>")
 
 	return html
+}
+
+// RemoveAllImages removes all <img> tags and related elements from HTML content.
+// This is useful for generating text-only PDFs without images.
+// Returns cleaned HTML string and count of images removed.
+func RemoveAllImages(htmlContent string) (string, int, error) {
+	doc, err := goquery.NewDocumentFromReader(strings.NewReader(htmlContent))
+	if err != nil {
+		return "", 0, err
+	}
+
+	imagesRemoved := 0
+
+	// Remove all <img> tags
+	doc.Find("img").Each(func(i int, s *goquery.Selection) {
+		s.Remove()
+		imagesRemoved++
+	})
+
+	// Remove figure elements (which typically contain images)
+	doc.Find("figure").Each(func(i int, s *goquery.Selection) {
+		s.Remove()
+	})
+
+	// Remove picture elements (responsive image containers)
+	doc.Find("picture").Each(func(i int, s *goquery.Selection) {
+		s.Remove()
+	})
+
+	// Remove divs with image-related classes
+	imageClassSelectors := []string{
+		".captioned-image-container",
+		".captioned-image",
+		".image-container",
+		".post-image",
+		"[class*='image-']",
+		"[class*='Image']",
+	}
+	for _, selector := range imageClassSelectors {
+		doc.Find(selector).Each(func(i int, s *goquery.Selection) {
+			s.Remove()
+		})
+	}
+
+	// Get cleaned HTML
+	cleaned, err := doc.Find("body").Html()
+	if err != nil {
+		return "", imagesRemoved, err
+	}
+
+	// If original content was a fragment (no body tag), extract just the body content
+	if !strings.Contains(htmlContent, "<body") {
+		cleaned = strings.TrimSpace(cleaned)
+	}
+
+	return cleaned, imagesRemoved, nil
 }

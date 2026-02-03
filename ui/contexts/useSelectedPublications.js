@@ -60,12 +60,23 @@ export const SelectedPublicationsProvider = ({ children }) => {
             if (prev.find((p) => p.id === publication.id)) {
                 return prev; // already selected
             }
-            return [...prev, publication];
+            // Ensure each publication has a remove_images property
+            return [...prev, { ...publication, remove_images: publication.remove_images || false }];
         });
     };
 
     const removePublication = (publicationId) => {
         setSelectedPublications((prev) => prev.filter((p) => p.id !== publicationId));
+    };
+
+    const toggleRemoveImages = (publicationId) => {
+        setSelectedPublications((prev) =>
+            prev.map((p) =>
+                p.id === publicationId
+                    ? { ...p, remove_images: !p.remove_images }
+                    : p
+            )
+        );
     };
 
     const clearAllPublications = () => {
@@ -77,6 +88,7 @@ export const SelectedPublicationsProvider = ({ children }) => {
             selectedPublications,
             addPublication,
             removePublication,
+            toggleRemoveImages,
             clearAllPublications,
             isLoaded
         }}>

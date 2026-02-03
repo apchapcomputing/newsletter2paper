@@ -31,6 +31,7 @@ export default function Home() {
   const {
     newspaperTitle,
     outputMode,
+    removeImages,
     currentIssueId,
     isLoaded: configLoaded,
     updateTitle,
@@ -132,7 +133,8 @@ export default function Home() {
                 url: pub.url,
                 publisher: pub.publisher,
                 feed_url: pub.rss_feed_url,
-                handle: pub.publisher
+                handle: pub.publisher,
+                remove_images: pub.remove_images || false
               });
             }
             console.log(`✅ Loaded ${pubData.publications.length} publications from database`);
@@ -218,7 +220,8 @@ export default function Home() {
         savedIssue = await saveIssueToSupabase({
           title: newspaperTitle,
           format: outputMode,
-          frequency: 'weekly'
+          frequency: 'weekly',
+          remove_images: removeImages
         });
 
         console.log('Issue saved successfully to Supabase!', savedIssue);
@@ -227,7 +230,8 @@ export default function Home() {
         savedIssue = await saveGuestIssue({
           title: newspaperTitle || 'Guest Newspaper',
           format: outputMode,
-          frequency: 'once'
+          frequency: 'once',
+          remove_images: removeImages
         });
 
         console.log('Guest issue created successfully!', savedIssue);
@@ -237,7 +241,7 @@ export default function Home() {
       // Always sync publications to database, even if empty (to handle deletions)
       console.log(`💾 Syncing ${selectedPublications.length} publications to issue ${savedIssue.id}`);
 
-      const publicationIds = [];
+      const publicationsWithSettings = [];
 
       // First, ensure all publications exist in the database
       for (const publication of selectedPublications) {
@@ -260,10 +264,13 @@ export default function Home() {
         }
 
         const pubData = await pubResponse.json();
-        publicationIds.push(pubData.publication.id);
+        publicationsWithSettings.push({
+          publication_id: pubData.publication.id,
+          remove_images: publication.remove_images || false
+        });
       }
 
-      console.log(`📋 Publication IDs to save:`, publicationIds);
+      console.log(`📋 Publications with settings to save:`, publicationsWithSettings);
 
       // Update publications for this issue (this will clear old ones and add new ones)
       const pubResponse = await fetch(`/api/issues/${savedIssue.id}/publications`, {
@@ -272,7 +279,7 @@ export default function Home() {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          publication_ids: publicationIds
+          publications: publicationsWithSettings
         })
       });
 
@@ -303,6 +310,29 @@ export default function Home() {
     setPdfUrl(null);
 
     try {
+      // IMPORTANT: Ensure any pending save completes before generating PDF
+      // This prevents race conditions where the PDF is generated with stale data
+      console.log('🔄 Ensuring issue is saved before generating PDF...');
+
+      // Clear any pending auto-save timer and save immediately
+      if (autoSaveTimer) {
+        clearTimeout(autoSaveTimer);
+        setAutoSaveTimer(null);
+      }
+
+      // Wait for any in-progress save to complete
+      while (isSaving) {
+        await new Promise(resolve => setTimeout(resolve, 100));
+      }
+
+      // Perform one final save to ensure everything is up-to-date
+      await handleSaveIssue();
+
+      // Give Supabase a moment to process the update (prevents race conditions)
+      await new Promise(resolve => setTimeout(resolve, 300));
+
+      console.log('✅ Issue saved, now generating PDF...');
+
       // Call Next.js API route, which proxies to Python backend
       const response = await fetch(`/api/pdf/generate/${currentIssueId}`, {
         method: 'POST',

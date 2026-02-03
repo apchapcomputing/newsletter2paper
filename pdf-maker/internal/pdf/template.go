@@ -8,6 +8,7 @@ import (
 	"time"
 
 	art "pdf-maker/internal/article"
+	"pdf-maker/internal/clean"
 )
 
 // AssembleHTML builds the complete HTML document with header, TOC, and article sections.
@@ -140,8 +141,20 @@ func renderArticle(a *art.Article, num int) string {
 	sb.WriteString("  </div>\n\n")
 
 	// Article content (already HTML)
+	// Apply per-article image removal if requested
+	articleContent := a.Content
+	if a.RemoveImages {
+		cleanedContent, _, err := clean.RemoveAllImages(a.Content)
+		if err == nil {
+			articleContent = cleanedContent
+		} else {
+			// If cleaning fails, log but use original content
+			fmt.Printf("Warning: Failed to remove images from article '%s': %v\n", a.Title, err)
+		}
+	}
+
 	sb.WriteString("  <div class=\"article-content\">\n")
-	sb.WriteString(a.Content) // raw HTML from fetch
+	sb.WriteString(articleContent)
 	sb.WriteString("\n  </div>\n")
 
 	sb.WriteString("</div>\n\n")

@@ -21,6 +21,7 @@ func main() {
 	title := flag.String("title", "Your Articles", "PDF header title")
 	layoutType := flag.String("layout-type", "newspaper", "PDF layout type: 'newspaper' or 'essay' (used with --urls, ignored with --articles-json)")
 	keepHTML := flag.Bool("keep-html", false, "Keep intermediate HTML file for debugging")
+	removeImages := flag.Bool("remove-images", false, "Remove all images from the PDF (text-only)")
 	cleanupImages := flag.Bool("cleanup-images", true, "Delete downloaded images after PDF generation")
 	maxPar := flag.Int("max-par", 4, "Maximum parallel fetches")
 	timeout := flag.Duration("timeout", 90*time.Second, "Total operation timeout")
@@ -99,10 +100,11 @@ func main() {
 	// Generate PDF
 	fmt.Println("Generating PDF...")
 	opts := pdf.GenerateOptions{
-		OutputPath: *output,
-		Title:      *title,
-		KeepHTML:   *keepHTML,
-		LayoutType: layout,
+		OutputPath:   *output,
+		Title:        *title,
+		KeepHTML:     *keepHTML,
+		LayoutType:   layout,
+		RemoveImages: *removeImages,
 	}
 
 	result := pdf.GeneratePDF(ctx, articles, opts)
@@ -206,6 +208,7 @@ func processArticlesFromJSON(ctx context.Context, jsonPath string, imgDownloader
 					original.Publication = fetched.Publication
 				}
 				original.Content = fetched.Content
+				// RemoveImages is already preserved from original ArticleInput
 
 				articles[idx] = original
 				fetchedIndex++

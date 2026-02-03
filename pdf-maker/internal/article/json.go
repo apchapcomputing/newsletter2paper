@@ -11,14 +11,15 @@ import (
 // ArticleInput represents the JSON format that FastAPI will send to the Go CLI.
 // It can contain either a content_url (to be fetched) or raw HTML content.
 type ArticleInput struct {
-	Title          string    `json:"title"`
-	Subtitle       string    `json:"subtitle,omitempty"`
-	Author         string    `json:"author,omitempty"`
-	Publication    string    `json:"publication,omitempty"`
-	DatePublished  string    `json:"date_published,omitempty"` // ISO 8601 format
-	ContentURL     string    `json:"content_url,omitempty"`     // URL to fetch content from
-	Content        string    `json:"content,omitempty"`         // Or raw HTML content
-	PublicationID  string    `json:"publication_id,omitempty"`
+	Title         string `json:"title"`
+	Subtitle      string `json:"subtitle,omitempty"`
+	Author        string `json:"author,omitempty"`
+	Publication   string `json:"publication,omitempty"`
+	DatePublished string `json:"date_published,omitempty"` // ISO 8601 format
+	ContentURL    string `json:"content_url,omitempty"`    // URL to fetch content from
+	Content       string `json:"content,omitempty"`        // Or raw HTML content
+	PublicationID string `json:"publication_id,omitempty"`
+	RemoveImages  bool   `json:"remove_images,omitempty"` // Per-publication image removal setting
 }
 
 // IssueInput represents the full payload with issue metadata and articles.
@@ -61,12 +62,13 @@ func ParseArticlesJSON(r io.Reader) (*IssueInput, error) {
 // If ContentURL is provided but Content is empty, the caller should fetch it.
 func (ai *ArticleInput) ToArticle() *Article {
 	a := &Article{
-		Title:       ai.Title,
-		Subtitle:    ai.Subtitle,
-		Author:      ai.Author,
-		Publication: ai.Publication,
-		Link:        ai.ContentURL,
-		Content:     ai.Content,
+		Title:        ai.Title,
+		Subtitle:     ai.Subtitle,
+		Author:       ai.Author,
+		Publication:  ai.Publication,
+		Link:         ai.ContentURL,
+		Content:      ai.Content,
+		RemoveImages: ai.RemoveImages,
 	}
 
 	// Parse date if provided

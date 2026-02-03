@@ -631,7 +631,16 @@ class RSSService:
                     'total_articles': 0
                 }
             
-            publications = [item['publications'] for item in publications_result.data if item['publications']]
+            # Extract publications with their remove_images settings from junction table
+            publications = []
+            publication_settings = {}  # Map pub_id -> remove_images setting
+            for item in publications_result.data:
+                if item['publications']:
+                    pub = item['publications']
+                    pub_id = pub['id']
+                    # Store the remove_images setting from the junction table
+                    publication_settings[pub_id] = item.get('remove_images', False)
+                    publications.append(pub)
             
             # Calculate cutoff date
             cutoff_date = datetime.now(timezone.utc) - timedelta(days=days_back)
@@ -666,7 +675,8 @@ class RSSService:
                                 'date_published': article.date_published.isoformat(),
                                 'publication_id': pub_id,
                                 'publication_title': publication.get('title', ''),
-                                'publication_publisher': publication.get('publisher', '')
+                                'publication_publisher': publication.get('publisher', ''),
+                                'remove_images': publication_settings.get(pub_id, False)  # Per-publication setting
                             }
                             recent_articles.append(article_dict)
                             

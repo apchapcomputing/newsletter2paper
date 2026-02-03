@@ -17,6 +17,7 @@ export const useNewsletterConfig = () => {
 export const NewsletterConfigProvider = ({ children }) => {
     const [newspaperTitle, setNewspaperTitle] = useState('');
     const [outputMode, setOutputMode] = useState('essay');
+    const [removeImages, setRemoveImages] = useState(false);
     const [currentIssueId, setCurrentIssueId] = useState(null);
     const [isLoaded, setIsLoaded] = useState(false);
     const [userIssues, setUserIssues] = useState([]);
@@ -86,7 +87,7 @@ export const NewsletterConfigProvider = ({ children }) => {
             }
 
             console.log('🔧 Updating issue status and frequency...');
-            
+
             // Update issue: status='guest' -> 'draft', frequency='once' -> 'weekly'
             const { error: updateError } = await supabase
                 .from('issues')
@@ -139,6 +140,7 @@ export const NewsletterConfigProvider = ({ children }) => {
                     const config = JSON.parse(savedConfig);
                     setNewspaperTitle(config.title || '');
                     setOutputMode(config.outputMode || 'newspaper');
+                    setRemoveImages(config.removeImages || false);
                     localIssueId = config.issueId || null;
                     setCurrentIssueId(localIssueId);
                     console.log('📋 Loaded from localStorage - issueId:', localIssueId);
@@ -147,6 +149,7 @@ export const NewsletterConfigProvider = ({ children }) => {
                     console.log('ℹ️ No config found in localStorage');
                     setNewspaperTitle('');
                     setOutputMode('essay');
+                    setRemoveImages(false);
                     setCurrentIssueId(null);
                 }
             } catch (error) {
@@ -218,6 +221,7 @@ export const NewsletterConfigProvider = ({ children }) => {
                 const config = {
                     title: newspaperTitle,
                     outputMode,
+                    removeImages,
                     issueId: currentIssueId
                 };
                 localStorage.setItem('newsletterConfig', JSON.stringify(config));
@@ -225,7 +229,7 @@ export const NewsletterConfigProvider = ({ children }) => {
                 console.error('Error saving newsletter config to localStorage:', error);
             }
         }
-    }, [newspaperTitle, outputMode, currentIssueId, isLoaded]);
+    }, [newspaperTitle, outputMode, removeImages, currentIssueId, isLoaded]);
 
     const updateTitle = (title) => {
         setNewspaperTitle(title);
@@ -235,6 +239,10 @@ export const NewsletterConfigProvider = ({ children }) => {
         setOutputMode(mode);
     };
 
+    const updateRemoveImages = (value) => {
+        setRemoveImages(value);
+    };
+
     const updateIssueId = (issueId) => {
         setCurrentIssueId(issueId);
     };
@@ -242,6 +250,7 @@ export const NewsletterConfigProvider = ({ children }) => {
     const resetConfig = () => {
         setNewspaperTitle('');
         setOutputMode('essay');
+        setRemoveImages(false);
         setCurrentIssueId(null);
 
         // Clear localStorage
@@ -264,7 +273,8 @@ export const NewsletterConfigProvider = ({ children }) => {
                 format: issueData.format || 'newspaper',
                 frequency: issueData.frequency || 'weekly',
                 target_email: user.email,
-                status: 'draft'
+                status: 'draft',
+                remove_images: issueData.remove_images || false
             };
 
             let savedIssue;
@@ -406,7 +416,8 @@ export const NewsletterConfigProvider = ({ children }) => {
                 title: issueData.title || 'Guest Newspaper',
                 format: issueData.format || 'newspaper',
                 frequency: 'once',
-                status: 'guest'
+                status: 'guest',
+                remove_images: issueData.remove_images || false
             };
 
             let savedIssue;
@@ -495,6 +506,7 @@ export const NewsletterConfigProvider = ({ children }) => {
             const issue = userIssue.issues;
             setNewspaperTitle(issue.title || '');
             setOutputMode(issue.format || 'essay');
+            setRemoveImages(issue.remove_images || false);
             setCurrentIssueId(issue.id);
 
             return issue;
@@ -509,6 +521,7 @@ export const NewsletterConfigProvider = ({ children }) => {
             // State
             newspaperTitle,
             outputMode,
+            removeImages,
             currentIssueId,
             isLoaded,
             userIssues,
@@ -517,6 +530,7 @@ export const NewsletterConfigProvider = ({ children }) => {
             // Actions
             updateTitle,
             updateOutputMode,
+            updateRemoveImages,
             updateIssueId,
             resetConfig,
             saveIssueToSupabase,

@@ -23,8 +23,13 @@ class UpdateIssueRequest(BaseModel):
     frequency: Optional[str] = None
     target_email: Optional[str] = None
 
+class PublicationSettings(BaseModel):
+    publication_id: UUID
+    remove_images: bool = False
+
 class AddPublicationsRequest(BaseModel):
-    publication_ids: List[UUID]
+    publication_ids: List[UUID] = []  # Deprecated: use publications instead
+    publications: Optional[List[PublicationSettings]] = None  # New format with settings
 
 # Dependency to get database service
 def get_db_service():
@@ -137,7 +142,7 @@ async def add_publications_to_issue(
     db_service: DatabaseService = Depends(get_db_service)
 ):
     """
-    Add selected publications to an issue.
+    Add selected publications to an issue with optional per-publication settings.
     """
     try:
         # First verify the issue exists
@@ -155,13 +160,26 @@ async def add_publications_to_issue(
             .eq('issue_id', str(issue_id))\
             .execute()
         
-        # Add new publications
-        if request.publication_ids:
+        # Determine which format to use (new publications format or legacy publication_ids)
+        publications_to_add = []
+        if request.publications:
+            # New format with per-publication settings
+            publications_to_add = request.publications
+        elif request.publication_ids:
+            # Legacy format - convert to new format with default settings
+            publications_to_add = [
+                PublicationSettings(publication_id=pub_id, remove_images=False)
+                for pub_id in request.publication_ids
+            ]
+        
+        # Add new publications with settings
+        if publications_to_add:
             issue_publications_data = []
-            for pub_id in request.publication_ids:
+            for pub_setting in publications_to_add:
                 issue_publications_data.append({
                     'issue_id': str(issue_id),
-                    'publication_id': str(pub_id),
+                    'publication_id': str(pub_setting.publication_id),
+                    'remove_images': pub_setting.remove_images,
                     'created_at': datetime.now(timezone.utc).isoformat(),
                     'updated_at': datetime.now(timezone.utc).isoformat()
                 })
@@ -175,9 +193,9 @@ async def add_publications_to_issue(
         
         return {
             "success": True,
-            "message": f"Added {len(request.publication_ids)} publications to issue",
+            "message": f"Added {len(publications_to_add)} publications to issue",
             "issue_id": str(issue_id),
-            "publication_count": len(request.publication_ids)
+            "publication_count": len(publications_to_add)
         }
         
     except Exception as e:
@@ -189,18 +207,23 @@ async def get_issue_publications(
     db_service: DatabaseService = Depends(get_db_service)
 ):
     """
-    Get all publications associated with an issue.
+    Get all publications associated with an issue including their settings.
     """
     try:
-        # Get publications for this issue with a join
+        # Get publications for this issue with a join, including remove_images setting
         result = db_service.client.table('issue_publications')\
-            .select('*, publications(*)')\
+            .select('remove_images, publications(*)')\
             .eq('issue_id', str(issue_id))\
             .execute()
         
         publications = []
         if result.data:
-            publications = [item['publications'] for item in result.data if item['publications']]
+            for item in result.data:
+                if item.get('publications'):
+                    # Create a new dict with publication data and add remove_images
+                    pub_with_settings = dict(item['publications'])
+                    pub_with_settings['remove_images'] = item.get('remove_images', False)
+                    publications.append(pub_with_settings)
         
         return {
             "success": True,
@@ -210,4 +233,9 @@ async def get_issue_publications(
         }
         
     except Exception as e:
+        import logging
+        logging.error(f"Failed to get issue publications for {issue_id}: {str(e)}")
+        logging.error(f"Error type: {type(e).__name__}")
+        import traceback
+        logging.error(f"Traceback: {traceback.format_exc()}")
         raise HTTPException(status_code=500, detail=f"Failed to get issue publications: {str(e)}")

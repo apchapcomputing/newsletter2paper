@@ -10,6 +10,7 @@ import (
 	"time"
 
 	art "pdf-maker/internal/article"
+	"pdf-maker/internal/clean"
 )
 
 // GenerateOptions configures PDF generation behavior.
@@ -19,6 +20,7 @@ type GenerateOptions struct {
 	KeepHTML        bool          // Whether to preserve intermediate HTML file
 	Title           string        // PDF metadata title (default: "Your Articles")
 	LayoutType      string        // Layout type: "essay" or "newspaper" (default)
+	RemoveImages    bool          // Whether to remove all images from the PDF
 	PageSize        string        // e.g., "Letter", "A4" (default: Letter)
 	MarginTop       string        // e.g., "10mm"
 	MarginBottom    string        // e.g., "10mm"
@@ -90,11 +92,26 @@ func GeneratePDF(ctx context.Context, articles []*art.Article, opts GenerateOpti
 		return result
 	}
 
-	// Fix image paths to be absolute file:// URLs for wkhtmltopdf
+	// Remove images if requested
+	if opts.RemoveImages {
+		cleanedHTML, imagesRemoved, err := clean.RemoveAllImages(html)
+		if err != nil {
+			result.Error = fmt.Errorf("remove images: %w", err)
+			return result
+		}
+		html = cleanedHTML
+		if imagesRemoved > 0 {
+			fmt.Fprintf(os.Stderr, "Removed %d images from HTML\n", imagesRemoved)
+		}
+	}
+
+	// Fix image paths to be absolute file:// URLs for wkhtmltopdf (skip if images removed)
 	// This is necessary because wkhtmltopdf needs absolute paths when HTML file
 	// is in a different directory than the images
-	absImagesDir, _ := filepath.Abs("images")
-	html = fixImagePaths(html, absImagesDir)
+	if !opts.RemoveImages {
+		absImagesDir, _ := filepath.Abs("images")
+		html = fixImagePaths(html, absImagesDir)
+	}
 
 	// Write HTML to temp file
 	htmlPath := opts.TempHTMLPath

@@ -21,6 +21,7 @@ async def generate_pdf_for_issue(
     days_back: int = Query(7, description="Number of days to look back for articles"),
     max_articles_per_publication: int = Query(5, description="Maximum articles per publication"),
     layout_type: Optional[str] = Query(None, description="Layout type: 'newspaper' or 'essay' (overrides DB value if provided)"),
+    remove_images: Optional[bool] = Query(None, description="Remove all images from PDF (overrides DB value if provided)"),
     output_filename: Optional[str] = Query(None, description="Custom output filename"),
     keep_html: bool = Query(False, description="Whether to keep intermediate HTML file"),
     verbose: bool = Query(False, description="Enable verbose logging")
@@ -34,6 +35,7 @@ async def generate_pdf_for_issue(
         days_back: Number of days to look back for articles
         max_articles_per_publication: Maximum articles per publication
         layout_type: Layout type ('newspaper' or 'essay') - if not provided, uses value from DB
+        remove_images: Remove all images from PDF - if not provided, uses value from DB
         output_filename: Custom output filename (without extension)
         keep_html: Whether to keep the intermediate HTML file (Go service handles this)
         verbose: Enable verbose output
@@ -66,12 +68,19 @@ async def generate_pdf_for_issue(
         # Use layout_type from query parameter if provided, otherwise use format from DB
         effective_layout_type = layout_type if layout_type is not None else issue_info.get('format', 'newspaper')
         
+        # Use remove_images from query parameter if provided, otherwise use value from DB
+        effective_remove_images = remove_images if remove_images is not None else issue_info.get('remove_images', False)
+        
         if verbose:
             logging.info(f"User {user_identifier} generating PDF for issue {issue_id} with layout {effective_layout_type}")
             if layout_type is not None:
                 logging.info(f"Layout type overridden via query parameter: {layout_type}")
             else:
                 logging.info(f"Using layout type from database: {effective_layout_type}")
+            if remove_images is not None:
+                logging.info(f"Remove images overridden via query parameter: {remove_images}")
+            else:
+                logging.info(f"Using remove_images from database: {effective_remove_images}")
         
         # Flatten articles from all publications
         all_articles = []
@@ -88,6 +97,7 @@ async def generate_pdf_for_issue(
             issue_info=issue_info,
             output_filename=output_filename,
             layout_type=effective_layout_type,
+            remove_images=effective_remove_images,
             keep_html=keep_html,
             verbose=verbose
         )
@@ -126,6 +136,7 @@ async def download_pdf(
     days_back: int = Query(7, description="Number of days to look back for articles"),
     max_articles_per_publication: int = Query(5, description="Maximum articles per publication"),
     layout_type: Optional[str] = Query(None, description="Layout type: 'newspaper' or 'essay' (overrides DB value if provided)"),
+    remove_images: Optional[bool] = Query(None, description="Remove all images from PDF (overrides DB value if provided)"),
     output_filename: Optional[str] = Query(None, description="Custom output filename")
 ):
     """
@@ -137,6 +148,7 @@ async def download_pdf(
         days_back: Number of days to look back for articles
         max_articles_per_publication: Maximum articles per publication
         layout_type: Layout type ('newspaper' or 'essay') - if not provided, uses value from DB
+        remove_images: Remove all images from PDF - if not provided, uses value from DB
         output_filename: Custom output filename (without extension)
         
     Returns:
@@ -165,6 +177,9 @@ async def download_pdf(
         # Use layout_type from query parameter if provided, otherwise use format from DB
         effective_layout_type = layout_type if layout_type is not None else issue_info.get('format', 'newspaper')
         
+        # Use remove_images from query parameter if provided, otherwise use value from DB
+        effective_remove_images = remove_images if remove_images is not None else issue_info.get('remove_images', False)
+        
         # Flatten articles
         all_articles = []
         for pub_id, pub_articles in articles_data['articles_by_publication'].items():
@@ -177,6 +192,7 @@ async def download_pdf(
             issue_info=issue_info,
             output_filename=output_filename,
             layout_type=effective_layout_type,
+            remove_images=effective_remove_images,
             verbose=False
         )
         

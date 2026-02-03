@@ -1,13 +1,17 @@
 'use client'
 
-import { Box, Typography, TextField, Select, MenuItem, FormControl } from '@mui/material'
+import { Box, Typography, TextField, Select, MenuItem, FormControl, FormControlLabel, Checkbox } from '@mui/material'
 import { useNewsletterConfig } from '../../contexts/useNewsletterConfig'
 
 export default function ConfigureNewspaper() {
-    const { newspaperTitle, outputMode, updateTitle, updateOutputMode } = useNewsletterConfig()
+    const { newspaperTitle, outputMode, removeImages, updateTitle, updateOutputMode, updateRemoveImages } = useNewsletterConfig()
 
     const handleNewspaperTitleChange = (event) => {
         updateTitle(event.target.value)
+    }
+
+    const handleRemoveImagesChange = (event) => {
+        updateRemoveImages(event.target.checked)
     }
 
     return (
