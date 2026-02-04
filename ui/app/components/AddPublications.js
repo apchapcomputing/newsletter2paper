@@ -1,18 +1,74 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Box, Typography, Button, Checkbox, FormControlLabel, Tooltip } from '@mui/material'
+import CloseIcon from '@mui/icons-material/Close'
+import ImageIcon from '@mui/icons-material/Image'
+import HideImageIcon from '@mui/icons-material/HideImage'
 import { useSelectedPublications } from '../../contexts/useSelectedPublications'
 import { useNewsletterConfig } from '../../contexts/useNewsletterConfig'
 import AddUrlModal from './AddUrlModal'
+import ArticlePreviewList from './ArticlePreviewList'
 
 export default function AddPublications({ onOpenSearch }) {
     const { selectedPublications, removePublication, toggleRemoveImages } = useSelectedPublications()
-    const { outputMode } = useNewsletterConfig()
+    const { outputMode, currentIssueId } = useNewsletterConfig()
     const [isUrlModalOpen, setIsUrlModalOpen] = useState(false)
+    const [articlePreviews, setArticlePreviews] = useState({})
+    const [loadingPreviews, setLoadingPreviews] = useState(false)
+    const [previewError, setPreviewError] = useState(null)
 
     // Only show remove images option for essay format
     const showImageOptions = outputMode === 'essay'
+
+    // Fetch article previews when issue ID or selected publications change
+    // Only track publication IDs to avoid refetching when publication properties change (like remove_images)
+    const publicationIds = selectedPublications.map(p => p.id).join(',')
+
+    useEffect(() => {
+        const fetchArticlePreviews = async () => {
+            if (!currentIssueId || selectedPublications.length === 0) {
+                setArticlePreviews({})
+                return
+            }
+
+            setLoadingPreviews(true)
+            setPreviewError(null)
+
+            try {
+                // Get the printing schedule to determine days_back
+                // Default to 7 days (weekly)
+                const daysBack = 7 // This could be made dynamic based on printing schedule
+
+                const response = await fetch(`/api/articles/preview/${currentIssueId}?days_back=${daysBack}`)
+
+                if (!response.ok) {
+                    throw new Error('Failed to fetch article previews')
+                }
+
+                const result = await response.json()
+
+                if (result.success && result.data) {
+                    setArticlePreviews(result.data.articles_by_publication || {})
+                } else {
+                    setArticlePreviews({})
+                }
+            } catch (error) {
+                console.error('Error fetching article previews:', error)
+                setPreviewError(error.message)
+                setArticlePreviews({})
+            } finally {
+                setLoadingPreviews(false)
+            }
+        }
+
+        // Debounce the fetch to avoid too many requests
+        const timer = setTimeout(() => {
+            fetchArticlePreviews()
+        }, 500)
+
+        return () => clearTimeout(timer)
+    }, [currentIssueId, publicationIds])
 
     // Handle master checkbox to toggle all publications
     const handleToggleAllImages = (event) => {
@@ -124,6 +180,21 @@ export default function AddPublications({ onOpenSearch }) {
                     PUBLICATIONS TO PRINT
                 </Typography>
 
+                {/* Error message for preview fetching */}
+                {previewError && selectedPublications.length > 0 && (
+                    <Box sx={{
+                        mb: 2,
+                        p: 1.5,
+                        backgroundColor: '#fff3cd',
+                        border: '1px solid #ffc107',
+                        borderRadius: '4px'
+                    }}>
+                        <Typography variant="body2" sx={{ fontSize: '0.875rem', color: '#856404' }}>
+                            Unable to load article previews. You can still generate the PDF.
+                        </Typography>
+                    </Box>
+                )}
+
                 {/* Master checkbox to toggle all (only show if there are publications and essay mode) */}
                 {showImageOptions && selectedPublications.length > 0 && (
                     <Box sx={{ mb: 2, pl: 1 }}>
@@ -162,80 +233,98 @@ export default function AddPublications({ onOpenSearch }) {
                 {/* Selected Publications List */}
                 {selectedPublications.length > 0 ? (
                     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-                        {selectedPublications.map((publication, index) => (
-                            <Box
-                                key={publication.id || index}
-                                sx={{
-                                    display: 'flex',
-                                    flexDirection: 'column',
-                                    p: 2,
-                                    backgroundColor: '#f5f5f5',
-                                    border: '1px solid #ccc'
-                                }}
-                            >
-                                {/* Publication Header with Title and Remove Button */}
-                                <Box sx={{
-                                    display: 'flex',
-                                    justifyContent: 'space-between',
-                                    alignItems: 'flex-start',
-                                    mb: showImageOptions ? 1 : 0
-                                }}>
-                                    <Box sx={{ display: 'flex', flexDirection: 'column', flex: 1 }}>
-                                        <Typography variant="body1" sx={{ fontWeight: 500 }}>
-                                            {publication.name || publication.title}
-                                        </Typography>
-                                        <Typography variant="body2" color="text.secondary">
-                                            {publication.publisher || publication.handle || publication.url}
-                                        </Typography>
-                                    </Box>
-                                    <Button
-                                        onClick={() => removePublication(publication.id || publication.name)}
-                                        sx={{
-                                            minWidth: 'auto',
-                                            p: 1,
-                                            color: 'text.secondary',
-                                            '&:hover': {
-                                                backgroundColor: 'transparent',
-                                                color: 'error.main'
-                                            }
-                                        }}
-                                    >
-                                        ×
-                                    </Button>
-                                </Box>
+                        {selectedPublications.map((publication, index) => {
+                            // Get articles for this publication (using publication.id from database)
+                            const pubArticles = articlePreviews[publication.id] || []
 
-                                {/* Image Options for Essay Format */}
-                                {showImageOptions && (
-                                    <Box sx={{ mt: 0.5 }}>
-                                        <Tooltip
-                                            title="When enabled, images from this publication will be removed from the PDF"
-                                            placement="right"
-                                        >
-                                            <FormControlLabel
-                                                control={
-                                                    <Checkbox
-                                                        checked={publication.remove_images || false}
-                                                        onChange={() => toggleRemoveImages(publication.id || publication.name)}
-                                                        size="small"
+                            return (
+                                <Box
+                                    key={publication.id || index}
+                                    sx={{
+                                        display: 'flex',
+                                        flexDirection: 'column',
+                                        p: 2,
+                                        backgroundColor: '#f5f5f5',
+                                        border: '1px solid #ccc'
+                                    }}
+                                >
+                                    {/* Publication Header with Title and Remove Button */}
+                                    <Box sx={{
+                                        display: 'flex',
+                                        justifyContent: 'space-between',
+                                        alignItems: 'flex-start',
+                                        mb: showImageOptions ? 1 : 0
+                                    }}>
+                                        <Box sx={{ display: 'flex', flexDirection: 'column', flex: 1 }}>
+                                            <Typography variant="body1" sx={{ fontWeight: 500 }}>
+                                                {publication.name || publication.title}
+                                            </Typography>
+                                            <Typography variant="body2" color="text.secondary">
+                                                {publication.publisher || publication.handle || publication.url}
+                                            </Typography>
+                                        </Box>
+
+                                        {
+                                            showImageOptions && (
+                                                <Tooltip
+                                                    title={publication.remove_images ? "Images will be removed from this publication" : "Images will be included from this publication"}
+                                                    placement="top"
+                                                >
+                                                    <Button
+                                                        onClick={() => toggleRemoveImages(publication.id || publication.name)}
                                                         sx={{
-                                                            color: 'var(--primary)',
-                                                            '&.Mui-checked': {
-                                                                color: 'var(--primary)',
-                                                            },
+                                                            minWidth: '30px',
+                                                            width: '30px',
+                                                            height: '30px',
+                                                            p: 0,
+                                                            mr: 2,
+                                                            borderRadius: 0,
+                                                            backgroundColor: '#f5f5f5',
+                                                            color: publication.remove_images ? 'text.secondary' : 'var(--primary)',
+                                                            '&:hover': {
+                                                                backgroundColor: '#e0e0e0',
+                                                                borderColor: 'var(--primary)',
+                                                            }
                                                         }}
-                                                    />
+                                                    >
+                                                        {publication.remove_images ? (
+                                                            <HideImageIcon fontSize="small" />
+                                                        ) : (
+                                                            <ImageIcon fontSize="small" />
+                                                        )}
+                                                    </Button>
+                                                </Tooltip>
+                                            )
+                                        }
+
+                                        <Button
+                                            onClick={() => removePublication(publication.id || publication.name)}
+                                            sx={{
+                                                minWidth: '32px',
+                                                width: '32px',
+                                                height: '32px',
+                                                p: 0,
+                                                borderRadius: 0,
+                                                color: 'text.secondary',
+                                                '&:hover': {
+                                                    backgroundColor: '#ffebee',
+                                                    color: '#c62828',
                                                 }
-                                                label={
-                                                    <Typography variant="body2" sx={{ fontSize: '0.875rem' }}>
-                                                        Remove images from this publication
-                                                    </Typography>
-                                                }
-                                            />
-                                        </Tooltip>
+                                            }}
+                                        >
+                                            <CloseIcon fontSize="small" />
+                                        </Button>
                                     </Box>
-                                )}
-                            </Box>
-                        ))}
+
+                                    {/* Article Preview List */}
+                                    <ArticlePreviewList
+                                        publication={publication}
+                                        articles={pubArticles}
+                                        isLoading={loadingPreviews}
+                                    />
+                                </Box>
+                            )
+                        })}
                     </Box>
                 ) : (
                     <Typography variant="body2" color="text.secondary" sx={{ fontStyle: 'italic' }}>
@@ -249,6 +338,6 @@ export default function AddPublications({ onOpenSearch }) {
                 open={isUrlModalOpen}
                 onClose={() => setIsUrlModalOpen(false)}
             />
-        </Box>
+        </Box >
     )
 }
