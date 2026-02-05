@@ -1,12 +1,10 @@
 # newsletter2paper cli
 
-This is an API. 
+This is an API.
 
 Run locally via `uvicorn main:app --reload`
 
-
 ## Database Schema
-
 
 ### Users
 
@@ -21,7 +19,6 @@ Run locally via `uvicorn main:app --reload`
 - last name
 
 - issues
-
 
 ### Articles
 
@@ -41,7 +38,6 @@ Get the article from the publication for print
 
 - object storage url
 
-
 ### Publications
 
 Save the information of the Substack publication
@@ -54,7 +50,6 @@ Save the information of the Substack publication
 
 - publisher
 
-
 ### Subscriptions
 
 Associate user with all the publications they have imported
@@ -62,7 +57,6 @@ Associate user with all the publications they have imported
 - user
 
 - publication
-
 
 ### Issues
 
@@ -80,7 +74,6 @@ Combine all the relevant publications into the newspaper with user configuration
 
 - user
 
-
 ## Capabilities
 
 - get RSS feed URL from given URL
@@ -96,7 +89,6 @@ Combine all the relevant publications into the newspaper with user configuration
 - generate PDF from HTML content of Articles within Issue's frequency and in Issue's publications
 
 - send PDF to Issue's email (or User's email, by default)
-
 
 ## Project Structure
 
@@ -140,3 +132,22 @@ newsletter2paper/
 ├── requirements.txt       # Project dependencies
 └── setup.py               # Package setup and metadata
 ```
+
+## Running Tests
+
+Run all tests
+`pytest`
+
+Run with coverage
+`pytest --cov=newsletter2paper --cov-report=html`
+
+Run specific test categories
+
+```bash
+pytest tests/unit
+pytest tests/integration
+pytest tests/e2e
+```
+
+Run in verbose mode
+`pytest -v`

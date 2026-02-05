@@ -4,7 +4,7 @@ Handles PDF generation endpoints using Go-based PDF service.
 """
 
 from fastapi import APIRouter, HTTPException, Query
-from fastapi.responses import FileResponse, RedirectResponse
+from fastapi.responses import RedirectResponse
 from typing import Optional, Dict, Any
 import logging
 from pathlib import Path

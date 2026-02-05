@@ -202,7 +202,8 @@ class RSSService:
                 return True
             
             # Check if it's an Atom feed
-            if root.tag.endswith('}feed') and 'atom' in root.tag:
+            if root.tag.endswith('}feed') or (root.tag.lower() == 'feed'):
+                # Check for Atom namespace or just 'feed' tag
                 if verbose:
                     logging.info("Atom feed detected (may need conversion)")
                 return True
@@ -404,10 +405,6 @@ class RSSService:
             
         except requests.RequestException as e:
             raise requests.RequestException(f"Failed to fetch RSS feed: {e}")
-
-    def get_publication_metadata(self, feed_url) -> Publication:
-        """Extract publication metadata from RSS feed."""
-        pass
 
     async def get_articles(
         self, 

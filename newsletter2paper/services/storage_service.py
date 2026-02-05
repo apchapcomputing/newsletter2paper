@@ -155,13 +155,3 @@ class StorageService:
                 raise
             else:
                 raise Exception(f"Storage upload failed: {error_msg}")
-
-    def store_content(self, content, key):
-        """Store content in Supabase storage."""
-        # This method can be expanded for other storage needs
-        pass
-
-    def get_content(self, key):
-        """Retrieve content from Supabase storage."""
-        # This method can be expanded for retrieval needs
-        pass
