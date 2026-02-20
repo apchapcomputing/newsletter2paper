@@ -26,6 +26,23 @@ const AddPublications = forwardRef(({ onOpenSearch, onSaveIssue, isSaving: isSav
         handlePublicationAdded
     }))
 
+    // Auto-fetch article previews when publications are loaded (e.g., from database on issue select)
+    useEffect(() => {
+        if (!currentIssueId) return
+
+        // Find publications that need preview data fetched
+        selectedPublications.forEach(pub => {
+            const pubId = pub.id
+            const currentState = publicationStates[pubId]
+
+            // Only fetch if we don't have state for this publication yet
+            if (!currentState) {
+                console.log(`🔄 Auto-fetching preview for loaded publication: ${pub.name || pub.title} (${pubId})`)
+                fetchArticlesForPublication(pubId)
+            }
+        })
+    }, [selectedPublications, currentIssueId])
+
     // Fetch articles for a single publication with retry logic
     const fetchArticlesForPublication = async (pubId, retryCount = 0) => {
         const maxRetries = 3
