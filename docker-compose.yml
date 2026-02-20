@@ -12,7 +12,7 @@ services:
       - SUPABASE_KEY=${SUPABASE_KEY}
       - GO_PDF_CONTAINER=pdf-maker
     volumes:
-      - shared-data:/shared
+      - ./shared:/shared
       - ./newsletter2paper:/app
       - /var/run/docker.sock:/var/run/docker.sock # Allow docker exec
     depends_on:
@@ -29,7 +29,7 @@ services:
       dockerfile: Dockerfile
     container_name: pdf-maker
     volumes:
-      - shared-data:/shared
+      - ./shared:/shared
       - shared-images:/app/images
     networks:
       - newsletter-network
@@ -41,8 +41,6 @@ services:
     restart: unless-stopped
 
 volumes:
-  shared-data:
-    driver: local
   shared-images:
     driver: local
 
