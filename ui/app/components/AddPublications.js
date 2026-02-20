@@ -390,8 +390,8 @@ const AddPublications = forwardRef(({ onOpenSearch, onSaveIssue, isSaving: isSav
                                                 borderRadius: 0,
                                                 color: 'text.secondary',
                                                 '&:hover': {
-                                                    backgroundColor: '#ffebee',
-                                                    color: '#c62828',
+                                                    color: '#9E2A2B', // Error red dark
+                                                    backgroundColor: 'rgba(158, 42, 43, 0.04)',
                                                 }
                                             }}
                                         >

@@ -686,8 +686,8 @@ export default function Home() {
                     flexShrink: 0,
                     mt: -0.5,
                     '&:hover': {
-                      color: '#d32f2f',
-                      backgroundColor: 'rgba(211, 47, 47, 0.04)'
+                      color: '#9E2A2B', // Error red
+                      backgroundColor: 'rgba(158, 42, 43, 0.04)'
                     }
                   }}
                 >

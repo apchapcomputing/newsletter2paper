@@ -4,8 +4,30 @@
 :root {
   --background: #ECECEC;
   --foreground: #291D18;
+
+  /* Primary - Orange */
   --primary: #A44200;
-  --secondary: #c5541b;
+  --primary-dark: #A44200;
+  --primary-light: #c5541b;
+  --orange-light: #c5541b;
+  --orange-lighter: #D58936;
+
+  /* Secondary - Blue */
+  --secondary: #355C7D;
+  --secondary-dark: #355C7D;
+  --secondary-light: #4A6274;
+
+  /* Error - Red */
+  --error: #9E2A2B;
+  --error-dark: #9E2A2B;
+  --error-light: #B23A3A;
+
+  /* Success - Green */
+  --success: #3F5F43;
+  --success-dark: #3F5F43;
+  --success-light: #4F6F52;
+
+  /* Neutrals */
   --grey: #504f4e;
   --white: #ECECEC;
   --black: #291D18;
