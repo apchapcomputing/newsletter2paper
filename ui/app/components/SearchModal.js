@@ -79,59 +79,67 @@ export default function SearchModal({
                 console.log('Using default feed URL:', feedUrl);
             }
 
-            // Convert search result to publication format
-            const publication = {
-                id: searchResult.handle || searchResult.subdomain || `pub-${Date.now()}`, // Temporary ID
-                name: searchResult.name,
-                title: searchResult.name,
-                url: url,
-                publisher: searchResult.publisher || searchResult.handle || 'Unknown Author',
-                feed_url: feedUrl,
-                handle: searchResult.handle || searchResult.subdomain,
-            };
+            // Check if already selected (using temporary ID for now)
+            const tempId = searchResult.handle || searchResult.subdomain || `pub-${Date.now()}`;
+            const isAlreadySelected = selectedPublications.some(p =>
+                p.id === tempId || p.handle === searchResult.handle
+            );
 
-            const isAlreadySelected = selectedPublications.some(p => p.id === publication.id);
             if (isAlreadySelected) {
-                removePublication(publication.id);
+                // Find publication by handle or temp ID
+                const pubToRemove = selectedPublications.find(p =>
+                    p.id === tempId || p.handle === searchResult.handle
+                );
+                if (pubToRemove) {
+                    removePublication(pubToRemove.id);
+                }
             } else {
+                // Create/find publication in database FIRST to get real UUID
+                let publicationId = tempId;
+
+                try {
+                    const pubResponse = await fetch('/api/publications-db?action=find-or-create', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({
+                            title: searchResult.name,
+                            url: url,
+                            rss_feed_url: feedUrl,
+                            publisher: searchResult.publisher || searchResult.handle || 'Unknown Author'
+                        })
+                    });
+
+                    if (pubResponse.ok) {
+                        const pubData = await pubResponse.json();
+                        console.log('Publication created/found in database:', pubData.publication);
+                        publicationId = pubData.publication.id;
+                    } else {
+                        console.error('Failed to create publication in database, using temp ID');
+                    }
+                } catch (dbErr) {
+                    console.error('Error creating publication in database:', dbErr);
+                }
+
+                // Now add publication to context with real UUID
+                const publication = {
+                    id: publicationId,  // Real UUID from database
+                    name: searchResult.name,
+                    title: searchResult.name,
+                    url: url,
+                    publisher: searchResult.publisher || searchResult.handle || 'Unknown Author',
+                    feed_url: feedUrl,
+                    handle: searchResult.handle || searchResult.subdomain,
+                };
+
                 addPublication(publication);
 
-                // Create/find publication in database to get real UUID
-                if (onPublicationAdded) {
-                    try {
-                        const pubResponse = await fetch('/api/publications-db?action=find-or-create', {
-                            method: 'POST',
-                            headers: {
-                                'Content-Type': 'application/json',
-                            },
-                            body: JSON.stringify({
-                                title: publication.name,
-                                url: url,
-                                rss_feed_url: feedUrl,
-                                publisher: publication.publisher
-                            })
-                        });
-
-                        if (pubResponse.ok) {
-                            const pubData = await pubResponse.json();
-                            console.log('Publication created/found in database:', pubData.publication);
-
-                            // Update publication with database ID and trigger preview fetch
-                            if (pubData.publication?.id) {
-                                const oldId = publication.id;
-                                publication.id = pubData.publication.id;
-
-                                // Update the ID in selectedPublications context
-                                updatePublicationId(oldId, pubData.publication.id);
-
-                                onPublicationAdded(publication);
-                            }
-                        } else {
-                            console.error('Failed to create publication in database');
-                        }
-                    } catch (dbErr) {
-                        console.error('Error creating publication in database:', dbErr);
-                    }
+                // Trigger preview fetch if callback provided
+                if (onPublicationAdded && publicationId !== tempId) {
+                    // Wait for context update
+                    await new Promise(resolve => setTimeout(resolve, 100));
+                    onPublicationAdded(publication);
                 }
             }
         } catch (error) {

@@ -96,7 +96,7 @@ export default function ActionButtonsSection({
                             }}
                         >
                             <AlertTitle sx={{ fontWeight: 600, color: '#A44200' }}>PDF Generated Successfully!</AlertTitle>
-                            Your newspaper will open in a new tab automatically or visit{' '}
+                            Your newspaper will open in a new tab automatically. Or visit{' '}
                             <Link
                                 href={pdfUrl}
                                 target="_blank"
@@ -139,7 +139,7 @@ export default function ActionButtonsSection({
                                             fontSize: '0.875rem'
                                         }}
                                     >
-                                        Make sure you have enabled pop-up windows
+                                        Make sure you have pop-up windows enabled.
                                     </Typography>
                                 </Collapse>
                             </Box>

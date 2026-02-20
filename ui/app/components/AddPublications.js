@@ -30,10 +30,19 @@ const AddPublications = forwardRef(({ onOpenSearch, onSaveIssue, isSaving: isSav
     useEffect(() => {
         if (!currentIssueId) return
 
+        // UUID validation regex
+        const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
         // Find publications that need preview data fetched
         selectedPublications.forEach(pub => {
             const pubId = pub.id
             const currentState = publicationStates[pubId]
+
+            // Validate UUID before fetching
+            if (!uuidRegex.test(pubId)) {
+                console.warn(`⚠️ Skipping preview fetch for publication with invalid UUID: ${pubId}`)
+                return
+            }
 
             // Only fetch if we don't have state for this publication yet
             if (!currentState) {
@@ -122,6 +131,14 @@ const AddPublications = forwardRef(({ onOpenSearch, onSaveIssue, isSaving: isSav
     const handlePublicationAdded = async (publication) => {
         if (!publication?.id) {
             console.error('Publication missing ID:', publication)
+            return
+        }
+
+        // Validate that we have a UUID, not a temporary ID
+        const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+        if (!uuidRegex.test(publication.id)) {
+            console.error('❌ Publication has invalid UUID:', publication.id, '- skipping preview fetch')
+            console.error('Publication object:', publication)
             return
         }
 

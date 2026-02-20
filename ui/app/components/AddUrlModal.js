@@ -139,6 +139,9 @@ export default function AddUrlModal({ open, onClose, onPublicationAdded }) {
                                 // Update the ID in selectedPublications context
                                 updatePublicationId(oldId, pubData.publication.id);
 
+                                // Wait for context update to complete
+                                await new Promise(resolve => setTimeout(resolve, 100));
+
                                 onPublicationAdded(newPub);
                             }
                         } else {
