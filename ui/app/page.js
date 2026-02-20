@@ -8,7 +8,9 @@ import Alert from '@mui/material/Alert';
 import Link from '@mui/material/Link';
 import Menu from '@mui/material/Menu';
 import MenuItem from '@mui/material/MenuItem';
+import IconButton from '@mui/material/IconButton';
 import ArrowDropDownIcon from '@mui/icons-material/ArrowDropDown';
+import DeleteIcon from '@mui/icons-material/Delete';
 
 import SearchModal from './components/SearchModal';
 import AuthModal from './components/AuthModal';
@@ -42,6 +44,7 @@ export default function Home() {
     saveIssueToSupabase,
     saveGuestIssue,
     loadIssue,
+    removeIssue,
     userIssues,
     isAuthenticated
   } = useNewsletterConfig();
@@ -412,6 +415,39 @@ export default function Home() {
     }
   };
 
+  const handleDeleteIssue = async (event, issueId) => {
+    // Prevent the menu item click from firing
+    event.stopPropagation();
+
+    // Confirm deletion
+    if (!window.confirm('Are you sure you want to delete this issue? This action cannot be undone.')) {
+      return;
+    }
+
+    try {
+      const response = await fetch(`/api/issues/${issueId}`, {
+        method: 'DELETE',
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to delete issue');
+      }
+
+      console.log('Issue deleted successfully');
+
+      // Remove the issue from the dropdown list
+      removeIssue(issueId);
+
+      // If the deleted issue was the currently loaded one, clear the form
+      if (currentIssueId === issueId) {
+        handleClearAll();
+      }
+    } catch (error) {
+      console.error('Error deleting issue:', error);
+      alert('Failed to delete issue. Please try again.');
+    }
+  };
+
   // Create a debounced search function
   const performSearch = async (query) => {
     const results = await searchSubstack(query);
@@ -628,12 +664,14 @@ export default function Home() {
                 sx={{
                   py: 1.5,
                   px: 2,
+                  display: 'flex',
+                  alignItems: 'flex-start',
                   '&:hover': {
                     backgroundColor: 'rgba(0, 0, 0, 0.04)'
                   }
                 }}
               >
-                <Box>
+                <Box sx={{ flexGrow: 1, minWidth: 0, mr: 1 }}>
                   <Typography variant="body1" sx={{ fontWeight: 500 }}>
                     {issue.title || 'Untitled Issue'}
                   </Typography>
@@ -641,6 +679,20 @@ export default function Home() {
                     {issue.frequency} • {issue.format} • updated {new Date(issue.updated_at || issue.created_at).toLocaleDateString()}
                   </Typography>
                 </Box>
+                <IconButton
+                  size="small"
+                  onClick={(e) => handleDeleteIssue(e, issue.id)}
+                  sx={{
+                    flexShrink: 0,
+                    mt: -0.5,
+                    '&:hover': {
+                      color: '#d32f2f',
+                      backgroundColor: 'rgba(211, 47, 47, 0.04)'
+                    }
+                  }}
+                >
+                  <DeleteIcon fontSize="small" />
+                </IconButton>
               </MenuItem>
             ))
           ) : (

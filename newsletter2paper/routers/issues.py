@@ -239,3 +239,33 @@ async def get_issue_publications(
         import traceback
         logging.error(f"Traceback: {traceback.format_exc()}")
         raise HTTPException(status_code=500, detail=f"Failed to get issue publications: {str(e)}")
+
+@router.delete("/{issue_id}", response_model=dict)
+async def delete_issue(
+    issue_id: UUID,
+    db_service: DatabaseService = Depends(get_db_service)
+):
+    """
+    Delete an issue and all its associated publications (from junction table).
+    """
+    try:
+        # First, delete all publications associated with this issue
+        db_service.client.table('issue_publications').delete().eq('issue_id', str(issue_id)).execute()
+        
+        # Then delete the issue itself
+        result = db_service.client.table('issues').delete().eq('id', str(issue_id)).execute()
+        
+        if not result.data:
+            raise HTTPException(status_code=404, detail=f"Issue {issue_id} not found")
+        
+        return {
+            "success": True,
+            "message": f"Issue {issue_id} deleted successfully"
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        import logging
+        logging.error(f"Failed to delete issue {issue_id}: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to delete issue: {str(e)}")

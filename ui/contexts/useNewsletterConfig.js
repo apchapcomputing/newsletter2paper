@@ -526,6 +526,10 @@ export const NewsletterConfigProvider = ({ children }) => {
         }
     };
 
+    const removeIssue = (issueId) => {
+        setUserIssues(prev => prev.filter(issue => issue.id !== issueId));
+    };
+
     return (
         <NewsletterConfigContext.Provider value={{
             // State
@@ -548,6 +552,7 @@ export const NewsletterConfigProvider = ({ children }) => {
             saveIssueToSupabase,
             saveGuestIssue,
             loadIssue,
+            removeIssue,
             validateCurrentIssue,
 
             // Auth-related state
