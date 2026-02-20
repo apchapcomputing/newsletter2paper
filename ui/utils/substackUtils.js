@@ -2,6 +2,8 @@
  * Utility functions for Substack API interactions
  */
 
+import logger from './logger';
+
 /**
  * Capitalize each word in a name properly
  * @param {string} name - The name to capitalize
@@ -43,7 +45,7 @@ export const searchSubstack = async (query) => {
             throw new Error(`Error: ${response.statusText} - ${errorData.details || errorData.error || 'Unknown error'}`);
         }
         const data = await response.json();
-        console.log('Substack search results:', data);
+        logger.log('Substack search results:', data);
 
         // Parse results to extract publication names
         const publications = data.results?.map(result => {
@@ -70,7 +72,7 @@ export const searchSubstack = async (query) => {
             }
             return null;
         }).filter(Boolean) || [];
-        console.log(publications);
+        logger.log(publications);
         return publications;
     } catch (error) {
         console.error("Failed to search Substack:", error);

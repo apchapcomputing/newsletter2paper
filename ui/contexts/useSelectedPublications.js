@@ -1,6 +1,7 @@
 // create context
 import { createContext, useContext, useState, useEffect } from "react";
 import { useAuth } from './useAuth';
+import logger from '../utils/logger';
 
 const SelectedPublicationsContext = createContext();
 
@@ -37,7 +38,7 @@ export const SelectedPublicationsProvider = ({ children }) => {
     // Clear publications when user logs out
     useEffect(() => {
         if (!user && !session && isLoaded) {
-            console.log('🧹 User logged out, clearing selected publications');
+            logger.log('🧹 User logged out, clearing selected publications');
             setSelectedPublications([]);
         }
     }, [user, session, isLoaded]);

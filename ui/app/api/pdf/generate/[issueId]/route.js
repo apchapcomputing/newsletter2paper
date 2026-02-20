@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import logger from '@/utils/logger';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL;
 
@@ -31,7 +32,7 @@ export async function POST(request, { params }) {
         // Make request to the Python backend
         const backendUrl = `${API_BASE_URL}/pdf/generate/${issueId}?${searchParams.toString()}`;
 
-        console.log('Making request to backend:', backendUrl);
+        logger.log('Making request to backend:', backendUrl);
 
         const response = await fetch(backendUrl, {
             method: 'POST',
@@ -56,7 +57,7 @@ export async function POST(request, { params }) {
             );
         }
 
-        console.log('PDF generation successful:', data);
+        logger.log('PDF generation successful:', data);
 
         return NextResponse.json({
             success: true,

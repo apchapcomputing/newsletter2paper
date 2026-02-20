@@ -9,6 +9,7 @@ import { useSelectedPublications } from '../../contexts/useSelectedPublications'
 import { useNewsletterConfig } from '../../contexts/useNewsletterConfig'
 import AddUrlModal from './AddUrlModal'
 import ArticlePreviewList from './ArticlePreviewList'
+import logger from '../../utils/logger'
 
 const AddPublications = forwardRef(({ onOpenSearch, onSaveIssue, isSaving: isSavingProp }, ref) => {
     const { selectedPublications, removePublication, toggleRemoveImages } = useSelectedPublications()
@@ -40,13 +41,13 @@ const AddPublications = forwardRef(({ onOpenSearch, onSaveIssue, isSaving: isSav
 
             // Validate UUID before fetching
             if (!uuidRegex.test(pubId)) {
-                console.warn(`⚠️ Skipping preview fetch for publication with invalid UUID: ${pubId}`)
+                logger.warn(`⚠️ Skipping preview fetch for publication with invalid UUID: ${pubId}`)
                 return
             }
 
             // Only fetch if we don't have state for this publication yet
             if (!currentState) {
-                console.log(`🔄 Auto-fetching preview for loaded publication: ${pub.name || pub.title} (${pubId})`)
+                logger.log(`🔄 Auto-fetching preview for loaded publication: ${pub.name || pub.title} (${pubId})`)
                 fetchArticlesForPublication(pubId)
             }
         })
@@ -58,7 +59,7 @@ const AddPublications = forwardRef(({ onOpenSearch, onSaveIssue, isSaving: isSav
         const retryDelays = [500, 1000, 2000] // Exponential backoff
 
         if (!currentIssueId || !pubId) {
-            console.log('⚠️ Missing issue ID or publication ID, skipping fetch')
+            logger.log('⚠️ Missing issue ID or publication ID, skipping fetch')
             return
         }
 
@@ -83,7 +84,7 @@ const AddPublications = forwardRef(({ onOpenSearch, onSaveIssue, isSaving: isSav
 
             if (!response.ok) {
                 const errorText = await response.text()
-                console.error(`Failed to fetch previews (${response.status}):`, errorText)
+                logger.error(`Failed to fetch previews (${response.status}):`, errorText)
                 throw new Error(`Failed to fetch article previews: ${response.status} ${response.statusText}`)
             }
 
@@ -97,7 +98,7 @@ const AddPublications = forwardRef(({ onOpenSearch, onSaveIssue, isSaving: isSav
 
                 if (articles.length === 0 && pubExists && retryCount < maxRetries) {
                     // Retry with exponential backoff
-                    console.log(`🔄 Retry ${retryCount + 1}/${maxRetries} for publication ${pubId} after ${retryDelays[retryCount]}ms`)
+                    logger.log(`🔄 Retry ${retryCount + 1}/${maxRetries} for publication ${pubId} after ${retryDelays[retryCount]}ms`)
                     setTimeout(() => {
                         fetchArticlesForPublication(pubId, retryCount + 1)
                     }, retryDelays[retryCount])
@@ -110,8 +111,8 @@ const AddPublications = forwardRef(({ onOpenSearch, onSaveIssue, isSaving: isSav
                     [pubId]: { status: 'loaded', articles, error: '' }
                 }))
 
-                console.log(`✅ Loaded ${articles.length} articles for publication ${pubId}`)
-                console.log(`📦 Updated publicationStates for ${pubId}:`, { status: 'loaded', articles: articles.length })
+                logger.log(`✅ Loaded ${articles.length} articles for publication ${pubId}`)
+                logger.log(`📦 Updated publicationStates for ${pubId}:`, { status: 'loaded', articles: articles.length })
             } else {
                 setPublicationStates(prev => ({
                     ...prev,
@@ -119,7 +120,7 @@ const AddPublications = forwardRef(({ onOpenSearch, onSaveIssue, isSaving: isSav
                 }))
             }
         } catch (error) {
-            console.error(`Error fetching articles for publication ${pubId}:`, error)
+            logger.error(`Error fetching articles for publication ${pubId}:`, error)
             setPublicationStates(prev => ({
                 ...prev,
                 [pubId]: { status: 'error', articles: [], error: error.message }
@@ -130,23 +131,23 @@ const AddPublications = forwardRef(({ onOpenSearch, onSaveIssue, isSaving: isSav
     // Handle publication added - this will be called from modals
     const handlePublicationAdded = async (publication) => {
         if (!publication?.id) {
-            console.error('Publication missing ID:', publication)
+            logger.error('Publication missing ID:', publication)
             return
         }
 
         // Validate that we have a UUID, not a temporary ID
         const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
         if (!uuidRegex.test(publication.id)) {
-            console.error('❌ Publication has invalid UUID:', publication.id, '- skipping preview fetch')
-            console.error('Publication object:', publication)
+            logger.error('❌ Publication has invalid UUID:', publication.id, '- skipping preview fetch')
+            logger.error('Publication object:', publication)
             return
         }
 
-        console.log(`📰 Publication added: ${publication.name || publication.title} (ID: ${publication.id})`)
+        logger.log(`📰 Publication added: ${publication.name || publication.title} (ID: ${publication.id})`)
 
         // Wait for save to complete
         if (onSaveIssue) {
-            console.log('💾 Saving issue before fetching preview...')
+            logger.log('💾 Saving issue before fetching preview...')
             await onSaveIssue()
 
             // Wait for save prop to become false
@@ -334,7 +335,7 @@ const AddPublications = forwardRef(({ onOpenSearch, onSaveIssue, isSaving: isSav
 
                             // Debug logging
                             if (pubState.status !== 'loading') {
-                                console.log(`📊 Publication ${publication.name} (${publication.id}): ${pubState.status}, ${pubState.articles.length} articles`)
+                                logger.log(`📊 Publication ${publication.name} (${publication.id}): ${pubState.status}, ${pubState.articles.length} articles`)
                             }
 
                             return (

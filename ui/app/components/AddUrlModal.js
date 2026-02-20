@@ -5,6 +5,7 @@ import { Modal, Box, Typography, TextField, Button, CircularProgress, Alert } fr
 import { useSelectedPublications } from '../../contexts/useSelectedPublications'
 import { getRssFeedUrl } from '../../utils/rssUtils'
 import { searchSubstack } from '../../utils/substackUtils'
+import logger from '../../utils/logger'
 
 export default function AddUrlModal({ open, onClose, onPublicationAdded }) {
     const { addPublication, updatePublicationId } = useSelectedPublications()
@@ -53,7 +54,7 @@ export default function AddUrlModal({ open, onClose, onPublicationAdded }) {
 
                     try {
                         const searchResults = await searchSubstack(handle)
-                        console.log('Search results for', handle, ':', searchResults)
+                        logger.log('Search results for', handle, ':', searchResults)
 
                         // Find the matching publication in search results
                         // Prioritize 'user' type results as they have better author info
@@ -86,7 +87,7 @@ export default function AddUrlModal({ open, onClose, onPublicationAdded }) {
                             subscribers = matchingResult.subscribers
                         }
                     } catch (err) {
-                        console.warn('Could not search for publication details:', err)
+                        logger.warn('Could not search for publication details:', err)
                     }
 
                     // Get RSS feed URL
@@ -97,7 +98,7 @@ export default function AddUrlModal({ open, onClose, onPublicationAdded }) {
                         console.error('Error getting RSS feed URL:', err)
                         // Fallback to default Substack RSS feed pattern
                         feedUrl = `${cleanUrl}/feed`
-                        console.log('Using default feed URL:', feedUrl)
+                        logger.log('Using default feed URL:', feedUrl)
                     }
 
                     // Add to selected publications (using same format as SearchModal)
@@ -129,7 +130,7 @@ export default function AddUrlModal({ open, onClose, onPublicationAdded }) {
 
                         if (pubResponse.ok) {
                             const pubData = await pubResponse.json()
-                            console.log('Publication created/found in database:', pubData.publication)
+                            logger.log('Publication created/found in database:', pubData.publication)
 
                             // Update publication with database ID and trigger preview fetch
                             if (pubData.publication?.id && onPublicationAdded) {

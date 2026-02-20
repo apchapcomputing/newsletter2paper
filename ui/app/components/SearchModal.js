@@ -17,6 +17,7 @@ import SearchHistory from './SearchHistory';
 
 import { getRssFeedUrl } from '../../utils/rssUtils';
 import { searchSubstack } from '../../utils/substackUtils';
+import logger from '../../utils/logger';
 
 import { useSelectedPublications } from '../../contexts/useSelectedPublications';
 
@@ -36,7 +37,7 @@ export default function SearchModal({
     const handlePublicationToggle = async (searchResult) => {
         try {
             // if result is type user, make a secondary search with the publication's name to get the publication domain
-            console.log('res', searchResult)
+            logger.log('res', searchResult)
 
             let url;
             if (searchResult.type === 'publication') {
@@ -66,7 +67,7 @@ export default function SearchModal({
                 return;
             }
 
-            console.log('Publication URL:', url);
+            logger.log('Publication URL:', url);
 
             // Get RSS feed URL with error handling
             let feedUrl;
@@ -76,7 +77,7 @@ export default function SearchModal({
                 console.error('Error getting RSS feed URL:', error);
                 // Fallback to default Substack RSS feed pattern
                 feedUrl = `${url}/feed`;
-                console.log('Using default feed URL:', feedUrl);
+                logger.log('Using default feed URL:', feedUrl);
             }
 
             // Check if already selected (using temporary ID for now)
@@ -113,7 +114,7 @@ export default function SearchModal({
 
                     if (pubResponse.ok) {
                         const pubData = await pubResponse.json();
-                        console.log('Publication created/found in database:', pubData.publication);
+                        logger.log('Publication created/found in database:', pubData.publication);
                         publicationId = pubData.publication.id;
                     } else {
                         console.error('Failed to create publication in database, using temp ID');

@@ -2,6 +2,7 @@
 import { createContext, useContext, useState, useEffect } from "react";
 import { useAuth } from './useAuth';
 import { createClient } from '../lib/supabase';
+import logger from '../utils/logger';
 
 const NewsletterConfigContext = createContext();
 
@@ -39,7 +40,7 @@ export const NewsletterConfigProvider = ({ children }) => {
                 .single();
 
             if (error || !data) {
-                console.warn(`Current issue ID ${currentIssueId} not found in database, clearing it`);
+                logger.warn(`Current issue ID ${currentIssueId} not found in database, clearing it`);
                 setCurrentIssueId(null);
                 return false;
             }
@@ -55,7 +56,7 @@ export const NewsletterConfigProvider = ({ children }) => {
     // Migrate guest issue to authenticated user issue
     const migrateGuestIssueToUser = async (issueId, userId) => {
         try {
-            console.log('🔄 Migrating guest issue to authenticated user:', issueId, 'userId:', userId);
+            logger.log('🔄 Migrating guest issue to authenticated user:', issueId, 'userId:', userId);
 
             // Check if this is a guest issue
             const { data: issue, error: fetchError } = await supabase
@@ -70,11 +71,11 @@ export const NewsletterConfigProvider = ({ children }) => {
             }
 
             if (!issue) {
-                console.warn('⚠️ Issue not found, skipping migration');
+                logger.warn('⚠️ Issue not found, skipping migration');
                 return false;
             }
 
-            console.log('📄 Issue found:', {
+            logger.log('📄 Issue found:', {
                 id: issue.id,
                 status: issue.status,
                 frequency: issue.frequency,
@@ -83,11 +84,11 @@ export const NewsletterConfigProvider = ({ children }) => {
 
             // Only migrate if status is 'guest'
             if (issue.status !== 'guest') {
-                console.log('ℹ️ Issue is not a guest issue (status:', issue.status + '), skipping migration');
+                logger.log('ℹ️ Issue is not a guest issue (status:', issue.status + '), skipping migration');
                 return false;
             }
 
-            console.log('🔧 Updating issue status and frequency...');
+            logger.log('🔧 Updating issue status and frequency...');
 
             // Update issue: status='guest' -> 'draft', frequency='once' -> 'weekly'
             const { error: updateError } = await supabase
@@ -104,8 +105,8 @@ export const NewsletterConfigProvider = ({ children }) => {
                 return false;
             }
 
-            console.log('✅ Issue updated successfully');
-            console.log('🔗 Creating user-issue association...');
+            logger.log('✅ Issue updated successfully');
+            logger.log('🔗 Creating user-issue association...');
 
             // Create user-issue association
             const { error: associationError } = await supabase
@@ -122,7 +123,7 @@ export const NewsletterConfigProvider = ({ children }) => {
                 return false;
             }
 
-            console.log('✅ Successfully migrated guest issue to user!');
+            logger.log('✅ Successfully migrated guest issue to user!');
             return true;
         } catch (error) {
             console.error('❌ Error migrating guest issue:', error);
@@ -145,10 +146,10 @@ export const NewsletterConfigProvider = ({ children }) => {
                     setFrequency(config.frequency || 'weekly');
                     localIssueId = config.issueId || null;
                     setCurrentIssueId(localIssueId);
-                    console.log('📋 Loaded from localStorage - issueId:', localIssueId);
+                    logger.log('📋 Loaded from localStorage - issueId:', localIssueId);
                 } else {
                     // No config in localStorage, clear state
-                    console.log('ℹ️ No config found in localStorage');
+                    logger.log('ℹ️ No config found in localStorage');
                     setNewspaperTitle('');
                     setOutputMode('essay');
                     setRemoveImages(false);
@@ -161,7 +162,7 @@ export const NewsletterConfigProvider = ({ children }) => {
 
             // If user just logged out (user is null but we had data), clear everything
             if (!user && !session) {
-                console.log('🧹 User logged out, clearing user issues');
+                logger.log('🧹 User logged out, clearing user issues');
                 setUserIssues([]);
                 setIsLoaded(true);
                 return;
@@ -174,10 +175,10 @@ export const NewsletterConfigProvider = ({ children }) => {
 
                     // If there's a current issue ID (from localStorage), check if it's a guest issue and migrate it
                     if (localIssueId) {
-                        console.log('🔍 Checking issue for migration:', localIssueId);
+                        logger.log('🔍 Checking issue for migration:', localIssueId);
                         await migrateGuestIssueToUser(localIssueId, user.id);
                     } else {
-                        console.log('ℹ️ No issue ID found in localStorage to migrate');
+                        logger.log('ℹ️ No issue ID found in localStorage to migrate');
                     }
 
                     // Validate that the current issue ID still exists in the database
@@ -301,7 +302,7 @@ export const NewsletterConfigProvider = ({ children }) => {
                 if (result.error) {
                     // If the issue doesn't exist anymore (deleted from database), clear the ID and create new
                     if (result.error.code === 'PGRST116' || result.error.message?.includes('No rows found')) {
-                        console.warn(`Issue ${currentIssueId} not found in database, creating new issue`);
+                        logger.warn(`Issue ${currentIssueId} not found in database, creating new issue`);
                         setCurrentIssueId(null); // Clear the invalid issue ID
 
                         // Create new issue instead
@@ -444,7 +445,7 @@ export const NewsletterConfigProvider = ({ children }) => {
                 if (result.error) {
                     // If the issue doesn't exist anymore (deleted from database), clear the ID and create new
                     if (result.error.code === 'PGRST116' || result.error.message?.includes('No rows found')) {
-                        console.warn(`Guest issue ${currentIssueId} not found in database, creating new guest issue`);
+                        logger.warn(`Guest issue ${currentIssueId} not found in database, creating new guest issue`);
                         setCurrentIssueId(null); // Clear the invalid issue ID
 
                         // Create new guest issue instead

@@ -23,6 +23,7 @@ import DecorativeLine from './components/DecorativeLine';
 import { getRssFeedUrl } from '../utils/rssUtils';
 import { searchSubstack } from '../utils/substackUtils';
 import { apiPost } from '../utils/authApi';
+import logger from '../utils/logger';
 
 import { useSelectedPublications } from '../contexts/useSelectedPublications';
 import { useNewsletterConfig } from '../contexts/useNewsletterConfig';
@@ -85,7 +86,7 @@ export default function Home() {
 
     // Set a new timer to auto-save after 1 second of inactivity
     const timer = setTimeout(() => {
-      console.log('Auto-saving issue...');
+      logger.log('Auto-saving issue...');
       handleSaveIssue();
     }, 1000);
 
@@ -106,30 +107,30 @@ export default function Home() {
     const loadPublicationsForIssue = async () => {
       // Only load from database if user is logged in
       if (!user) {
-        console.log('Guest user - publications managed via localStorage');
+        logger.log('Guest user - publications managed via localStorage');
         return;
       }
 
       if (!currentIssueId || !configLoaded) {
-        console.log('Waiting for issue ID or config...', { currentIssueId, configLoaded });
+        logger.log('Waiting for issue ID or config...', { currentIssueId, configLoaded });
         return;
       }
 
       try {
         isLoadingPublications.current = true;
-        console.log(`🔄 Loading publications for issue: ${currentIssueId}`);
+        logger.log(`🔄 Loading publications for issue: ${currentIssueId}`);
         const pubResponse = await fetch(`/api/issues/${currentIssueId}/publications`);
 
         if (pubResponse.ok) {
           const pubData = await pubResponse.json();
-          console.log(`📊 Received publications data:`, pubData);
+          logger.log(`📊 Received publications data:`, pubData);
 
           // Clear existing publications and add the loaded ones
           clearAllPublications();
-          console.log('🗑️  Cleared all publications');
+          logger.log('🗑️  Cleared all publications');
 
           if (pubData.publications && pubData.publications.length > 0) {
-            console.log(`➕ Adding ${pubData.publications.length} publications from database`);
+            logger.log(`➕ Adding ${pubData.publications.length} publications from database`);
             for (const pub of pubData.publications) {
               addPublication({
                 id: pub.id,
@@ -142,20 +143,20 @@ export default function Home() {
                 remove_images: pub.remove_images || false
               });
             }
-            console.log(`✅ Loaded ${pubData.publications.length} publications from database`);
+            logger.log(`✅ Loaded ${pubData.publications.length} publications from database`);
           } else {
-            console.log('ℹ️  No publications found for this issue');
+            logger.log('ℹ️  No publications found for this issue');
           }
         } else {
-          console.error('❌ Failed to fetch publications:', pubResponse.status, pubResponse.statusText);
+          logger.error('❌ Failed to fetch publications:', pubResponse.status, pubResponse.statusText);
         }
       } catch (error) {
-        console.error('❌ Error loading publications for issue:', error);
+        logger.error('❌ Error loading publications for issue:', error);
       } finally {
         // Use setTimeout to ensure the flag is reset after state updates complete
         setTimeout(() => {
           isLoadingPublications.current = false;
-          console.log('✓ Publications loading complete');
+          logger.log('✓ Publications loading complete');
         }, 100);
       }
     };
@@ -171,7 +172,7 @@ export default function Home() {
           throw new Error('Failed to fetch publications');
         }
         const data = await response.json();
-        console.log('Fetched publications:', data);
+        logger.log('Fetched publications:', data);
 
         // get rss url for each publication url and save to state
         const publicationsWithRss = await Promise.all(data.publications.map(async (p) => {
@@ -180,7 +181,7 @@ export default function Home() {
         }));
         setPublications(publicationsWithRss);
       } catch (err) {
-        console.error('Error fetching publications:', err);
+        logger.error('Error fetching publications:', err);
         setError(err.message);
       } finally {
         setLoading(false);
@@ -229,7 +230,7 @@ export default function Home() {
           remove_images: removeImages
         });
 
-        console.log('Issue saved successfully to Supabase!', savedIssue);
+        logger.log('Issue saved successfully to Supabase!', savedIssue);
       } else {
         // Guest user - create temporary issue for PDF generation
         savedIssue = await saveGuestIssue({
@@ -239,13 +240,13 @@ export default function Home() {
           remove_images: removeImages
         });
 
-        console.log('Guest issue created successfully!', savedIssue);
+        logger.log('Guest issue created successfully!', savedIssue);
       }
 
       // Step 2: Save selected publications
       // Only sync publications to database if there are any selected
       if (selectedPublications.length > 0) {
-        console.log(`💾 Syncing ${selectedPublications.length} publications to issue ${savedIssue.id}`);
+        logger.log(`💾 Syncing ${selectedPublications.length} publications to issue ${savedIssue.id}`);
 
         const publicationsWithSettings = [];
 
@@ -276,7 +277,7 @@ export default function Home() {
           });
         }
 
-        console.log(`📋 Publications with settings to save:`, publicationsWithSettings);
+        logger.log(`📋 Publications with settings to save:`, publicationsWithSettings);
 
         // Update publications for this issue (this will clear old ones and add new ones)
         const pubResponse = await fetch(`/api/issues/${savedIssue.id}/publications`, {
@@ -296,9 +297,9 @@ export default function Home() {
         }
 
         const result = await pubResponse.json();
-        console.log('✅ Publications saved successfully:', result);
+        logger.log('✅ Publications saved successfully:', result);
       } else {
-        console.log('ℹ️  No publications to save - skipping publication sync');
+        logger.log('ℹ️  No publications to save - skipping publication sync');
       }
 
     } catch (error) {
@@ -321,7 +322,7 @@ export default function Home() {
     try {
       // IMPORTANT: Ensure any pending save completes before generating PDF
       // This prevents race conditions where the PDF is generated with stale data
-      console.log('🔄 Ensuring issue is saved before generating PDF...');
+      logger.log('🔄 Ensuring issue is saved before generating PDF...');
 
       // Clear any pending auto-save timer and save immediately
       if (autoSaveTimer) {
@@ -340,7 +341,7 @@ export default function Home() {
       // Give Supabase a moment to process the update (prevents race conditions)
       await new Promise(resolve => setTimeout(resolve, 300));
 
-      console.log('✅ Issue saved, now generating PDF...');
+      logger.log('✅ Issue saved, now generating PDF...');
 
       // Map frequency to days_back parameter
       const frequencyToDays = {
@@ -350,7 +351,7 @@ export default function Home() {
       };
       const daysBack = frequencyToDays[frequency] || 7;
 
-      console.log(`📅 Using frequency: ${frequency} (${daysBack} days back)`);
+      logger.log(`📅 Using frequency: ${frequency} (${daysBack} days back)`);
 
       // Call Next.js API route, which proxies to Python backend
       const response = await fetch(`/api/pdf/generate/${currentIssueId}?days_back=${daysBack}`, {
@@ -364,7 +365,7 @@ export default function Home() {
 
       if (data.success && data.pdf_url) {
         setPdfUrl(data.pdf_url);
-        console.log('PDF generated successfully:', data.pdf_url);
+        logger.log('PDF generated successfully:', data.pdf_url);
 
         // Optionally open the PDF in a new tab
         window.open(data.pdf_url, '_blank');
@@ -433,7 +434,7 @@ export default function Home() {
         throw new Error('Failed to delete issue');
       }
 
-      console.log('Issue deleted successfully');
+      logger.log('Issue deleted successfully');
 
       // Remove the issue from the dropdown list
       removeIssue(issueId);
@@ -757,13 +758,28 @@ export default function Home() {
         }}>
           <Typography
             variant="body2"
-            onClick={() => window.open('https://docs.google.com/forms/d/e/1FAIpQLScqMWrxF2SikunyJhR2VXkw2xfYAb950DT2bu0J8KtaTkcY7g/viewform?usp=sharing&ouid=112836351698515957727', '_blank')}
+            onClick={() => window.open('https://ashlynchapman.com', '_blank')}
             sx={{
-              textDecoration: 'underline',
               cursor: 'pointer',
               color: '#504f4e',
               '&:hover': {
-                color: '#3b82f6'
+                color: 'secondary.main'
+              }
+            }}
+          >
+            Made by Ashlyn Chapman
+          </Typography>
+          <Typography variant="body2" sx={{ color: '#504f4e' }}>
+            •
+          </Typography>
+          <Typography
+            variant="body2"
+            onClick={() => window.open('https://docs.google.com/forms/d/e/1FAIpQLScqMWrxF2SikunyJhR2VXkw2xfYAb950DT2bu0J8KtaTkcY7g/viewform?usp=sharing&ouid=112836351698515957727', '_blank')}
+            sx={{
+              cursor: 'pointer',
+              color: '#504f4e',
+              '&:hover': {
+                color: 'secondary.main'
               }
             }}
           >
@@ -776,11 +792,10 @@ export default function Home() {
             variant="body2"
             onClick={() => window.open('https://github.com/apchapcomputing/newsletter2paper', '_blank')}
             sx={{
-              textDecoration: 'underline',
               cursor: 'pointer',
               color: '#504f4e',
               '&:hover': {
-                color: '#3b82f6'
+                color: 'secondary.main'
               }
             }}
           >

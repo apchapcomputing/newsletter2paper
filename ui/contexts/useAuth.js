@@ -2,6 +2,7 @@
 
 import { createContext, useContext, useEffect, useState } from 'react'
 import { createClient } from '../lib/supabase'
+import logger from '../utils/logger'
 
 const AuthContext = createContext({
     user: null,
@@ -51,12 +52,12 @@ export function AuthProvider({ children }) {
 
             // Handle sign in event
             if (event === 'SIGNED_IN') {
-                console.log('User signed in:', session?.user?.email)
+                logger.log('User signed in:', session?.user?.email)
             }
 
             // Handle sign out event
             if (event === 'SIGNED_OUT') {
-                console.log('User signed out')
+                logger.log('User signed out')
             }
         })
 
@@ -113,7 +114,7 @@ export function AuthProvider({ children }) {
             localStorage.removeItem('selectedPublications')
             localStorage.removeItem('guestSessionId')
 
-            console.log('🧹 Cleared localStorage: newsletterConfig, selectedPublications, guestSessionId')
+            logger.log('🧹 Cleared localStorage: newsletterConfig, selectedPublications, guestSessionId')
 
             return { success: true }
         } catch (error) {

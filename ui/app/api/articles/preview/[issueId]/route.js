@@ -1,3 +1,5 @@
+import logger from '@/utils/logger';
+
 const BACKEND_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
 export async function GET(request, { params }) {
@@ -26,7 +28,7 @@ export async function GET(request, { params }) {
             backendSearchParams.append('publication_id', publicationId);
         }
 
-        console.log(`Fetching article preview from: ${backendUrl}?${backendSearchParams}`);
+        logger.log(`Fetching article preview from: ${backendUrl}?${backendSearchParams}`);
 
         const response = await fetch(`${backendUrl}?${backendSearchParams}`, {
             method: 'POST',
