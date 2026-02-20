@@ -32,6 +32,7 @@ export default function Home() {
     newspaperTitle,
     outputMode,
     removeImages,
+    frequency,
     currentIssueId,
     isLoaded: configLoaded,
     updateTitle,
@@ -61,6 +62,7 @@ export default function Home() {
   const isSelectMenuOpen = Boolean(selectAnchorEl);
   const [autoSaveTimer, setAutoSaveTimer] = useState(null);
   const isLoadingPublications = useRef(false);
+  const addPublicationsRef = useRef(null);
 
   // Auto-save effect - triggers when title, outputMode, or publications change
   useEffect(() => {
@@ -238,59 +240,63 @@ export default function Home() {
       }
 
       // Step 2: Save selected publications
-      // Always sync publications to database, even if empty (to handle deletions)
-      console.log(`💾 Syncing ${selectedPublications.length} publications to issue ${savedIssue.id}`);
+      // Only sync publications to database if there are any selected
+      if (selectedPublications.length > 0) {
+        console.log(`💾 Syncing ${selectedPublications.length} publications to issue ${savedIssue.id}`);
 
-      const publicationsWithSettings = [];
+        const publicationsWithSettings = [];
 
-      // First, ensure all publications exist in the database
-      for (const publication of selectedPublications) {
-        const pubResponse = await fetch('/api/publications-db?action=find-or-create', {
+        // First, ensure all publications exist in the database
+        for (const publication of selectedPublications) {
+          const pubResponse = await fetch('/api/publications-db?action=find-or-create', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              title: publication.name || publication.title,
+              url: publication.url,
+              rss_feed_url: publication.feed_url || publication.url + '/feed',
+              publisher: publication.publisher || publication.handle || 'Unknown'
+            })
+          });
+
+          if (!pubResponse.ok) {
+            console.error(`Failed to create/find publication: ${publication.name}`);
+            continue;
+          }
+
+          const pubData = await pubResponse.json();
+          publicationsWithSettings.push({
+            publication_id: pubData.publication.id,
+            remove_images: publication.remove_images || false
+          });
+        }
+
+        console.log(`📋 Publications with settings to save:`, publicationsWithSettings);
+
+        // Update publications for this issue (this will clear old ones and add new ones)
+        const pubResponse = await fetch(`/api/issues/${savedIssue.id}/publications`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({
-            title: publication.name || publication.title,
-            url: publication.url,
-            rss_feed_url: publication.feed_url || publication.url + '/feed',
-            publisher: publication.publisher || publication.handle || 'Unknown'
+            publications: publicationsWithSettings
           })
         });
 
         if (!pubResponse.ok) {
-          console.error(`Failed to create/find publication: ${publication.name}`);
-          continue;
+          const errorText = await pubResponse.text();
+          console.error('❌ Failed to save publications:', errorText);
+          throw new Error('Failed to save publications to issue');
         }
 
-        const pubData = await pubResponse.json();
-        publicationsWithSettings.push({
-          publication_id: pubData.publication.id,
-          remove_images: publication.remove_images || false
-        });
+        const result = await pubResponse.json();
+        console.log('✅ Publications saved successfully:', result);
+      } else {
+        console.log('ℹ️  No publications to save - skipping publication sync');
       }
-
-      console.log(`📋 Publications with settings to save:`, publicationsWithSettings);
-
-      // Update publications for this issue (this will clear old ones and add new ones)
-      const pubResponse = await fetch(`/api/issues/${savedIssue.id}/publications`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          publications: publicationsWithSettings
-        })
-      });
-
-      if (!pubResponse.ok) {
-        const errorText = await pubResponse.text();
-        console.error('❌ Failed to save publications:', errorText);
-        throw new Error('Failed to save publications to issue');
-      }
-
-      const result = await pubResponse.json();
-      console.log('✅ Publications saved successfully:', result);
 
     } catch (error) {
       console.error('Error saving issue:', error);
@@ -333,8 +339,18 @@ export default function Home() {
 
       console.log('✅ Issue saved, now generating PDF...');
 
+      // Map frequency to days_back parameter
+      const frequencyToDays = {
+        'daily': 1,
+        'weekly': 7,
+        'monthly': 30
+      };
+      const daysBack = frequencyToDays[frequency] || 7;
+
+      console.log(`📅 Using frequency: ${frequency} (${daysBack} days back)`);
+
       // Call Next.js API route, which proxies to Python backend
-      const response = await fetch(`/api/pdf/generate/${currentIssueId}`, {
+      const response = await fetch(`/api/pdf/generate/${currentIssueId}?days_back=${daysBack}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -584,7 +600,7 @@ export default function Home() {
               }
             }}
           >
-            RESET
+            NEW ISSUE
           </Button>
         </Box>
 
@@ -642,7 +658,12 @@ export default function Home() {
         <DecorativeLine />
 
         {/* Add Publications Section */}
-        <AddPublications onOpenSearch={() => setIsSearchModalOpen(true)} />
+        <AddPublications
+          ref={addPublicationsRef}
+          onOpenSearch={() => setIsSearchModalOpen(true)}
+          onSaveIssue={handleSaveIssue}
+          isSaving={isSaving}
+        />
 
         <DecorativeLine />
 
@@ -665,6 +686,7 @@ export default function Home() {
         searchHistory={searchHistory}
         onSelectHistory={handleSearchHistory}
         onRemoveFromHistory={removeFromSearchHistory}
+        onPublicationAdded={(pub) => addPublicationsRef.current?.handlePublicationAdded(pub)}
       />
 
       {/* Auth Modal */}

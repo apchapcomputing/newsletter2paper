@@ -4,7 +4,7 @@ import { Box, Typography, TextField, Select, MenuItem, FormControl, FormControlL
 import { useNewsletterConfig } from '../../contexts/useNewsletterConfig'
 
 export default function ConfigureNewspaper() {
-    const { newspaperTitle, outputMode, removeImages, updateTitle, updateOutputMode, updateRemoveImages } = useNewsletterConfig()
+    const { newspaperTitle, outputMode, removeImages, frequency, updateTitle, updateOutputMode, updateRemoveImages, updateFrequency } = useNewsletterConfig()
 
     const handleNewspaperTitleChange = (event) => {
         updateTitle(event.target.value)
@@ -12,6 +12,10 @@ export default function ConfigureNewspaper() {
 
     const handleRemoveImagesChange = (event) => {
         updateRemoveImages(event.target.checked)
+    }
+
+    const handleFrequencyChange = (event) => {
+        updateFrequency(event.target.value)
     }
 
     return (
@@ -73,16 +77,25 @@ export default function ConfigureNewspaper() {
                 </Box>
 
                 {/* Printing Schedule and Format Row */}
-                <Box sx={{ display: 'flex', gap: 2, flexDirection: { xs: 'column', sm: 'row' } }}>
-                    {/* Printing Schedule */}
-                    <Box sx={{ flex: 1 }}>
+                {/* <Box sx={{ display: 'flex', gap: 2, flexDirection: { xs: 'column', sm: 'row' } }}> */}
+                {/* Printing Schedule */}
+                {/* <Box sx={{ flex: 1 }}>
                         <Typography variant="body1" sx={{ mb: 1, fontWeight: 500 }}>
                             PRINTING SCHEDULE
                         </Typography>
+                        <Typography variant="body2"
+                            sx={{
+                                fontStyle: 'italic',
+                                color: 'text.secondary',
+                                mb: 2
+                            }}
+                        >
+                            Determine the time period to get the latest articles from
+                        </Typography>
                         <FormControl fullWidth>
                             <Select
-                                value="weekly"
-                                disabled
+                                value={frequency}
+                                onChange={handleFrequencyChange}
                                 displayEmpty
                                 sx={{
                                     backgroundColor: '#f5f5f5'
@@ -96,10 +109,10 @@ export default function ConfigureNewspaper() {
                                 <MenuItem value="monthly">Last Month</MenuItem>
                             </Select>
                         </FormControl>
-                    </Box>
+                    </Box> */}
 
-                    {/* Format */}
-                    <Box sx={{ flex: 1 }}>
+                {/* Format */}
+                {/* <Box sx={{ flex: 1 }}>
                         <Typography variant="body1" sx={{ mb: 1, fontWeight: 500 }}>
                             FORMAT
                         </Typography>
@@ -119,9 +132,9 @@ export default function ConfigureNewspaper() {
                                 <MenuItem value="essay">Essay</MenuItem>
                             </Select>
                         </FormControl>
-                    </Box>
-                </Box>
+                    </Box> */}
+                {/* </Box> */}
             </Box>
-        </Box>
+        </Box >
     )
 }

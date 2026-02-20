@@ -38,7 +38,9 @@ export const searchSubstack = async (query) => {
     try {
         const response = await fetch(`/api/substack/search?query=${encodeURIComponent(query)}`);
         if (!response.ok) {
-            throw new Error(`Error: ${response.statusText}`);
+            const errorData = await response.json().catch(() => ({}));
+            console.error('Search API error:', response.status, errorData);
+            throw new Error(`Error: ${response.statusText} - ${errorData.details || errorData.error || 'Unknown error'}`);
         }
         const data = await response.json();
         console.log('Substack search results:', data);

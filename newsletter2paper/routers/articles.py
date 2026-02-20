@@ -24,15 +24,17 @@ def get_rss_service():
 async def fetch_articles_for_issue(
     issue_id: UUID,
     request: FetchArticlesRequest = FetchArticlesRequest(),
+    publication_id: Optional[str] = Query(default=None, description="Optional publication UUID to fetch only one publication"),
     db_service: DatabaseService = Depends(get_db_service),
     rss_service: RSSService = Depends(get_rss_service)
 ):
     """
-    Fetch recent articles for all publications in an issue.
+    Fetch recent articles for all publications in an issue, or a single publication.
     
     Args:
         issue_id: UUID of the issue to fetch articles for
         request: Parameters for article fetching (days_back, max_articles_per_publication)
+        publication_id: Optional UUID to fetch only one publication's articles
         
     Returns:
         Dictionary containing issue info, publications, and articles grouped by publication
@@ -41,7 +43,8 @@ async def fetch_articles_for_issue(
         result = await rss_service.fetch_recent_articles_for_issue(
             issue_id=str(issue_id),
             days_back=request.days_back,
-            max_articles_per_publication=request.max_articles_per_publication
+            max_articles_per_publication=request.max_articles_per_publication,
+            publication_id=publication_id
         )
         
         return {

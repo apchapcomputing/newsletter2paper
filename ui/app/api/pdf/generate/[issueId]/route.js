@@ -4,7 +4,7 @@ const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL;
 
 export async function POST(request, { params }) {
     try {
-        const { issueId } = params;
+        const { issueId } = await params;
         const url = new URL(request.url);
 
         // Extract query parameters from the frontend request

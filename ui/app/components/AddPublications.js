@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useImperativeHandle, forwardRef } from 'react'
 import { Box, Typography, Button, Checkbox, FormControlLabel, Tooltip } from '@mui/material'
 import CloseIcon from '@mui/icons-material/Close'
 import ImageIcon from '@mui/icons-material/Image'
@@ -10,65 +10,137 @@ import { useNewsletterConfig } from '../../contexts/useNewsletterConfig'
 import AddUrlModal from './AddUrlModal'
 import ArticlePreviewList from './ArticlePreviewList'
 
-export default function AddPublications({ onOpenSearch }) {
+const AddPublications = forwardRef(({ onOpenSearch, onSaveIssue, isSaving: isSavingProp }, ref) => {
     const { selectedPublications, removePublication, toggleRemoveImages } = useSelectedPublications()
-    const { outputMode, currentIssueId } = useNewsletterConfig()
+    const { outputMode, frequency, currentIssueId } = useNewsletterConfig()
     const [isUrlModalOpen, setIsUrlModalOpen] = useState(false)
-    const [articlePreviews, setArticlePreviews] = useState({})
-    const [loadingPreviews, setLoadingPreviews] = useState(false)
-    const [previewError, setPreviewError] = useState(null)
+
+    // Per-publication state tracking: {pubId: {status: 'loading'|'loaded'|'error', articles: [], error: ''}}
+    const [publicationStates, setPublicationStates] = useState({})
 
     // Only show remove images option for essay format
     const showImageOptions = outputMode === 'essay'
 
-    // Fetch article previews when issue ID or selected publications change
-    // Only track publication IDs to avoid refetching when publication properties change (like remove_images)
-    const publicationIds = selectedPublications.map(p => p.id).join(',')
+    // Expose handlePublicationAdded to parent via ref
+    useImperativeHandle(ref, () => ({
+        handlePublicationAdded
+    }))
 
-    useEffect(() => {
-        const fetchArticlePreviews = async () => {
-            if (!currentIssueId || selectedPublications.length === 0) {
-                setArticlePreviews({})
-                return
-            }
+    // Fetch articles for a single publication with retry logic
+    const fetchArticlesForPublication = async (pubId, retryCount = 0) => {
+        const maxRetries = 3
+        const retryDelays = [500, 1000, 2000] // Exponential backoff
 
-            setLoadingPreviews(true)
-            setPreviewError(null)
-
-            try {
-                // Get the printing schedule to determine days_back
-                // Default to 7 days (weekly)
-                const daysBack = 7 // This could be made dynamic based on printing schedule
-
-                const response = await fetch(`/api/articles/preview/${currentIssueId}?days_back=${daysBack}`)
-
-                if (!response.ok) {
-                    throw new Error('Failed to fetch article previews')
-                }
-
-                const result = await response.json()
-
-                if (result.success && result.data) {
-                    setArticlePreviews(result.data.articles_by_publication || {})
-                } else {
-                    setArticlePreviews({})
-                }
-            } catch (error) {
-                console.error('Error fetching article previews:', error)
-                setPreviewError(error.message)
-                setArticlePreviews({})
-            } finally {
-                setLoadingPreviews(false)
-            }
+        if (!currentIssueId || !pubId) {
+            console.log('⚠️ Missing issue ID or publication ID, skipping fetch')
+            return
         }
 
-        // Debounce the fetch to avoid too many requests
-        const timer = setTimeout(() => {
-            fetchArticlePreviews()
-        }, 500)
+        // Set loading state
+        setPublicationStates(prev => ({
+            ...prev,
+            [pubId]: { status: 'loading', articles: [], error: '' }
+        }))
 
-        return () => clearTimeout(timer)
-    }, [currentIssueId, publicationIds])
+        try {
+            // Map frequency to days_back parameter
+            const frequencyToDays = {
+                'daily': 1,
+                'weekly': 7,
+                'monthly': 30
+            }
+            const daysBack = frequencyToDays[frequency] || 7
+
+            const response = await fetch(
+                `/api/articles/preview/${currentIssueId}?days_back=${daysBack}&publication_id=${pubId}`
+            )
+
+            if (!response.ok) {
+                const errorText = await response.text()
+                console.error(`Failed to fetch previews (${response.status}):`, errorText)
+                throw new Error(`Failed to fetch article previews: ${response.status} ${response.statusText}`)
+            }
+
+            const result = await response.json()
+
+            if (result.success && result.data) {
+                const articles = result.data.articles_by_publication?.[pubId] || []
+
+                // Check if we got empty results but the publication exists in selectedPublications
+                const pubExists = selectedPublications.some(p => p.id === pubId)
+
+                if (articles.length === 0 && pubExists && retryCount < maxRetries) {
+                    // Retry with exponential backoff
+                    console.log(`🔄 Retry ${retryCount + 1}/${maxRetries} for publication ${pubId} after ${retryDelays[retryCount]}ms`)
+                    setTimeout(() => {
+                        fetchArticlesForPublication(pubId, retryCount + 1)
+                    }, retryDelays[retryCount])
+                    return
+                }
+
+                // Success - update state
+                setPublicationStates(prev => ({
+                    ...prev,
+                    [pubId]: { status: 'loaded', articles, error: '' }
+                }))
+
+                console.log(`✅ Loaded ${articles.length} articles for publication ${pubId}`)
+                console.log(`📦 Updated publicationStates for ${pubId}:`, { status: 'loaded', articles: articles.length })
+            } else {
+                setPublicationStates(prev => ({
+                    ...prev,
+                    [pubId]: { status: 'loaded', articles: [], error: '' }
+                }))
+            }
+        } catch (error) {
+            console.error(`Error fetching articles for publication ${pubId}:`, error)
+            setPublicationStates(prev => ({
+                ...prev,
+                [pubId]: { status: 'error', articles: [], error: error.message }
+            }))
+        }
+    }
+
+    // Handle publication added - this will be called from modals
+    const handlePublicationAdded = async (publication) => {
+        if (!publication?.id) {
+            console.error('Publication missing ID:', publication)
+            return
+        }
+
+        console.log(`📰 Publication added: ${publication.name || publication.title} (ID: ${publication.id})`)
+
+        // Wait for save to complete
+        if (onSaveIssue) {
+            console.log('💾 Saving issue before fetching preview...')
+            await onSaveIssue()
+
+            // Wait for save prop to become false
+            let waitCount = 0
+            while (isSavingProp && waitCount < 30) { // Max 3 seconds
+                await new Promise(resolve => setTimeout(resolve, 100))
+                waitCount++
+            }
+
+            // Add buffer for database replication
+            await new Promise(resolve => setTimeout(resolve, 300))
+        }
+
+        // Fetch articles for this publication only
+        fetchArticlesForPublication(publication.id)
+    }
+
+    // Clean up state when publication is removed
+    const handleRemovePublication = (pubId) => {
+        removePublication(pubId)
+
+        // Remove from publicationStates to prevent memory leaks
+        setPublicationStates(prev => {
+            const next = { ...prev }
+            delete next[pubId]
+            return next
+        })
+    }
 
     // Handle master checkbox to toggle all publications
     const handleToggleAllImages = (event) => {
@@ -180,21 +252,6 @@ export default function AddPublications({ onOpenSearch }) {
                     PUBLICATIONS TO PRINT
                 </Typography>
 
-                {/* Error message for preview fetching */}
-                {previewError && selectedPublications.length > 0 && (
-                    <Box sx={{
-                        mb: 2,
-                        p: 1.5,
-                        backgroundColor: '#fff3cd',
-                        border: '1px solid #ffc107',
-                        borderRadius: '4px'
-                    }}>
-                        <Typography variant="body2" sx={{ fontSize: '0.875rem', color: '#856404' }}>
-                            Unable to load article previews. You can still generate the PDF.
-                        </Typography>
-                    </Box>
-                )}
-
                 {/* Master checkbox to toggle all (only show if there are publications and essay mode) */}
                 {showImageOptions && selectedPublications.length > 0 && (
                     <Box sx={{ mb: 2, pl: 1 }}>
@@ -234,8 +291,17 @@ export default function AddPublications({ onOpenSearch }) {
                 {selectedPublications.length > 0 ? (
                     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
                         {selectedPublications.map((publication, index) => {
-                            // Get articles for this publication (using publication.id from database)
-                            const pubArticles = articlePreviews[publication.id] || []
+                            // Get publication state (articles, loading, error)
+                            const pubState = publicationStates[publication.id] || {
+                                status: 'loading',
+                                articles: [],
+                                error: ''
+                            }
+
+                            // Debug logging
+                            if (pubState.status !== 'loading') {
+                                console.log(`📊 Publication ${publication.name} (${publication.id}): ${pubState.status}, ${pubState.articles.length} articles`)
+                            }
 
                             return (
                                 <Box
@@ -298,7 +364,7 @@ export default function AddPublications({ onOpenSearch }) {
                                         }
 
                                         <Button
-                                            onClick={() => removePublication(publication.id || publication.name)}
+                                            onClick={() => handleRemovePublication(publication.id || publication.name)}
                                             sx={{
                                                 minWidth: '32px',
                                                 width: '32px',
@@ -319,8 +385,9 @@ export default function AddPublications({ onOpenSearch }) {
                                     {/* Article Preview List */}
                                     <ArticlePreviewList
                                         publication={publication}
-                                        articles={pubArticles}
-                                        isLoading={loadingPreviews}
+                                        articles={pubState.articles}
+                                        isLoading={pubState.status === 'loading'}
+                                        error={pubState.error}
                                     />
                                 </Box>
                             )
@@ -337,7 +404,12 @@ export default function AddPublications({ onOpenSearch }) {
             <AddUrlModal
                 open={isUrlModalOpen}
                 onClose={() => setIsUrlModalOpen(false)}
+                onPublicationAdded={handlePublicationAdded}
             />
         </Box >
     )
-}
+})
+
+AddPublications.displayName = 'AddPublications'
+
+export default AddPublications

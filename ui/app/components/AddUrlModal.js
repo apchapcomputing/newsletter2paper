@@ -6,8 +6,8 @@ import { useSelectedPublications } from '../../contexts/useSelectedPublications'
 import { getRssFeedUrl } from '../../utils/rssUtils'
 import { searchSubstack } from '../../utils/substackUtils'
 
-export default function AddUrlModal({ open, onClose }) {
-    const { addPublication } = useSelectedPublications()
+export default function AddUrlModal({ open, onClose, onPublicationAdded }) {
+    const { addPublication, updatePublicationId } = useSelectedPublications()
     const [urlInput, setUrlInput] = useState('')
     const [isProcessing, setIsProcessing] = useState(false)
     const [error, setError] = useState(null)
@@ -101,7 +101,7 @@ export default function AddUrlModal({ open, onClose }) {
                     }
 
                     // Add to selected publications (using same format as SearchModal)
-                    addPublication({
+                    const newPub = {
                         id: handle,
                         name: publicationName,
                         title: publicationName,
@@ -109,7 +109,8 @@ export default function AddUrlModal({ open, onClose }) {
                         publisher: publisher,
                         feed_url: feedUrl,
                         handle: handle,
-                    })
+                    }
+                    addPublication(newPub)
 
                     // Also create/find the publication in the database
                     try {
@@ -129,6 +130,17 @@ export default function AddUrlModal({ open, onClose }) {
                         if (pubResponse.ok) {
                             const pubData = await pubResponse.json()
                             console.log('Publication created/found in database:', pubData.publication)
+
+                            // Update publication with database ID and trigger preview fetch
+                            if (pubData.publication?.id && onPublicationAdded) {
+                                const oldId = newPub.id;
+                                newPub.id = pubData.publication.id;
+
+                                // Update the ID in selectedPublications context
+                                updatePublicationId(oldId, pubData.publication.id);
+
+                                onPublicationAdded(newPub);
+                            }
                         } else {
                             console.error('Failed to create publication in database:', await pubResponse.text())
                         }

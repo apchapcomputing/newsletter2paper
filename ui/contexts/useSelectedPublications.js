@@ -69,6 +69,16 @@ export const SelectedPublicationsProvider = ({ children }) => {
         setSelectedPublications((prev) => prev.filter((p) => p.id !== publicationId));
     };
 
+    const updatePublicationId = (oldId, newId) => {
+        setSelectedPublications((prev) =>
+            prev.map((p) =>
+                p.id === oldId
+                    ? { ...p, id: newId }
+                    : p
+            )
+        );
+    };
+
     const toggleRemoveImages = (publicationId) => {
         setSelectedPublications((prev) =>
             prev.map((p) =>
@@ -87,8 +97,7 @@ export const SelectedPublicationsProvider = ({ children }) => {
         <SelectedPublicationsContext.Provider value={{
             selectedPublications,
             addPublication,
-            removePublication,
-            toggleRemoveImages,
+            removePublication, updatePublicationId, toggleRemoveImages,
             clearAllPublications,
             isLoaded
         }}>

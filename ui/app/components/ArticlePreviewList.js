@@ -7,7 +7,7 @@ import ExpandLessIcon from '@mui/icons-material/ExpandLess'
 import ArticleIcon from '@mui/icons-material/Article'
 import CalendarTodayIcon from '@mui/icons-material/CalendarToday'
 
-export default function ArticlePreviewList({ publication, articles, isLoading }) {
+export default function ArticlePreviewList({ publication, articles, isLoading, error }) {
     const [isExpanded, setIsExpanded] = useState(false)
 
     const formatDate = (dateString) => {
@@ -30,18 +30,29 @@ export default function ArticlePreviewList({ publication, articles, isLoading })
     // If loading, show skeleton
     if (isLoading) {
         return (
-            <Box sx={{ pl: 2, mt: 1 }}>
+            <Box sx={{ mt: 1 }}>
                 <Skeleton variant="text" width="60%" height={20} />
-                <Skeleton variant="text" width="80%" height={16} sx={{ mt: 0.5 }} />
-                <Skeleton variant="text" width="80%" height={16} />
+                <Skeleton variant="text" width="80%" height={16} sx={{ mt: 0.4 }} />
+                <Skeleton variant="text" width="75%" height={16} />
             </Box>
         )
     }
 
     // If no articles, show message
     if (!articles || articles.length === 0) {
+        // If there's an error, show it
+        if (error) {
+            return (
+                <Box sx={{ mt: 1 }}>
+                    <Typography variant="body2" sx={{ fontSize: '0.813rem', color: 'error.main' }}>
+                        Error loading articles: {error}
+                    </Typography>
+                </Box>
+            )
+        }
+
         return (
-            <Box sx={{ pl: 2, mt: 1 }}>
+            <Box sx={{ mt: 1 }}>
                 <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.813rem', fontStyle: 'italic' }}>
                     No recent articles found in the selected time frame
                 </Typography>

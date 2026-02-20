@@ -19,6 +19,9 @@ DEFAULT_HEADERS = {
 }
 
 class RSSService:
+    # Class-level RSS feed cache: {feed_url: {'xml': content, 'fetched_at': datetime}}
+    _rss_cache = {}
+    
     def __init__(self):
         """Initialize RSS service with database connection."""
         self.db = DatabaseService()
@@ -374,7 +377,7 @@ class RSSService:
 
     def fetch_rss_feed_content(self, rss_url: str, verbose: bool = False) -> str:
         """
-        Fetch RSS feed content from a URL with validation.
+        Fetch RSS feed content from a URL with validation and caching.
         
         Args:
             rss_url (str): URL of the RSS feed
@@ -387,6 +390,15 @@ class RSSService:
             requests.RequestException: If fetching fails
             ValueError: If content is not valid RSS
         """
+        # Check cache first
+        if rss_url in self._rss_cache:
+            cached = self._rss_cache[rss_url]
+            age = datetime.now(timezone.utc) - cached['fetched_at']
+            if age < timedelta(minutes=5):  # Cache for 5 minutes
+                if verbose:
+                    logging.info(f"Using cached RSS feed for: {rss_url} (age: {age.seconds}s)")
+                return cached['xml']
+        
         if verbose:
             logging.info(f"Fetching RSS feed from: {rss_url}")
         
@@ -400,6 +412,12 @@ class RSSService:
             # Validate the content
             if not self.validate_rss_content(response.text, verbose):
                 raise ValueError("Fetched content is not a valid RSS feed")
+            
+            # Cache the result
+            self._rss_cache[rss_url] = {
+                'xml': response.text,
+                'fetched_at': datetime.now(timezone.utc)
+            }
             
             return response.text
             
@@ -589,15 +607,17 @@ class RSSService:
         self, 
         issue_id: str, 
         days_back: int = 7,
-        max_articles_per_publication: int = 5
+        max_articles_per_publication: int = 5,
+        publication_id: Optional[str] = None
     ) -> dict:
         """
-        Fetch recent articles for all publications in an issue.
+        Fetch recent articles for all publications in an issue, or a single publication.
         
         Args:
             issue_id: UUID of the issue
             days_back: Number of days to look back for articles
             max_articles_per_publication: Maximum articles per publication
+            publication_id: Optional UUID to fetch only one publication's articles
             
         Returns:
             Dictionary with issue info and articles grouped by publication
@@ -615,10 +635,15 @@ class RSSService:
             issue = issue_result.data[0]
             
             # Get publications for this issue
-            publications_result = self.db.client.table('issue_publications')\
+            query = self.db.client.table('issue_publications')\
                 .select('*, publications(*)')\
-                .eq('issue_id', issue_id)\
-                .execute()
+                .eq('issue_id', issue_id)
+            
+            # Filter by publication_id if provided
+            if publication_id:
+                query = query.eq('publication_id', publication_id)
+            
+            publications_result = query.execute()
             
             if not publications_result.data:
                 return {

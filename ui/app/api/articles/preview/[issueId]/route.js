@@ -2,9 +2,10 @@ const BACKEND_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
 export async function GET(request, { params }) {
     try {
-        const issueId = params.issueId;
+        const { issueId } = await params;
         const { searchParams } = new URL(request.url);
         const daysBack = searchParams.get('days_back') || '7';
+        const publicationId = searchParams.get('publication_id'); // Optional filter
 
         if (!issueId) {
             return new Response(
@@ -19,6 +20,11 @@ export async function GET(request, { params }) {
             days_back: daysBack,
             max_articles_per_publication: '10' // Get up to 10 articles per publication for preview
         });
+
+        // Add publication_id if filtering for single publication
+        if (publicationId) {
+            backendSearchParams.append('publication_id', publicationId);
+        }
 
         console.log(`Fetching article preview from: ${backendUrl}?${backendSearchParams}`);
 

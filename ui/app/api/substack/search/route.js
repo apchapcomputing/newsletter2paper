@@ -4,7 +4,7 @@ export async function GET(request) {
   try {
     const { searchParams } = new URL(request.url);
     const query = searchParams.get('query');
-    
+
     if (!query) {
       return NextResponse.json({ error: 'Query parameter is required' }, { status: 400 });
     }
@@ -21,16 +21,16 @@ export async function GET(request) {
     );
 
     if (!substackResponse.ok) {
+      const errorText = await substackResponse.text();
       throw new Error(`Substack API error: ${substackResponse.status}`);
     }
 
     const data = await substackResponse.json();
-    
+
     return NextResponse.json(data);
   } catch (error) {
-    console.error('Error proxying Substack search:', error);
     return NextResponse.json(
-      { error: 'Failed to search Substack' }, 
+      { error: 'Failed to search Substack', details: error.message },
       { status: 500 }
     );
   }

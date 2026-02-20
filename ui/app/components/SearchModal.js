@@ -28,9 +28,10 @@ export default function SearchModal({
     searchResults,
     searchHistory,
     onSelectHistory,
-    onRemoveFromHistory
+    onRemoveFromHistory,
+    onPublicationAdded
 }) {
-    const { selectedPublications, addPublication, removePublication } = useSelectedPublications();
+    const { selectedPublications, addPublication, removePublication, updatePublicationId } = useSelectedPublications();
 
     const handlePublicationToggle = async (searchResult) => {
         try {
@@ -80,7 +81,7 @@ export default function SearchModal({
 
             // Convert search result to publication format
             const publication = {
-                id: searchResult.handle || searchResult.subdomain || `pub-${Date.now()}`, // Use handle/subdomain as unique ID
+                id: searchResult.handle || searchResult.subdomain || `pub-${Date.now()}`, // Temporary ID
                 name: searchResult.name,
                 title: searchResult.name,
                 url: url,
@@ -94,6 +95,44 @@ export default function SearchModal({
                 removePublication(publication.id);
             } else {
                 addPublication(publication);
+
+                // Create/find publication in database to get real UUID
+                if (onPublicationAdded) {
+                    try {
+                        const pubResponse = await fetch('/api/publications-db?action=find-or-create', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                            },
+                            body: JSON.stringify({
+                                title: publication.name,
+                                url: url,
+                                rss_feed_url: feedUrl,
+                                publisher: publication.publisher
+                            })
+                        });
+
+                        if (pubResponse.ok) {
+                            const pubData = await pubResponse.json();
+                            console.log('Publication created/found in database:', pubData.publication);
+
+                            // Update publication with database ID and trigger preview fetch
+                            if (pubData.publication?.id) {
+                                const oldId = publication.id;
+                                publication.id = pubData.publication.id;
+
+                                // Update the ID in selectedPublications context
+                                updatePublicationId(oldId, pubData.publication.id);
+
+                                onPublicationAdded(publication);
+                            }
+                        } else {
+                            console.error('Failed to create publication in database');
+                        }
+                    } catch (dbErr) {
+                        console.error('Error creating publication in database:', dbErr);
+                    }
+                }
             }
         } catch (error) {
             console.error('Error toggling publication:', error);
