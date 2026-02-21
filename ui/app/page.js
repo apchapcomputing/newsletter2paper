@@ -19,6 +19,7 @@ import ConfigureNewspaper from './components/ConfigureNewspaper';
 import AddPublications from './components/AddPublications';
 import ActionButtonsSection from './components/ActionButtonsSection';
 import DecorativeLine from './components/DecorativeLine';
+import Footer from './components/Footer';
 
 import { getRssFeedUrl } from '../utils/rssUtils';
 import { searchSubstack } from '../utils/substackUtils';
@@ -749,60 +750,7 @@ export default function Home() {
       />
 
       {/* Footer */}
-      <footer className="flex gap-4 flex-wrap items-center justify-center py-8">
-        <DecorativeLine sx={{ width: "95%", mb: 0, mx: 'auto' }} />
-        <Box sx={{
-          display: 'flex',
-          gap: 2,
-          mt: 2
-        }}>
-          <Typography
-            variant="body2"
-            onClick={() => window.open('https://ashlynchapman.com', '_blank')}
-            sx={{
-              cursor: 'pointer',
-              color: '#504f4e',
-              '&:hover': {
-                color: 'secondary.main'
-              }
-            }}
-          >
-            Made by Ashlyn Chapman
-          </Typography>
-          <Typography variant="body2" sx={{ color: '#504f4e' }}>
-            •
-          </Typography>
-          <Typography
-            variant="body2"
-            onClick={() => window.open('https://docs.google.com/forms/d/e/1FAIpQLScqMWrxF2SikunyJhR2VXkw2xfYAb950DT2bu0J8KtaTkcY7g/viewform?usp=sharing&ouid=112836351698515957727', '_blank')}
-            sx={{
-              cursor: 'pointer',
-              color: '#504f4e',
-              '&:hover': {
-                color: 'secondary.main'
-              }
-            }}
-          >
-            Feature Request
-          </Typography>
-          <Typography variant="body2" sx={{ color: '#504f4e' }}>
-            •
-          </Typography>
-          <Typography
-            variant="body2"
-            onClick={() => window.open('https://github.com/apchapcomputing/newsletter2paper', '_blank')}
-            sx={{
-              cursor: 'pointer',
-              color: '#504f4e',
-              '&:hover': {
-                color: 'secondary.main'
-              }
-            }}
-          >
-            Source Code
-          </Typography>
-        </Box>
-      </footer>
+      <Footer />
     </div >
   );
 }
