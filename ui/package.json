@@ -17,6 +17,7 @@
     "@mui/material": "^7.3.2",
     "@supabase/ssr": "^0.7.0",
     "@supabase/supabase-js": "^2.81.1",
+    "@vercel/analytics": "^1.6.1",
     "next": "15.5.9",
     "react": "19.1.0",
     "react-dom": "19.1.0"
