@@ -141,7 +141,7 @@ export default function ConfigureNewspaper() {
                                         max={dateTo || undefined}
                                         onChange={(e) => updateDateFrom(e.target.value)}
                                         className={[
-                                            'w-full px-3 py-2 border-1  text-sm focus:outline-none focus:border-black',
+                                            'w-full px-3 py-2 border-1 bg-[#f5f5f5] text-sm focus:outline-none focus:border-black',
                                             (dateFromMissing || datesReversed) ? 'border-error' : 'border-black'
                                         ].join(' ')}
                                     />
@@ -156,7 +156,7 @@ export default function ConfigureNewspaper() {
                                         min={dateFrom || undefined}
                                         onChange={(e) => updateDateTo(e.target.value)}
                                         className={[
-                                            'w-full px-3 py-2 border-1 bg-gray-50 text-sm focus:outline-none focus:border-black',
+                                            'w-full px-3 py-2 border-1 bg-[#f5f5f5] text-sm focus:outline-none focus:border-black',
                                             (dateToMissing || datesReversed) ? 'border-error' : 'border-black'
                                         ].join(' ')}
                                     />
