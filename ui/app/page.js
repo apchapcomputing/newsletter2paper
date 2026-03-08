@@ -37,6 +37,8 @@ export default function Home() {
     outputMode,
     removeImages,
     frequency,
+    dateFrom,
+    dateTo,
     currentIssueId,
     isLoaded: configLoaded,
     updateTitle,
@@ -227,8 +229,10 @@ export default function Home() {
         savedIssue = await saveIssueToSupabase({
           title: newspaperTitle,
           format: outputMode,
-          frequency: 'weekly',
-          remove_images: removeImages
+          frequency: frequency,
+          remove_images: removeImages,
+          custom_start_date: frequency === 'custom' ? dateFrom || null : null,
+          custom_end_date: frequency === 'custom' ? dateTo || null : null,
         });
 
         logger.log('Issue saved successfully to Supabase!', savedIssue);
@@ -238,7 +242,9 @@ export default function Home() {
           title: newspaperTitle || 'Guest Newspaper',
           format: outputMode,
           frequency: 'once',
-          remove_images: removeImages
+          remove_images: removeImages,
+          custom_start_date: null,
+          custom_end_date: null,
         });
 
         logger.log('Guest issue created successfully!', savedIssue);
@@ -344,18 +350,32 @@ export default function Home() {
 
       logger.log('✅ Issue saved, now generating PDF...');
 
-      // Map frequency to days_back parameter
-      const frequencyToDays = {
-        'daily': 1,
-        'weekly': 7,
-        'monthly': 30
-      };
-      const daysBack = frequencyToDays[frequency] || 7;
-
-      logger.log(`📅 Using frequency: ${frequency} (${daysBack} days back)`);
+      // Build the PDF generation URL based on frequency
+      let pdfApiUrl;
+      if (frequency === 'custom') {
+        // Validate custom dates before proceeding
+        if (!dateFrom || !dateTo) {
+          throw new Error('Please select both a start and end date for a custom date range.');
+        }
+        if (dateFrom > dateTo) {
+          throw new Error('Start date must be before end date.');
+        }
+        pdfApiUrl = `/api/pdf/generate/${currentIssueId}?start_date=${dateFrom}&end_date=${dateTo}`;
+        logger.log(`📅 Custom date range: ${dateFrom} → ${dateTo}`);
+      } else {
+        // Map frequency to days_back parameter
+        const frequencyToDays = {
+          'daily': 1,
+          'weekly': 7,
+          'monthly': 30
+        };
+        const daysBack = frequencyToDays[frequency] || 7;
+        pdfApiUrl = `/api/pdf/generate/${currentIssueId}?days_back=${daysBack}`;
+        logger.log(`📅 Using frequency: ${frequency} (${daysBack} days back)`);
+      }
 
       // Call Next.js API route, which proxies to Python backend
-      const response = await fetch(`/api/pdf/generate/${currentIssueId}?days_back=${daysBack}`, {
+      const response = await fetch(pdfApiUrl, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -474,7 +494,7 @@ export default function Home() {
   // Don't render the form until both contexts are loaded
   if (!isLoaded || !configLoaded) {
     return (
-      <div className="font-sans grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20" style={{ backgroundColor: '#ECECEC' }}>
+      <div className="font-sans grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20" style={{ backgroundColor: 'var(--white)' }}>
         <main className="flex flex-col gap-[32px] row-start-2 items-center sm:items-start">
           <Typography variant="h4" component="h1" sx={{ textAlign: 'center' }}>
             Loading your newsletter configuration...
@@ -485,7 +505,7 @@ export default function Home() {
   }
 
   return (
-    <div className="font-sans min-h-screen" style={{ backgroundColor: '#ECECEC' }}>
+    <div className="font-sans min-h-screen" style={{ backgroundColor: 'var(--white)' }}>
       {/* Header Section */}
       <AuthButton />
       <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: '100%', textAlign: 'center', mb: 4, mt: -4 }}>
@@ -535,7 +555,7 @@ export default function Home() {
           <Typography
             variant="body2"
             sx={{
-              color: isSaving ? '#A44200' : '#666',
+              color: isSaving ? 'var(--primary)' : '#666',
               fontStyle: 'italic',
               fontSize: '0.85rem',
               opacity: 0.8
@@ -552,16 +572,16 @@ export default function Home() {
             sx={{
               width: '100%',
               borderRadius: 0,
-              backgroundColor: '#ECECEC',
-              border: '1px solid #c5541b',
+              backgroundColor: 'var(--white)',
+              border: '1px solid var(--secondary-light)',
               borderWidth: 2,
-              color: '#291D18',
+              color: 'var(--black)',
               '& .MuiAlert-icon': {
-                color: '#A44200'
+                color: 'var(--secondary)'
               },
               '& .MuiAlert-message': {
                 fontSize: '0.9rem',
-                color: '#291D18'
+                color: 'var(--black)'
               }
             }}
           >
@@ -571,11 +591,11 @@ export default function Home() {
               onClick={() => setIsAuthModalOpen(true)}
               sx={{
                 textDecoration: 'none',
-                color: '#A44200',
+                color: 'var(--primary-light)',
                 cursor: 'pointer',
                 fontWeight: 600,
                 '&:hover': {
-                  color: '#8B3500'
+                  color: 'var(--primary-dark)'
                 }
               }}
             >

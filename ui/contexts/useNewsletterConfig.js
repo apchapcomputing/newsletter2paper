@@ -20,6 +20,8 @@ export const NewsletterConfigProvider = ({ children }) => {
     const [outputMode, setOutputMode] = useState('essay');
     const [removeImages, setRemoveImages] = useState(false);
     const [frequency, setFrequency] = useState('weekly');
+    const [dateFrom, setDateFrom] = useState('');
+    const [dateTo, setDateTo] = useState('');
     const [currentIssueId, setCurrentIssueId] = useState(null);
     const [isLoaded, setIsLoaded] = useState(false);
     const [userIssues, setUserIssues] = useState([]);
@@ -144,6 +146,8 @@ export const NewsletterConfigProvider = ({ children }) => {
                     setOutputMode(config.outputMode || 'newspaper');
                     setRemoveImages(config.removeImages || false);
                     setFrequency(config.frequency || 'weekly');
+                    setDateFrom(config.dateFrom || '');
+                    setDateTo(config.dateTo || '');
                     localIssueId = config.issueId || null;
                     setCurrentIssueId(localIssueId);
                     logger.log('📋 Loaded from localStorage - issueId:', localIssueId);
@@ -154,6 +158,8 @@ export const NewsletterConfigProvider = ({ children }) => {
                     setOutputMode('essay');
                     setRemoveImages(false);
                     setFrequency('weekly');
+                    setDateFrom('');
+                    setDateTo('');
                     setCurrentIssueId(null);
                 }
             } catch (error) {
@@ -227,6 +233,8 @@ export const NewsletterConfigProvider = ({ children }) => {
                     outputMode,
                     removeImages,
                     frequency,
+                    dateFrom,
+                    dateTo,
                     issueId: currentIssueId
                 };
                 localStorage.setItem('newsletterConfig', JSON.stringify(config));
@@ -234,7 +242,7 @@ export const NewsletterConfigProvider = ({ children }) => {
                 console.error('Error saving newsletter config to localStorage:', error);
             }
         }
-    }, [newspaperTitle, outputMode, removeImages, frequency, currentIssueId, isLoaded]);
+    }, [newspaperTitle, outputMode, removeImages, frequency, dateFrom, dateTo, currentIssueId, isLoaded]);
 
     const updateTitle = (title) => {
         setNewspaperTitle(title);
@@ -252,6 +260,14 @@ export const NewsletterConfigProvider = ({ children }) => {
         setFrequency(value);
     };
 
+    const updateDateFrom = (value) => {
+        setDateFrom(value);
+    };
+
+    const updateDateTo = (value) => {
+        setDateTo(value);
+    };
+
     const updateIssueId = (issueId) => {
         setCurrentIssueId(issueId);
     };
@@ -261,6 +277,8 @@ export const NewsletterConfigProvider = ({ children }) => {
         setOutputMode('essay');
         setRemoveImages(false);
         setFrequency('weekly');
+        setDateFrom('');
+        setDateTo('');
         setCurrentIssueId(null);
 
         // Clear localStorage
@@ -284,7 +302,9 @@ export const NewsletterConfigProvider = ({ children }) => {
                 frequency: issueData.frequency || 'weekly',
                 target_email: user.email,
                 status: 'draft',
-                remove_images: issueData.remove_images || false
+                remove_images: issueData.remove_images || false,
+                custom_start_date: issueData.custom_start_date || null,
+                custom_end_date: issueData.custom_end_date || null
             };
 
             let savedIssue;
@@ -427,7 +447,9 @@ export const NewsletterConfigProvider = ({ children }) => {
                 format: issueData.format || 'newspaper',
                 frequency: 'once',
                 status: 'guest',
-                remove_images: issueData.remove_images || false
+                remove_images: issueData.remove_images || false,
+                custom_start_date: issueData.custom_start_date || null,
+                custom_end_date: issueData.custom_end_date || null
             };
 
             let savedIssue;
@@ -518,6 +540,9 @@ export const NewsletterConfigProvider = ({ children }) => {
             setOutputMode(issue.format || 'essay');
             setRemoveImages(issue.remove_images || false);
             setFrequency(issue.frequency || 'weekly');
+            // Restore custom dates – strip to YYYY-MM-DD for the date input
+            setDateFrom(issue.custom_start_date ? issue.custom_start_date.slice(0, 10) : '');
+            setDateTo(issue.custom_end_date ? issue.custom_end_date.slice(0, 10) : '');
             setCurrentIssueId(issue.id);
 
             return issue;
@@ -538,6 +563,8 @@ export const NewsletterConfigProvider = ({ children }) => {
             outputMode,
             removeImages,
             frequency,
+            dateFrom,
+            dateTo,
             currentIssueId,
             isLoaded,
             userIssues,
@@ -548,6 +575,8 @@ export const NewsletterConfigProvider = ({ children }) => {
             updateOutputMode,
             updateRemoveImages,
             updateFrequency,
+            updateDateFrom,
+            updateDateTo,
             updateIssueId,
             resetConfig,
             saveIssueToSupabase,

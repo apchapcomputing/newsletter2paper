@@ -29,6 +29,12 @@ export async function POST(request, { params }) {
         searchParams.append('keep_html', url.searchParams.get('keep_html') || 'false');
         searchParams.append('verbose', url.searchParams.get('verbose') || 'false');
 
+        // Forward custom date range params when provided
+        const startDate = url.searchParams.get('start_date');
+        const endDate = url.searchParams.get('end_date');
+        if (startDate) searchParams.append('start_date', startDate);
+        if (endDate) searchParams.append('end_date', endDate);
+
         // Make request to the Python backend
         const backendUrl = `${API_BASE_URL}/pdf/generate/${issueId}?${searchParams.toString()}`;
 

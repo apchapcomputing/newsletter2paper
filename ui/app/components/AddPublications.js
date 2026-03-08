@@ -13,11 +13,18 @@ import logger from '../../utils/logger'
 
 const AddPublications = forwardRef(({ onOpenSearch, onSaveIssue, isSaving: isSavingProp }, ref) => {
     const { selectedPublications, removePublication, toggleRemoveImages } = useSelectedPublications()
-    const { outputMode, frequency, currentIssueId } = useNewsletterConfig()
+    const { outputMode, frequency, dateFrom, dateTo, currentIssueId } = useNewsletterConfig()
     const [isUrlModalOpen, setIsUrlModalOpen] = useState(false)
 
-    // Per-publication state tracking: {pubId: {status: 'loading'|'loaded'|'error', articles: [], error: ''}}
-    const [publicationStates, setPublicationStates] = useState({})
+    // Cache keyed by time window → pubId → {status, articles, error}
+    // e.g. { 'weekly': { 'pub-1': {...} }, 'custom:2026-01-01:2026-03-01': { 'pub-1': {...} } }
+    const [articleCache, setArticleCache] = useState({})
+
+    // Stable key representing the currently selected time window
+    const getWindowKey = () =>
+        frequency === 'custom' && dateFrom && dateTo
+            ? `custom:${dateFrom}:${dateTo}`
+            : frequency
 
     // Only show remove images option for essay format
     const showImageOptions = outputMode === 'essay'
@@ -31,27 +38,45 @@ const AddPublications = forwardRef(({ onOpenSearch, onSaveIssue, isSaving: isSav
     useEffect(() => {
         if (!currentIssueId) return
 
-        // UUID validation regex
         const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+        const windowCache = articleCache[getWindowKey()] || {}
 
-        // Find publications that need preview data fetched
         selectedPublications.forEach(pub => {
             const pubId = pub.id
-            const currentState = publicationStates[pubId]
-
-            // Validate UUID before fetching
             if (!uuidRegex.test(pubId)) {
                 logger.warn(`⚠️ Skipping preview fetch for publication with invalid UUID: ${pubId}`)
                 return
             }
-
-            // Only fetch if we don't have state for this publication yet
-            if (!currentState) {
+            // Only fetch if this window doesn't have a cached result for this pub yet
+            if (!windowCache[pubId]) {
                 logger.log(`🔄 Auto-fetching preview for loaded publication: ${pub.name || pub.title} (${pubId})`)
                 fetchArticlesForPublication(pubId)
             }
         })
-    }, [selectedPublications, currentIssueId])
+    }, [selectedPublications, currentIssueId]) // eslint-disable-line react-hooks/exhaustive-deps
+
+    // Switch window: serve from cache if available, otherwise fetch
+    useEffect(() => {
+        if (!currentIssueId || selectedPublications.length === 0) return
+
+        // Don't act on a custom range until both dates are present and valid
+        if (frequency === 'custom' && (!dateFrom || !dateTo || dateFrom > dateTo)) return
+
+        const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+        const windowKey = getWindowKey()
+        const windowCache = articleCache[windowKey] || {}
+
+        selectedPublications.forEach(pub => {
+            if (!uuidRegex.test(pub.id)) return
+            if (windowCache[pub.id]) {
+                logger.log(`⚡ Cache hit for window "${windowKey}": ${pub.name || pub.title}`)
+            } else {
+                logger.log(`🔄 Fetching preview for window "${windowKey}": ${pub.name || pub.title}`)
+                fetchArticlesForPublication(pub.id)
+            }
+        })
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [frequency, dateFrom, dateTo, currentIssueId])
 
     // Fetch articles for a single publication with retry logic
     const fetchArticlesForPublication = async (pubId, retryCount = 0) => {
@@ -63,24 +88,34 @@ const AddPublications = forwardRef(({ onOpenSearch, onSaveIssue, isSaving: isSav
             return
         }
 
+        // Capture the window key at call time so async writes land in the right bucket
+        const windowKey = getWindowKey()
+
+        const setCacheEntry = (pubId, entry) =>
+            setArticleCache(prev => ({
+                ...prev,
+                [windowKey]: { ...prev[windowKey], [pubId]: entry }
+            }))
+
         // Set loading state
-        setPublicationStates(prev => ({
-            ...prev,
-            [pubId]: { status: 'loading', articles: [], error: '' }
-        }))
+        setCacheEntry(pubId, { status: 'loading', articles: [], error: '' })
 
         try {
-            // Map frequency to days_back parameter
-            const frequencyToDays = {
-                'daily': 1,
-                'weekly': 7,
-                'monthly': 30
+            // Build URL params based on frequency
+            const frequencyToDays = { 'daily': 1, 'weekly': 7, 'monthly': 30 }
+            let previewUrl
+            if (frequency === 'custom' && dateFrom && dateTo && dateFrom <= dateTo) {
+                previewUrl = `/api/articles/preview/${currentIssueId}?start_date=${encodeURIComponent(dateFrom)}&end_date=${encodeURIComponent(dateTo)}&publication_id=${pubId}`
+            } else if (frequency === 'custom') {
+                // Dates not ready yet — don't fetch
+                setCacheEntry(pubId, { status: 'loaded', articles: [], error: '' })
+                return
+            } else {
+                const daysBack = frequencyToDays[frequency] || 7
+                previewUrl = `/api/articles/preview/${currentIssueId}?days_back=${daysBack}&publication_id=${pubId}`
             }
-            const daysBack = frequencyToDays[frequency] || 7
 
-            const response = await fetch(
-                `/api/articles/preview/${currentIssueId}?days_back=${daysBack}&publication_id=${pubId}`
-            )
+            const response = await fetch(previewUrl)
 
             if (!response.ok) {
                 const errorText = await response.text()
@@ -96,7 +131,9 @@ const AddPublications = forwardRef(({ onOpenSearch, onSaveIssue, isSaving: isSav
                 // Check if we got empty results but the publication exists in selectedPublications
                 const pubExists = selectedPublications.some(p => p.id === pubId)
 
-                if (articles.length === 0 && pubExists && retryCount < maxRetries) {
+                // Only retry for preset frequency modes — for custom date ranges
+                // 0 articles is a valid result and retrying just wastes requests.
+                if (articles.length === 0 && pubExists && retryCount < maxRetries && frequency !== 'custom') {
                     // Retry with exponential backoff
                     logger.log(`🔄 Retry ${retryCount + 1}/${maxRetries} for publication ${pubId} after ${retryDelays[retryCount]}ms`)
                     setTimeout(() => {
@@ -105,26 +142,14 @@ const AddPublications = forwardRef(({ onOpenSearch, onSaveIssue, isSaving: isSav
                     return
                 }
 
-                // Success - update state
-                setPublicationStates(prev => ({
-                    ...prev,
-                    [pubId]: { status: 'loaded', articles, error: '' }
-                }))
-
-                logger.log(`✅ Loaded ${articles.length} articles for publication ${pubId}`)
-                logger.log(`📦 Updated publicationStates for ${pubId}:`, { status: 'loaded', articles: articles.length })
+                setCacheEntry(pubId, { status: 'loaded', articles, error: '' })
+                logger.log(`✅ Loaded ${articles.length} articles for "${windowKey}" / ${pubId}`)
             } else {
-                setPublicationStates(prev => ({
-                    ...prev,
-                    [pubId]: { status: 'loaded', articles: [], error: '' }
-                }))
+                setCacheEntry(pubId, { status: 'loaded', articles: [], error: '' })
             }
         } catch (error) {
             logger.error(`Error fetching articles for publication ${pubId}:`, error)
-            setPublicationStates(prev => ({
-                ...prev,
-                [pubId]: { status: 'error', articles: [], error: error.message }
-            }))
+            setCacheEntry(pubId, { status: 'error', articles: [], error: error.message })
         }
     }
 
@@ -165,14 +190,17 @@ const AddPublications = forwardRef(({ onOpenSearch, onSaveIssue, isSaving: isSav
         fetchArticlesForPublication(publication.id)
     }
 
-    // Clean up state when publication is removed
+    // Clean up cache entries when a publication is removed
     const handleRemovePublication = (pubId) => {
         removePublication(pubId)
 
-        // Remove from publicationStates to prevent memory leaks
-        setPublicationStates(prev => {
-            const next = { ...prev }
-            delete next[pubId]
+        // Remove this pub from every cached window to avoid stale data
+        setArticleCache(prev => {
+            const next = {}
+            for (const [windowKey, windowData] of Object.entries(prev)) {
+                const { [pubId]: _removed, ...rest } = windowData
+                next[windowKey] = rest
+            }
             return next
         })
     }
@@ -250,10 +278,10 @@ const AddPublications = forwardRef(({ onOpenSearch, onSaveIssue, isSaving: isSav
                             textTransform: 'none',
                             fontSize: '1rem',
                             backgroundColor: '#f5f5f5',
-                            color: '#291D18',
+                            color: 'var(--black)',
                             border: '1px solid #ccc',
                             '&:hover': {
-                                borderColor: '#291D18'
+                                borderColor: 'var(--black)'
                             }
                         }}
                     >
@@ -269,10 +297,10 @@ const AddPublications = forwardRef(({ onOpenSearch, onSaveIssue, isSaving: isSav
                             textTransform: 'none',
                             fontSize: '1rem',
                             backgroundColor: '#f5f5f5',
-                            color: '#291D18',
+                            color: 'var(--black)',
                             border: '1px solid #ccc',
                             '&:hover': {
-                                borderColor: '#291D18'
+                                borderColor: 'var(--black)'
                             }
                         }}
                     >
@@ -326,8 +354,9 @@ const AddPublications = forwardRef(({ onOpenSearch, onSaveIssue, isSaving: isSav
                 {selectedPublications.length > 0 ? (
                     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
                         {selectedPublications.map((publication, index) => {
-                            // Get publication state (articles, loading, error)
-                            const pubState = publicationStates[publication.id] || {
+                            // Read from the cache slice for the current time window
+                            const currentWindowStates = articleCache[getWindowKey()] || {}
+                            const pubState = currentWindowStates[publication.id] || {
                                 status: 'loading',
                                 articles: [],
                                 error: ''

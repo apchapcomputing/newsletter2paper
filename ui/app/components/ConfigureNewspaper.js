@@ -1,22 +1,38 @@
 'use client'
 
-import { Box, Typography, TextField, Select, MenuItem, FormControl, FormControlLabel, Checkbox } from '@mui/material'
+import { Box, Button, Typography, TextField } from '@mui/material'
 import { useNewsletterConfig } from '../../contexts/useNewsletterConfig'
 
+const FREQUENCY_OPTIONS = [
+    { value: 'daily', label: 'Daily' },
+    { value: 'weekly', label: 'Weekly' },
+    { value: 'monthly', label: 'Monthly' },
+    { value: 'custom', label: 'Custom' },
+]
+
 export default function ConfigureNewspaper() {
-    const { newspaperTitle, outputMode, removeImages, frequency, updateTitle, updateOutputMode, updateRemoveImages, updateFrequency } = useNewsletterConfig()
+    const {
+        newspaperTitle,
+        frequency,
+        dateFrom,
+        dateTo,
+        updateTitle,
+        updateFrequency,
+        updateDateFrom,
+        updateDateTo,
+    } = useNewsletterConfig()
 
-    const handleNewspaperTitleChange = (event) => {
-        updateTitle(event.target.value)
-    }
+    // Validation for custom date range
+    const isCustom = frequency === 'custom'
+    const dateFromMissing = isCustom && !dateFrom
+    const dateToMissing = isCustom && !dateTo
+    const datesReversed = isCustom && dateFrom && dateTo && dateFrom > dateTo
 
-    const handleRemoveImagesChange = (event) => {
-        updateRemoveImages(event.target.checked)
-    }
-
-    const handleFrequencyChange = (event) => {
-        updateFrequency(event.target.value)
-    }
+    const dateError = datesReversed
+        ? 'Start date must be before end date'
+        : (dateFromMissing || dateToMissing)
+            ? 'Both dates are required for a custom range'
+            : null
 
     return (
         <Box sx={{
@@ -66,75 +82,97 @@ export default function ConfigureNewspaper() {
                         variant="outlined"
                         fullWidth
                         value={newspaperTitle}
-                        onChange={handleNewspaperTitleChange}
+                        onChange={(e) => updateTitle(e.target.value)}
                         placeholder="e.g., Morning News, Weekly Digest"
-                        sx={{
-                            '& .MuiOutlinedInput-root': {
-                                backgroundColor: '#f5f5f5'
-                            }
-                        }}
+                        sx={{ '& .MuiOutlinedInput-root': { backgroundColor: '#f5f5f5' } }}
                     />
                 </Box>
 
-                {/* Printing Schedule and Format Row */}
-                {/* <Box sx={{ display: 'flex', gap: 2, flexDirection: { xs: 'column', sm: 'row' } }}> */}
                 {/* Printing Schedule */}
-                {/* <Box sx={{ flex: 1 }}>
-                        <Typography variant="body1" sx={{ mb: 1, fontWeight: 500 }}>
-                            PRINTING SCHEDULE
-                        </Typography>
-                        <Typography variant="body2"
-                            sx={{
-                                fontStyle: 'italic',
-                                color: 'text.secondary',
-                                mb: 2
-                            }}
-                        >
-                            Determine the time period to get the latest articles from
-                        </Typography>
-                        <FormControl fullWidth>
-                            <Select
-                                value={frequency}
-                                onChange={handleFrequencyChange}
-                                displayEmpty
-                                sx={{
-                                    backgroundColor: '#f5f5f5'
-                                }}
-                            >
-                                <MenuItem value="" disabled>
-                                    Select frequency
-                                </MenuItem>
-                                <MenuItem value="daily">Last 24 Hours</MenuItem>
-                                <MenuItem value="weekly">Last Week</MenuItem>
-                                <MenuItem value="monthly">Last Month</MenuItem>
-                            </Select>
-                        </FormControl>
-                    </Box> */}
+                <Box>
+                    <Typography variant="body1" sx={{ mb: 1, fontWeight: 500 }}>
+                        PRINTING SCHEDULE
+                    </Typography>
+                    <Typography
+                        variant="body2"
+                        sx={{ fontStyle: 'italic', color: 'text.secondary', mb: 2 }}
+                    >
+                        Choose the time period to retrieve articles from
+                    </Typography>
 
-                {/* Format */}
-                {/* <Box sx={{ flex: 1 }}>
-                        <Typography variant="body1" sx={{ mb: 1, fontWeight: 500 }}>
-                            FORMAT
-                        </Typography>
-                        <FormControl fullWidth>
-                            <Select
-                                value={outputMode}
-                                disabled
-                                onChange={(e) => updateOutputMode(e.target.value)}
+                    {/* Frequency toggle buttons */}
+                    <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
+                        {FREQUENCY_OPTIONS.map(({ value, label }) => (
+                            <Button
+                                key={value}
+                                onClick={() => updateFrequency(value)}
                                 sx={{
-                                    backgroundColor: '#f5f5f5'
+                                    flex: 1,
+                                    py: 1.5,
+                                    fontWeight: 'medium',
+                                    textTransform: 'none',
+                                    fontSize: '1rem',
+                                    backgroundColor: '#f5f5f5',
+                                    color: frequency === value ? 'var(--primary-light)' : 'var(--black)',
+                                    border: '1px solid',
+                                    borderColor: frequency === value ? 'var(--primary-dark)' : '#ccc',
+                                    '&:hover': {
+                                        backgroundColor: '#f5f5f5',
+                                        borderColor: 'var(--black)',
+                                    },
                                 }}
                             >
-                                <MenuItem value="" disabled>
-                                    Select format
-                                </MenuItem>
-                                <MenuItem value="newspaper">Newspaper</MenuItem>
-                                <MenuItem value="essay">Essay</MenuItem>
-                            </Select>
-                        </FormControl>
-                    </Box> */}
-                {/* </Box> */}
+                                {label}
+                            </Button>
+                        ))}
+                    </Box>
+
+                    {/* Custom date range inputs */}
+                    {isCustom && (
+                        <div className="mt-4">
+                            <div className="flex flex-col sm:flex-row gap-4">
+                                <div className="flex-1">
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                                        From
+                                    </label>
+                                    <input
+                                        type="date"
+                                        value={dateFrom}
+                                        max={dateTo || undefined}
+                                        onChange={(e) => updateDateFrom(e.target.value)}
+                                        className={[
+                                            'w-full px-3 py-2 border-1  text-sm focus:outline-none focus:border-black',
+                                            (dateFromMissing || datesReversed) ? 'border-error' : 'border-black'
+                                        ].join(' ')}
+                                    />
+                                </div>
+                                <div className="flex-1">
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                                        To
+                                    </label>
+                                    <input
+                                        type="date"
+                                        value={dateTo}
+                                        min={dateFrom || undefined}
+                                        onChange={(e) => updateDateTo(e.target.value)}
+                                        className={[
+                                            'w-full px-3 py-2 border-1 bg-gray-50 text-sm focus:outline-none focus:border-black',
+                                            (dateToMissing || datesReversed) ? 'border-error' : 'border-black'
+                                        ].join(' ')}
+                                    />
+                                </div>
+                            </div>
+
+                            {/* Validation error message */}
+                            {dateError && (
+                                <p className="mt-2 text-sm text-error-light font-medium" role="alert">
+                                    {dateError}
+                                </p>
+                            )}
+                        </div>
+                    )}
+                </Box>
             </Box>
-        </Box >
+        </Box>
     )
 }

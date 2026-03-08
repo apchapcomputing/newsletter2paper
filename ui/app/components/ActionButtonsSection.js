@@ -69,10 +69,10 @@ export default function ActionButtonsSection({
                             px: 4,
                             fontSize: '1rem',
                             backgroundColor: '#f5f5f5',
-                            color: '#291D18',
+                            color: 'var(--black)',
                             border: '1px solid #ccc',
                             '&:hover': {
-                                borderColor: '#291D18'
+                                borderColor: 'var(--black)'
                             }
                         }}
                     >
@@ -88,23 +88,23 @@ export default function ActionButtonsSection({
                                 textAlign: 'left',
                                 maxWidth: '500px',
                                 backgroundColor: '#FFF4E6',
-                                border: '1px solid #A44200',
-                                color: '#291D18',
+                                border: '1px solid var(--primary)',
+                                color: 'var(--black)',
                                 '& .MuiAlert-icon': {
-                                    color: '#A44200'
+                                    color: 'var(--primary)'
                                 }
                             }}
                         >
-                            <AlertTitle sx={{ fontWeight: 600, color: '#A44200' }}>PDF Generated Successfully!</AlertTitle>
+                            <AlertTitle sx={{ fontWeight: 600, color: 'var(--primary)' }}>PDF Generated Successfully!</AlertTitle>
                             Your newspaper will open in a new tab automatically. Or visit{' '}
                             <Link
                                 href={pdfUrl}
                                 target="_blank"
                                 rel="noopener noreferrer"
                                 sx={{
-                                    color: '#A44200',
+                                    color: 'var(--primary)',
                                     fontWeight: 600,
-                                    textDecorationColor: '#A44200',
+                                    textDecorationColor: 'var(--primary)',
                                     '&:hover': {
                                         textDecorationThickness: '2px'
                                     }

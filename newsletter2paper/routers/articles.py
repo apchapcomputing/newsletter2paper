@@ -13,6 +13,22 @@ class FetchArticlesRequest(BaseModel):
     days_back: Optional[int] = 7
     max_articles_per_publication: Optional[int] = 5
 
+
+def _parse_date_param(value: Optional[str], param_name: str) -> Optional[datetime]:
+    """Parse an ISO 8601 date string (or date-only YYYY-MM-DD) into a UTC-aware datetime."""
+    if value is None:
+        return None
+    try:
+        dt = datetime.fromisoformat(value)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt
+    except ValueError:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Invalid date format for '{param_name}': '{value}'. Expected ISO 8601, e.g. 2026-03-01"
+        )
+
 # Dependencies
 def get_db_service():
     return DatabaseService()
@@ -25,6 +41,8 @@ async def fetch_articles_for_issue(
     issue_id: UUID,
     request: FetchArticlesRequest = FetchArticlesRequest(),
     publication_id: Optional[str] = Query(default=None, description="Optional publication UUID to fetch only one publication"),
+    start_date: Optional[str] = Query(default=None, description="Optional start date (YYYY-MM-DD or ISO 8601)"),
+    end_date: Optional[str] = Query(default=None, description="Optional end date (YYYY-MM-DD or ISO 8601)"),
     db_service: DatabaseService = Depends(get_db_service),
     rss_service: RSSService = Depends(get_rss_service)
 ):
@@ -35,16 +53,24 @@ async def fetch_articles_for_issue(
         issue_id: UUID of the issue to fetch articles for
         request: Parameters for article fetching (days_back, max_articles_per_publication)
         publication_id: Optional UUID to fetch only one publication's articles
+        start_date: Optional explicit window start (overrides days_back)
+        end_date: Optional explicit window end
         
     Returns:
         Dictionary containing issue info, publications, and articles grouped by publication
     """
+    parsed_start = _parse_date_param(start_date, "start_date")
+    parsed_end = _parse_date_param(end_date, "end_date")
+    if parsed_start and parsed_end and parsed_start > parsed_end:
+        raise HTTPException(status_code=422, detail="start_date must be before end_date")
     try:
         result = await rss_service.fetch_recent_articles_for_issue(
             issue_id=str(issue_id),
             days_back=request.days_back,
             max_articles_per_publication=request.max_articles_per_publication,
-            publication_id=publication_id
+            publication_id=publication_id,
+            start_date=parsed_start,
+            end_date=parsed_end,
         )
         
         return {

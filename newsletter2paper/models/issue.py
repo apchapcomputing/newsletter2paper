@@ -56,6 +56,14 @@ class Issue(SQLModel, table=True):
         nullable=True,
         sa_type="text"
     )
+    custom_start_date: Optional[datetime] = Field(
+        default=None,
+        nullable=True
+    )
+    custom_end_date: Optional[datetime] = Field(
+        default=None,
+        nullable=True
+    )
     created_at: Optional[datetime] = Field(
         default=None,
         nullable=True,

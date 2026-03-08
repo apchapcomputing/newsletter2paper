@@ -13,10 +13,12 @@ export default function AddUrlModal({ open, onClose, onPublicationAdded }) {
     const [isProcessing, setIsProcessing] = useState(false)
     const [error, setError] = useState(null)
     const [successCount, setSuccessCount] = useState(0)
+    const [failedUrls, setFailedUrls] = useState([])
 
     const handleAdd = async () => {
         setError(null)
         setSuccessCount(0)
+        setFailedUrls([])
         setIsProcessing(true)
 
         try {
@@ -32,19 +34,37 @@ export default function AddUrlModal({ open, onClose, onPublicationAdded }) {
                 return
             }
 
+            logger.log(`Processing ${urls.length} URL(s):`, urls)
+
             let addedCount = 0
+            const failed = []
 
             for (const url of urls) {
                 try {
+                    logger.log(`Processing URL: ${url}`)
+
                     // Validate it's a URL
                     let cleanUrl = url
                     if (!url.startsWith('http://') && !url.startsWith('https://')) {
                         cleanUrl = 'https://' + url
                     }
 
+                    // Validate URL format
+                    let urlObj
+                    try {
+                        urlObj = new URL(cleanUrl)
+                    } catch (urlError) {
+                        throw new Error(`Invalid URL format: ${url}`)
+                    }
+
                     // Extract publication handle from URL (e.g., https://example.substack.com -> example)
-                    const urlObj = new URL(cleanUrl)
                     const hostname = urlObj.hostname
+
+                    // Validate it looks like a Substack URL
+                    if (!hostname.includes('substack.com') && !hostname.includes('.')) {
+                        logger.warn(`URL may not be a valid Substack publication: ${hostname}`)
+                    }
+
                     const handle = hostname.replace('.substack.com', '').split('.')[0]
 
                     // Search for the publication to get full details
@@ -55,6 +75,10 @@ export default function AddUrlModal({ open, onClose, onPublicationAdded }) {
                     try {
                         const searchResults = await searchSubstack(handle)
                         logger.log('Search results for', handle, ':', searchResults)
+
+                        if (!searchResults || searchResults.length === 0) {
+                            logger.warn(`No Substack search results found for handle: ${handle}`)
+                        }
 
                         // Find the matching publication in search results
                         // Prioritize 'user' type results as they have better author info
@@ -94,11 +118,16 @@ export default function AddUrlModal({ open, onClose, onPublicationAdded }) {
                     let feedUrl
                     try {
                         feedUrl = await getRssFeedUrl(cleanUrl)
+                        logger.log(`Successfully retrieved RSS feed URL: ${feedUrl}`)
                     } catch (err) {
                         console.error('Error getting RSS feed URL:', err)
                         // Fallback to default Substack RSS feed pattern
                         feedUrl = `${cleanUrl}/feed`
                         logger.log('Using default feed URL:', feedUrl)
+                    }
+
+                    if (!feedUrl) {
+                        throw new Error('Could not determine RSS feed URL')
                     }
 
                     // Add to selected publications (using same format as SearchModal)
@@ -115,6 +144,8 @@ export default function AddUrlModal({ open, onClose, onPublicationAdded }) {
 
                     // Also create/find the publication in the database
                     try {
+                        logger.log('Creating/finding publication in database:', { title: publicationName, url: cleanUrl })
+
                         const pubResponse = await fetch('/api/publications-db?action=find-or-create', {
                             method: 'POST',
                             headers: {
@@ -146,31 +177,42 @@ export default function AddUrlModal({ open, onClose, onPublicationAdded }) {
                                 onPublicationAdded(newPub);
                             }
                         } else {
-                            console.error('Failed to create publication in database:', await pubResponse.text())
+                            const errorText = await pubResponse.text()
+                            console.error('Failed to create publication in database:', errorText)
+                            logger.warn(`Database operation failed but publication added to context: ${errorText}`)
                         }
                     } catch (dbErr) {
                         console.error('Error creating publication in database:', dbErr)
+                        logger.warn('Database operation failed but publication added to context')
                         // Don't fail the whole operation if DB insert fails
                     }
 
                     addedCount++
+                    logger.log(`Successfully added publication: ${publicationName}`)
                 } catch (err) {
                     console.error(`Failed to add URL ${url}:`, err)
+                    failed.push({ url, reason: err.message || 'Unknown error' })
+                    logger.error(`Failed to process ${url}:`, err)
                     // Continue with other URLs
                 }
             }
 
             setSuccessCount(addedCount)
+            setFailedUrls(failed)
 
             if (addedCount > 0) {
+                logger.log(`Successfully added ${addedCount} publication(s)`)
+
                 // Clear input and close modal after a brief delay
                 setTimeout(() => {
                     setUrlInput('')
                     setSuccessCount(0)
+                    setFailedUrls([])
                     onClose()
-                }, 1500)
+                }, 2000)
             } else {
                 setError('Failed to add any publications. Please check the URLs and try again.')
+                logger.error('No publications were successfully added')
             }
 
         } catch (err) {
@@ -186,6 +228,7 @@ export default function AddUrlModal({ open, onClose, onPublicationAdded }) {
             setUrlInput('')
             setError(null)
             setSuccessCount(0)
+            setFailedUrls([])
             onClose()
         }
     }
@@ -204,8 +247,8 @@ export default function AddUrlModal({ open, onClose, onPublicationAdded }) {
                 width: { xs: '90%', sm: '600px' },
                 maxWidth: '90vw',
                 maxHeight: '90vh',
-                bgcolor: '#ECECEC',
-                border: '2px solid #291D18',
+                bgcolor: 'var(--white)',
+                border: '2px solid var(--black)',
                 boxShadow: 24,
                 p: 4,
                 overflow: 'auto'
@@ -217,7 +260,7 @@ export default function AddUrlModal({ open, onClose, onPublicationAdded }) {
                     sx={{
                         fontWeight: 600,
                         mb: 2,
-                        color: '#291D18'
+                        color: 'var(--black)'
                     }}
                 >
                     Add Publications via URL
@@ -240,14 +283,14 @@ export default function AddUrlModal({ open, onClose, onPublicationAdded }) {
                         '& .MuiOutlinedInput-root': {
                             backgroundColor: '#fff',
                             '& fieldset': {
-                                borderColor: '#291D18',
+                                borderColor: 'var(--black)',
                                 borderWidth: '2px'
                             },
                             '&:hover fieldset': {
-                                borderColor: '#A44200'
+                                borderColor: 'var(--primary)'
                             },
                             '&.Mui-focused fieldset': {
-                                borderColor: '#A44200'
+                                borderColor: 'var(--primary)'
                             }
                         }
                     }}
@@ -287,6 +330,30 @@ export default function AddUrlModal({ open, onClose, onPublicationAdded }) {
                     </Alert>
                 )}
 
+                {failedUrls.length > 0 && (
+                    <Alert
+                        severity="warning"
+                        sx={{
+                            mb: 2,
+                            backgroundColor: '#fff3e0',
+                            color: '#e65100',
+                            border: '1px solid #e65100',
+                            '& .MuiAlert-icon': {
+                                color: '#e65100'
+                            }
+                        }}
+                    >
+                        <Typography variant="body2" sx={{ fontWeight: 600, mb: 1 }}>
+                            Failed to add {failedUrls.length} URL{failedUrls.length !== 1 ? 's' : ''}:
+                        </Typography>
+                        {failedUrls.map((failure, idx) => (
+                            <Typography key={idx} variant="caption" component="div" sx={{ mt: 0.5 }}>
+                                • {failure.url}: {failure.reason}
+                            </Typography>
+                        ))}
+                    </Alert>
+                )}
+
                 <Box sx={{ display: 'flex', gap: 2, justifyContent: 'flex-end' }}>
                     <Button
                         variant="outlined"
@@ -296,12 +363,12 @@ export default function AddUrlModal({ open, onClose, onPublicationAdded }) {
                             textTransform: 'none',
                             fontWeight: 500,
                             fontSize: '1rem',
-                            color: '#291D18',
-                            borderColor: '#291D18',
+                            color: 'var(--black)',
+                            borderColor: 'var(--black)',
                             borderWidth: '2px',
                             px: 3,
                             '&:hover': {
-                                borderColor: '#291D18',
+                                borderColor: 'var(--black)',
                                 backgroundColor: 'rgba(0, 0, 0, 0.04)',
                                 borderWidth: '2px'
                             }
@@ -317,8 +384,8 @@ export default function AddUrlModal({ open, onClose, onPublicationAdded }) {
                             textTransform: 'none',
                             fontWeight: 500,
                             fontSize: '1rem',
-                            backgroundColor: '#A44200',
-                            color: '#ECECEC',
+                            backgroundColor: 'var(--primary)',
+                            color: 'var(--white)',
                             px: 3,
                             '&:hover': {
                                 backgroundColor: '#8B3500'

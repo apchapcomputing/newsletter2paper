@@ -8,12 +8,16 @@ export async function POST(request) {
         const action = url.searchParams.get('action');
         const body = await request.json();
 
+        console.log(`[publications-db] POST request - action: ${action}`, body);
+
         let endpoint = '/publications/';
 
         // Handle different publication actions
         if (action === 'find-or-create') {
             endpoint = '/publications/find-or-create';
         }
+
+        console.log(`[publications-db] Forwarding to backend: ${BACKEND_URL}${endpoint}`);
 
         // Forward the request to the Python backend
         const response = await fetch(`${BACKEND_URL}${endpoint}`, {
@@ -26,6 +30,7 @@ export async function POST(request) {
 
         if (!response.ok) {
             const errorData = await response.text();
+            console.error(`[publications-db] Backend error (${response.status}):`, errorData);
             return NextResponse.json(
                 { error: 'Failed to process publication request', details: errorData },
                 { status: response.status }
@@ -33,10 +38,11 @@ export async function POST(request) {
         }
 
         const data = await response.json();
+        console.log('[publications-db] Success:', data);
         return NextResponse.json(data);
 
     } catch (error) {
-        console.error('Error processing publication request:', error);
+        console.error('[publications-db] Error processing publication request:', error);
         return NextResponse.json(
             { error: 'Internal server error', details: error.message },
             { status: 500 }

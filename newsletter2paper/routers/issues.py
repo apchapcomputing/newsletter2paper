@@ -2,7 +2,7 @@ from fastapi import APIRouter, HTTPException, Depends
 from uuid import UUID
 from typing import List, Optional
 from datetime import datetime, timezone
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator, model_validator
 
 from services.database_service import DatabaseService
 from models.issue import Issue
@@ -10,18 +10,57 @@ from models.issue_publication import IssuePublication
 
 router = APIRouter(prefix="/issues", tags=["issues"])
 
+_VALID_FREQUENCIES = {"daily", "weekly", "monthly", "once", "custom"}
+
 # Pydantic models for requests
 class CreateIssueRequest(BaseModel):
     title: str = "Your Newspaper"
     format: str  # "newspaper" or "essay"
-    frequency: str = "weekly"  # "daily", "weekly", "monthly"
+    frequency: str = "weekly"  # "daily", "weekly", "monthly", "custom"
     target_email: Optional[str] = None
+    custom_start_date: Optional[datetime] = None
+    custom_end_date: Optional[datetime] = None
+
+    @field_validator("frequency")
+    @classmethod
+    def validate_frequency(cls, v: str) -> str:
+        if v not in _VALID_FREQUENCIES:
+            raise ValueError(f"frequency must be one of {sorted(_VALID_FREQUENCIES)}")
+        return v
+
+    @model_validator(mode="after")
+    def validate_custom_dates(self) -> "CreateIssueRequest":
+        if self.frequency == "custom":
+            if self.custom_start_date is None or self.custom_end_date is None:
+                raise ValueError("custom_start_date and custom_end_date are required when frequency is 'custom'")
+            if self.custom_start_date > self.custom_end_date:
+                raise ValueError("custom_start_date must be before custom_end_date")
+        return self
 
 class UpdateIssueRequest(BaseModel):
     title: Optional[str] = None
     format: Optional[str] = None
     frequency: Optional[str] = None
     target_email: Optional[str] = None
+    custom_start_date: Optional[datetime] = None
+    custom_end_date: Optional[datetime] = None
+
+    @field_validator("frequency")
+    @classmethod
+    def validate_frequency(cls, v: Optional[str]) -> Optional[str]:
+        if v is not None and v not in _VALID_FREQUENCIES:
+            raise ValueError(f"frequency must be one of {sorted(_VALID_FREQUENCIES)}")
+        return v
+
+    @model_validator(mode="after")
+    def validate_custom_dates(self) -> "UpdateIssueRequest":
+        if self.frequency == "custom":
+            if self.custom_start_date is None or self.custom_end_date is None:
+                raise ValueError("custom_start_date and custom_end_date are required when frequency is 'custom'")
+        if self.custom_start_date is not None and self.custom_end_date is not None:
+            if self.custom_start_date > self.custom_end_date:
+                raise ValueError("custom_start_date must be before custom_end_date")
+        return self
 
 class PublicationSettings(BaseModel):
     publication_id: UUID
@@ -50,6 +89,8 @@ async def create_issue(
             'format': request.format,
             'frequency': request.frequency,
             'target_email': request.target_email,
+            'custom_start_date': request.custom_start_date.isoformat() if request.custom_start_date else None,
+            'custom_end_date': request.custom_end_date.isoformat() if request.custom_end_date else None,
             'created_at': datetime.now(timezone.utc).isoformat(),
             'updated_at': datetime.now(timezone.utc).isoformat()
         }
@@ -89,8 +130,17 @@ async def update_issue(
             update_data['format'] = request.format
         if request.frequency is not None:
             update_data['frequency'] = request.frequency
+            # When switching away from custom, clear the saved dates
+            if request.frequency != 'custom':
+                update_data['custom_start_date'] = None
+                update_data['custom_end_date'] = None
         if request.target_email is not None:
             update_data['target_email'] = request.target_email
+        # Always write custom dates when explicitly provided (even as None to clear them)
+        if 'custom_start_date' not in update_data:  # don't overwrite if already set by frequency change
+            update_data['custom_start_date'] = request.custom_start_date.isoformat() if request.custom_start_date else None
+        if 'custom_end_date' not in update_data:
+            update_data['custom_end_date'] = request.custom_end_date.isoformat() if request.custom_end_date else None
         
         # Update the issue in the database
         result = db_service.client.table('issues')\

@@ -608,19 +608,26 @@ class RSSService:
         issue_id: str, 
         days_back: int = 7,
         max_articles_per_publication: int = 5,
-        publication_id: Optional[str] = None
+        publication_id: Optional[str] = None,
+        start_date: Optional[datetime] = None,
+        end_date: Optional[datetime] = None
     ) -> dict:
         """
         Fetch recent articles for all publications in an issue, or a single publication.
         
         Args:
             issue_id: UUID of the issue
-            days_back: Number of days to look back for articles
+            days_back: Number of days to look back for articles (ignored when start_date/end_date provided)
             max_articles_per_publication: Maximum articles per publication
             publication_id: Optional UUID to fetch only one publication's articles
+            start_date: Optional explicit start of the date window (UTC-aware)
+            end_date: Optional explicit end of the date window (UTC-aware, treated as end-of-day)
             
         Returns:
             Dictionary with issue info and articles grouped by publication
+            
+        Raises:
+            ValueError: If start_date is after end_date
         """
         try:
             # Get issue details
@@ -646,11 +653,32 @@ class RSSService:
             publications_result = query.execute()
             
             if not publications_result.data:
+                # Compute date_range even for empty result so callers always get a consistent shape
+                if start_date is not None and end_date is not None:
+                    if start_date > end_date:
+                        raise ValueError(
+                            f"start_date ({start_date.isoformat()}) must be before end_date ({end_date.isoformat()})"
+                        )
+                    _cutoff = start_date
+                    _effective_end = end_date.replace(hour=23, minute=59, second=59, microsecond=999999)
+                elif start_date is not None:
+                    _cutoff = start_date
+                    _effective_end = None
+                else:
+                    _cutoff = datetime.now(timezone.utc) - timedelta(days=days_back)
+                    _effective_end = None
+
                 return {
                     'issue': issue,
                     'publications': [],
                     'articles_by_publication': {},
-                    'total_articles': 0
+                    'total_articles': 0,
+                    'date_range': {
+                        'from': _cutoff.isoformat(),
+                        'to': (_effective_end or datetime.now(timezone.utc)).isoformat(),
+                        'days_back': days_back if start_date is None else None,
+                        'custom': start_date is not None,
+                    }
                 }
             
             # Extract publications with their remove_images settings from junction table
@@ -664,8 +692,21 @@ class RSSService:
                     publication_settings[pub_id] = item.get('remove_images', False)
                     publications.append(pub)
             
-            # Calculate cutoff date
-            cutoff_date = datetime.now(timezone.utc) - timedelta(days=days_back)
+            # Determine the article date window
+            if start_date is not None and end_date is not None:
+                if start_date > end_date:
+                    raise ValueError(
+                        f"start_date ({start_date.isoformat()}) must be before end_date ({end_date.isoformat()})"
+                    )
+                # Treat end_date as end-of-day UTC so articles published on that date are included
+                effective_end = end_date.replace(hour=23, minute=59, second=59, microsecond=999999)
+                cutoff_date = start_date
+            elif start_date is not None:
+                cutoff_date = start_date
+                effective_end = None
+            else:
+                cutoff_date = datetime.now(timezone.utc) - timedelta(days=days_back)
+                effective_end = None
             
             articles_by_publication = {}
             total_articles = 0
@@ -687,23 +728,24 @@ class RSSService:
                     recent_articles = []
                     for article in articles:
                         if article.date_published and article.date_published >= cutoff_date:
-                            # Convert Article object to dictionary for easier handling
-                            article_dict = {
-                                'id': str(article.id),
-                                'title': article.title,
-                                'subtitle': article.subtitle,
-                                'author': article.author,
-                                'content_url': article.content_url,
-                                'date_published': article.date_published.isoformat(),
-                                'publication_id': pub_id,
-                                'publication_title': publication.get('title', ''),
-                                'publication_publisher': publication.get('publisher', ''),
-                                'remove_images': publication_settings.get(pub_id, False)  # Per-publication setting
-                            }
-                            recent_articles.append(article_dict)
-                            
-                            if len(recent_articles) >= max_articles_per_publication:
-                                break
+                            if effective_end is None or article.date_published <= effective_end:
+                                # Convert Article object to dictionary for easier handling
+                                article_dict = {
+                                    'id': str(article.id),
+                                    'title': article.title,
+                                    'subtitle': article.subtitle,
+                                    'author': article.author,
+                                    'content_url': article.content_url,
+                                    'date_published': article.date_published.isoformat(),
+                                    'publication_id': pub_id,
+                                    'publication_title': publication.get('title', ''),
+                                    'publication_publisher': publication.get('publisher', ''),
+                                    'remove_images': publication_settings.get(pub_id, False)  # Per-publication setting
+                                }
+                                recent_articles.append(article_dict)
+
+                                if len(recent_articles) >= max_articles_per_publication:
+                                    break
                     
                     articles_by_publication[pub_id] = recent_articles
                     total_articles += len(recent_articles)
@@ -721,8 +763,9 @@ class RSSService:
                 'total_articles': total_articles,
                 'date_range': {
                     'from': cutoff_date.isoformat(),
-                    'to': datetime.now(timezone.utc).isoformat(),
-                    'days_back': days_back
+                    'to': (effective_end or datetime.now(timezone.utc)).isoformat(),
+                    'days_back': days_back if start_date is None else None,
+                    'custom': start_date is not None
                 }
             }
             

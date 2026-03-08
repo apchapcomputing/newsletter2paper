@@ -1,4 +1,4 @@
-"""
+""" 
 PDF Router Module
 Handles PDF generation endpoints using Go-based PDF service.
 """
@@ -6,6 +6,7 @@ Handles PDF generation endpoints using Go-based PDF service.
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import RedirectResponse
 from typing import Optional, Dict, Any
+from datetime import datetime, timezone
 import logging
 from pathlib import Path
 
@@ -15,16 +16,71 @@ router = APIRouter(prefix="/pdf", tags=["pdf"])
 pdf_service = GoPDFService(use_docker=True, shared_dir="/shared")
 
 
+def _parse_date_param(value: Optional[str], param_name: str) -> Optional[datetime]:
+    """Parse an ISO 8601 date string into a UTC-aware datetime."""
+    if value is None:
+        return None
+    try:
+        dt = datetime.fromisoformat(value)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt
+    except ValueError:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Invalid {param_name} format. Expected ISO 8601 (e.g. 2026-03-01 or 2026-03-01T00:00:00Z)"
+        )
+
+
+def _resolve_date_window(
+    start_date_param: Optional[str],
+    end_date_param: Optional[str],
+    issue_info: dict,
+    days_back: int,
+) -> tuple[Optional[datetime], Optional[datetime]]:
+    """
+    Resolve the effective start/end dates for article fetching.
+
+    Priority:
+    1. Explicit query params (start_date / end_date)
+    2. Saved custom dates on the issue (when frequency == 'custom')
+    3. None / None  (caller falls back to days_back)
+
+    Raises HTTPException 422 if start_date > end_date.
+    """
+    start = _parse_date_param(start_date_param, "start_date")
+    end = _parse_date_param(end_date_param, "end_date")
+
+    # Fall back to saved custom dates when no explicit params given
+    if start is None and end is None and issue_info.get('frequency') == 'custom':
+        raw_start = issue_info.get('custom_start_date')
+        raw_end = issue_info.get('custom_end_date')
+        if raw_start:
+            start = _parse_date_param(raw_start, "custom_start_date")
+        if raw_end:
+            end = _parse_date_param(raw_end, "custom_end_date")
+
+    if start is not None and end is not None and start > end:
+        raise HTTPException(
+            status_code=422,
+            detail="start_date must be before end_date"
+        )
+
+    return start, end
+
+
 @router.post("/generate/{issue_id}")
 async def generate_pdf_for_issue(
     issue_id: str,
-    days_back: int = Query(7, description="Number of days to look back for articles"),
+    days_back: int = Query(7, description="Number of days to look back for articles (ignored when start_date/end_date are provided)"),
     max_articles_per_publication: int = Query(5, description="Maximum articles per publication"),
     layout_type: Optional[str] = Query(None, description="Layout type: 'newspaper' or 'essay' (overrides DB value if provided)"),
     remove_images: Optional[bool] = Query(None, description="Remove all images from PDF (overrides DB value if provided)"),
     output_filename: Optional[str] = Query(None, description="Custom output filename"),
     keep_html: bool = Query(False, description="Whether to keep intermediate HTML file"),
-    verbose: bool = Query(False, description="Enable verbose logging")
+    verbose: bool = Query(False, description="Enable verbose logging"),
+    start_date: Optional[str] = Query(None, description="ISO 8601 start date for article retrieval (e.g. 2026-03-01)"),
+    end_date: Optional[str] = Query(None, description="ISO 8601 end date for article retrieval, inclusive (e.g. 2026-03-07)")
 ):
     """
     Generate a PDF from an issue's articles using the Go PDF service.
@@ -32,13 +88,15 @@ async def generate_pdf_for_issue(
     
     Args:
         issue_id: UUID of the issue
-        days_back: Number of days to look back for articles
+        days_back: Number of days to look back for articles (used when start_date/end_date not provided)
         max_articles_per_publication: Maximum articles per publication
         layout_type: Layout type ('newspaper' or 'essay') - if not provided, uses value from DB
         remove_images: Remove all images from PDF - if not provided, uses value from DB
         output_filename: Custom output filename (without extension)
         keep_html: Whether to keep the intermediate HTML file (Go service handles this)
         verbose: Enable verbose output
+        start_date: ISO 8601 start of date range for article retrieval
+        end_date: ISO 8601 end of date range for article retrieval (treated as end-of-day UTC)
         
     Returns:
         dict: Result with success status, file paths, and metadata
@@ -49,12 +107,27 @@ async def generate_pdf_for_issue(
         # Import RSS service here to avoid circular imports
         from services.rss_service import RSSService
         rss_service = RSSService()
+
+        # Pre-fetch issue info to resolve custom date fallback before article fetch
+        from services.database_service import DatabaseService
+        db_service = DatabaseService()
+        issue_result = db_service.client.table('issues').select('*').eq('id', issue_id).execute()
+        if not issue_result.data:
+            raise HTTPException(status_code=404, detail="Issue not found")
+        issue_info_raw = issue_result.data[0]
+
+        # Resolve effective date window (explicit params > saved custom dates > days_back)
+        effective_start, effective_end = _resolve_date_window(
+            start_date, end_date, issue_info_raw, days_back
+        )
         
         # Fetch articles for the issue using RSS service
         articles_data = await rss_service.fetch_recent_articles_for_issue(
             issue_id,
             days_back=days_back,
-            max_articles_per_publication=max_articles_per_publication
+            max_articles_per_publication=max_articles_per_publication,
+            start_date=effective_start,
+            end_date=effective_end
         )
         
         if not articles_data or articles_data['total_articles'] == 0:
@@ -81,6 +154,10 @@ async def generate_pdf_for_issue(
                 logging.info(f"Remove images overridden via query parameter: {remove_images}")
             else:
                 logging.info(f"Using remove_images from database: {effective_remove_images}")
+            if effective_start:
+                logging.info(f"Date window: {effective_start.isoformat()} → {(effective_end or 'now')}")
+            else:
+                logging.info(f"Date window: last {days_back} days")
         
         # Flatten articles from all publications
         all_articles = []
@@ -125,6 +202,8 @@ async def generate_pdf_for_issue(
         
     except HTTPException:
         raise
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
     except Exception as e:
         logging.error(f"PDF generation failed: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"PDF generation failed: {str(e)}")
@@ -137,33 +216,36 @@ async def download_pdf(
     max_articles_per_publication: int = Query(5, description="Maximum articles per publication"),
     layout_type: Optional[str] = Query(None, description="Layout type: 'newspaper' or 'essay' (overrides DB value if provided)"),
     remove_images: Optional[bool] = Query(None, description="Remove all images from PDF (overrides DB value if provided)"),
-    output_filename: Optional[str] = Query(None, description="Custom output filename")
+    output_filename: Optional[str] = Query(None, description="Custom output filename"),
+    start_date: Optional[str] = Query(None, description="ISO 8601 start date for article retrieval"),
+    end_date: Optional[str] = Query(None, description="ISO 8601 end date for article retrieval, inclusive")
 ):
     """
     Generate and download a PDF for an issue by redirecting to the Supabase storage URL.
     Available to all users (authenticated and guests).
-    
-    Args:
-        issue_id: UUID of the issue
-        days_back: Number of days to look back for articles
-        max_articles_per_publication: Maximum articles per publication
-        layout_type: Layout type ('newspaper' or 'essay') - if not provided, uses value from DB
-        remove_images: Remove all images from PDF - if not provided, uses value from DB
-        output_filename: Custom output filename (without extension)
-        
-    Returns:
-        RedirectResponse: Redirect to the PDF URL in Supabase storage
     """
     try:
-        # Import RSS service here to avoid circular imports
         from services.rss_service import RSSService
+        from services.database_service import DatabaseService
         rss_service = RSSService()
-        
+
+        db_service = DatabaseService()
+        issue_result = db_service.client.table('issues').select('*').eq('id', issue_id).execute()
+        if not issue_result.data:
+            raise HTTPException(status_code=404, detail="Issue not found")
+        issue_info_raw = issue_result.data[0]
+
+        effective_start, effective_end = _resolve_date_window(
+            start_date, end_date, issue_info_raw, days_back
+        )
+
         # Fetch articles for the issue
         articles_data = await rss_service.fetch_recent_articles_for_issue(
             issue_id,
             days_back=days_back,
-            max_articles_per_publication=max_articles_per_publication
+            max_articles_per_publication=max_articles_per_publication,
+            start_date=effective_start,
+            end_date=effective_end
         )
         
         if not articles_data or articles_data['total_articles'] == 0:
@@ -208,6 +290,8 @@ async def download_pdf(
         
     except HTTPException:
         raise
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
     except Exception as e:
         logging.error(f"PDF download failed: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"PDF download failed: {str(e)}")
