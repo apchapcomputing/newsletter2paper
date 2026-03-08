@@ -20,7 +20,7 @@ export const logger = {
 
     warn: (...args) => {
         if (isDevelopment) {
-            logger.warn(...args);
+            console.warn(...args);
         }
     },
 
