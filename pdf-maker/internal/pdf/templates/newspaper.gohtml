@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{{.Title}}</title>
+  <link rel="stylesheet" href="{{.CSSPath}}">
+</head>
+<body>
+<div class="pdf-header">
+  <h1>{{.Title}}</h1>
+  <p class="date">{{.Subtitle}}</p>
+</div>
+{{- range .Pages}}
+<div class="{{.Class}}">
+<table class="page-table"><tr>
+{{- range .Columns}}
+<td class="page-col">{{range .Parts}}{{.}}{{end}}</td>{{end}}
+</tr></table>
+</div>
+{{- end}}
+</body>
+</html>

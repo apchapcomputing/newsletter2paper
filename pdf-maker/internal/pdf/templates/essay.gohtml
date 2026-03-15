@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{{.Title}}</title>
+  <link rel="stylesheet" href="{{.CSSPath}}">
+</head>
+<body>
+<div class="pdf-header">
+  <h1>{{.Title}}</h1>
+  <p class="date">{{.Subtitle}}</p>
+</div>
+<div class="toc">
+  <h2>Table of Contents</h2>
+  <ul>
+{{- range .TOC}}
+    <li><a href="#article-{{.Num}}">{{.Title}}</a>{{if .Author}} <span class="toc-author">by {{.Author}}</span>{{end}}{{if .Publication}} <span class="toc-publication">&#8212; {{.Publication}}</span>{{end}}</li>
+{{- end}}
+  </ul>
+</div>
+{{range .Articles}}{{.}}{{end}}
+</body>
+</html>
