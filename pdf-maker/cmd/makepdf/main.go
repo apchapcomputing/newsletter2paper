@@ -57,12 +57,13 @@ func main() {
 
 	var articles []*art.Article
 	var errs []error
-	var layout string // The actual layout type to use
+	var layout string    // The actual layout type to use
+	var jsonTitle string // Title extracted from JSON (empty when using --urls)
 
 	// Process based on input method
 	if *articlesJSON != "" {
-		// Load articles from JSON file - layout type comes from JSON
-		articles, errs, layout = processArticlesFromJSON(ctx, *articlesJSON, imgDownloader, *maxPar)
+		// Load articles from JSON file - layout type and title come from JSON
+		articles, errs, layout, jsonTitle = processArticlesFromJSON(ctx, *articlesJSON, imgDownloader, *maxPar)
 	} else {
 		// Original URL-based processing - layout type comes from flag
 		urlList := parseURLs(*urls)
@@ -97,11 +98,17 @@ func main() {
 		fmt.Printf("✅ Successfully processed %d articles\n", len(articles))
 	}
 
+	// Resolve the title: JSON-provided title takes precedence over the --title flag
+	resolvedTitle := jsonTitle
+	if resolvedTitle == "" {
+		resolvedTitle = *title
+	}
+
 	// Generate PDF
 	fmt.Println("Generating PDF...")
 	opts := pdf.GenerateOptions{
 		OutputPath:   *output,
-		Title:        *title,
+		Title:        resolvedTitle,
 		KeepHTML:     *keepHTML,
 		LayoutType:   layout,
 		RemoveImages: *removeImages,
@@ -144,7 +151,7 @@ func parseURLs(urls string) []string {
 }
 
 // processArticlesFromJSON loads articles from JSON and fetches content if needed
-func processArticlesFromJSON(ctx context.Context, jsonPath string, imgDownloader *media.Downloader, maxPar int) ([]*art.Article, []error, string) {
+func processArticlesFromJSON(ctx context.Context, jsonPath string, imgDownloader *media.Downloader, maxPar int) ([]*art.Article, []error, string, string) {
 	fmt.Printf("Loading articles from JSON: %s\n", jsonPath)
 
 	issueInput, err := art.LoadArticlesFromJSON(jsonPath)
@@ -152,7 +159,8 @@ func processArticlesFromJSON(ctx context.Context, jsonPath string, imgDownloader
 		log.Fatalf("Failed to load JSON: %v", err)
 	}
 
-	fmt.Printf("Loaded %d articles from issue: %s\n", len(issueInput.Articles), issueInput.IssueTitle)
+	issueTitle := issueInput.IssueTitle
+	fmt.Printf("Loaded %d articles from issue: %s\n", len(issueInput.Articles), issueTitle)
 
 	// Get layout type from JSON (default to "newspaper" if not specified)
 	layoutType := issueInput.LayoutType
@@ -246,5 +254,5 @@ func processArticlesFromJSON(ctx context.Context, jsonPath string, imgDownloader
 		}
 	}
 
-	return validArticles, errs, layoutType
+	return validArticles, errs, layoutType, issueTitle
 }
