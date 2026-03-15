@@ -360,7 +360,7 @@ export const NewsletterConfigProvider = ({ children }) => {
                     // Ensure user-issue association exists for updated issue
                     const { data: existingAssociation } = await supabase
                         .from('user_issues')
-                        .select('id')
+                        .select('user_id')
                         .eq('user_id', user.id)
                         .eq('issue_id', savedIssue.id)
                         .single();
