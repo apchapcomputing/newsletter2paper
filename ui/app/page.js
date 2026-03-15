@@ -57,6 +57,7 @@ export default function Home() {
   const [publications, setPublications] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [mounted, setMounted] = useState(false);
   const [isSearchModalOpen, setIsSearchModalOpen] = useState(false);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -70,6 +71,12 @@ export default function Home() {
   const [autoSaveTimer, setAutoSaveTimer] = useState(null);
   const isLoadingPublications = useRef(false);
   const addPublicationsRef = useRef(null);
+
+  // Mark as mounted after client-side hydration completes.
+  // This prevents server/client HTML mismatches caused by contexts that read
+  // from localStorage (isLoaded/configLoaded are false on the client's first
+  // render but the server may have rendered with them as true).
+  useEffect(() => setMounted(true), []);
 
   // Auto-save effect - triggers when title, outputMode, or publications change
   useEffect(() => {
@@ -491,8 +498,8 @@ export default function Home() {
     return () => clearTimeout(timeoutId);
   }, [searchQuery]);
 
-  // Don't render the form until both contexts are loaded
-  if (!isLoaded || !configLoaded) {
+  // Don't render the form until mounted and both contexts are loaded
+  if (!mounted || !isLoaded || !configLoaded) {
     return (
       <div className="font-sans grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20" style={{ backgroundColor: 'var(--white)' }}>
         <main className="flex flex-col gap-[32px] row-start-2 items-center sm:items-start">

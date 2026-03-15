@@ -348,3 +348,52 @@ func RemoveAllImages(htmlContent string) (string, int, error) {
 
 	return cleaned, imagesRemoved, nil
 }
+
+// ExtractBlocks extracts top-level block elements from HTML content as individual
+// self-contained HTML strings. This is used for newspaper column rendering to
+// avoid unclosed wrapper divs (e.g. Substack's "<div dir=auto class=body markup>")
+// that nest newspaper-page divs inside each other and break page-break-before.
+func ExtractBlocks(htmlContent string) []string {
+	doc, err := goquery.NewDocumentFromReader(strings.NewReader(htmlContent))
+	if err != nil {
+		return paragraphFallback(htmlContent)
+	}
+
+	body := doc.Find("body")
+	source := body
+
+	// Unwrap a single outer wrapper div (common in Substack content).
+	// Substack wraps all article content in <div dir="auto" class="body markup">.
+	children := body.Children()
+	if children.Length() == 1 && goquery.NodeName(children.First()) == "div" {
+		source = children.First()
+	}
+
+	var blocks []string
+	source.Children().Each(func(_ int, s *goquery.Selection) {
+		h, err := goquery.OuterHtml(s)
+		if err != nil {
+			return
+		}
+		if h = strings.TrimSpace(h); h != "" {
+			blocks = append(blocks, h)
+		}
+	})
+
+	if len(blocks) == 0 {
+		return paragraphFallback(htmlContent)
+	}
+	return blocks
+}
+
+// paragraphFallback is a best-effort fallback that splits HTML at </p> boundaries.
+func paragraphFallback(content string) []string {
+	var blocks []string
+	for _, p := range strings.Split(content, "</p>") {
+		p = strings.TrimSpace(p)
+		if p != "" {
+			blocks = append(blocks, p+"</p>")
+		}
+	}
+	return blocks
+}

@@ -114,7 +114,11 @@ func main() {
 
 	fmt.Printf("✅ PDF generated: %s\n", result.PDFPath)
 	if result.HTMLPath != "" {
-		fmt.Printf("📄 HTML saved: %s\n", result.HTMLPath)
+		label := "HTML"
+		if strings.HasSuffix(result.HTMLPath, ".typ") {
+			label = "Typst source"
+		}
+		fmt.Printf("📄 %s saved: %s\n", label, result.HTMLPath)
 	}
 
 	fmt.Println("\n--- Articles Included ---")
@@ -166,8 +170,16 @@ func processArticlesFromJSON(ctx context.Context, jsonPath string, imgDownloader
 	for i, input := range issueInput.Articles {
 		article := input.ToArticle()
 
-		// If content is provided directly, use it
+		// If content is provided directly, use it (but still download any embedded images)
 		if input.Content != "" {
+			if !input.RemoveImages {
+				processed, imgErr := imgDownloader.ProcessHTML(article.Content)
+				if imgErr != nil {
+					fmt.Printf("  [%d/%d] ⚠️  image processing failed for '%s': %v\n", i+1, len(issueInput.Articles), article.Title, imgErr)
+				} else {
+					article.Content = processed
+				}
+			}
 			articles = append(articles, article)
 			fmt.Printf("  [%d/%d] Using provided content: %s\n", i+1, len(issueInput.Articles), article.Title)
 		} else if input.ContentURL != "" {

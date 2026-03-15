@@ -26,12 +26,12 @@ func NewDownloader(imagesDir string) (*Downloader, error) {
 	if imagesDir == "" {
 		imagesDir = "images"
 	}
-	
+
 	// Create images directory
 	if err := os.MkdirAll(imagesDir, 0o755); err != nil {
 		return nil, fmt.Errorf("create images dir: %w", err)
 	}
-	
+
 	return &Downloader{
 		imagesDir: imagesDir,
 		opts: DownloadOptions{
@@ -55,12 +55,12 @@ func NewDownloaderWithOptions(opts DownloadOptions) (*Downloader, error) {
 	if opts.UserAgent == "" {
 		opts.UserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
 	}
-	
+
 	// Create images directory
 	if err := os.MkdirAll(opts.ImagesDir, 0o755); err != nil {
 		return nil, fmt.Errorf("create images dir: %w", err)
 	}
-	
+
 	return &Downloader{
 		imagesDir: opts.ImagesDir,
 		opts:      opts,
@@ -85,19 +85,19 @@ func (d *Downloader) Cleanup() error {
 
 // DownloadStats tracks the results of image downloading.
 type DownloadStats struct {
-	TotalImages      int
-	Downloaded       int
-	Cached           int
-	Failed           int
-	FailedURLs       []string // URLs that failed to download
+	TotalImages int
+	Downloaded  int
+	Cached      int
+	Failed      int
+	FailedURLs  []string // URLs that failed to download
 }
 
 // DownloadOptions configures image downloading behavior.
 type DownloadOptions struct {
-	ImagesDir  string        // Directory to save images (default: "images")
-	Timeout    time.Duration // HTTP timeout per image (default: 10s)
-	UserAgent  string        // Custom User-Agent header
-	Verbose    bool          // Enable verbose logging
+	ImagesDir string        // Directory to save images (default: "images")
+	Timeout   time.Duration // HTTP timeout per image (default: 10s)
+	UserAgent string        // Custom User-Agent header
+	Verbose   bool          // Enable verbose logging
 }
 
 // DownloadAndCacheImages downloads images from HTML content and replaces URLs with local file paths.
@@ -277,7 +277,48 @@ func downloadImage(client *http.Client, imageURL, localPath, userAgent string) e
 		return fmt.Errorf("write file: %w", err)
 	}
 
+	// Close before reading for validation
+	outFile.Close()
+	if err := validateImageFile(localPath); err != nil {
+		os.Remove(localPath)
+		return fmt.Errorf("corrupt image content: %w", err)
+	}
+
 	return nil
+}
+
+// validateImageFile checks that a file begins with a recognised image header.
+// Rejects HTML error pages, truncated downloads, and other non-image content.
+func validateImageFile(path string) error {
+	f, err := os.Open(path)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+
+	buf := make([]byte, 12)
+	n, _ := f.Read(buf)
+	if n < 4 {
+		return fmt.Errorf("file too small (%d bytes)", n)
+	}
+	b := buf[:n]
+
+	switch {
+	case b[0] == 0xFF && b[1] == 0xD8 && b[2] == 0xFF: // JPEG
+		return nil
+	case b[0] == 0x89 && b[1] == 'P' && b[2] == 'N' && b[3] == 'G': // PNG
+		return nil
+	case b[0] == 'G' && b[1] == 'I' && b[2] == 'F' && b[3] == '8': // GIF
+		return nil
+	case n >= 12 && b[0] == 'R' && b[1] == 'I' && b[2] == 'F' && b[3] == 'F' &&
+		b[8] == 'W' && b[9] == 'E' && b[10] == 'B' && b[11] == 'P': // WebP
+		return nil
+	case n >= 8 && b[4] == 'f' && b[5] == 't' && b[6] == 'y' && b[7] == 'p': // AVIF/HEIF
+		return nil
+	case b[0] == 'B' && b[1] == 'M': // BMP
+		return nil
+	}
+	return fmt.Errorf("unrecognised image format (header bytes: %d %d %d %d)", b[0], b[1], b[2], b[3])
 }
 
 // getImageExtension extracts the file extension from an image URL.

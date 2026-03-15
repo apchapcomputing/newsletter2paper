@@ -35,9 +35,9 @@ body {
 /* Table of Contents - Clean and elegant for essay format */
 .toc {
     margin-bottom: 40px;
-    padding: 25px 30px;
-    background-color: #f8f9fa;
-    border-left: 4px solid #333;
+    padding: 20px;
+    background-color: 'var(--white)';
+    border: 1px solid #504f4e;
     page-break-after: auto;
     page-break-inside: avoid;
 }
@@ -46,7 +46,8 @@ body {
     font-size: 16pt;
     font-weight: 600;
     margin: 0 0 15px 0;
-    color: #1a1a1a;
+    margin-top: 0;
+    color: #2A2619;
     text-transform: uppercase;
     letter-spacing: 0.5px;
 }

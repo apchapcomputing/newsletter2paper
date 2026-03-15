@@ -1,6 +1,7 @@
 /* Newspaper Style - 3 Column Layout */
+/* US Letter landscape: 11in x 8.5in, usable area ~10in x 7.5in with 0.5in margins */
 @page {
-    size: A4 landscape;
+    size: Letter landscape;
     margin: 0.5in;
 }
 
@@ -15,7 +16,7 @@ body {
     -webkit-hyphens: auto;
 }
 
-/* PDF Header - full width at top */
+/* PDF Header - sits above the column flow as a full-width block */
 .pdf-header {
     text-align: center;
     border-bottom: 3px solid #000;
@@ -39,16 +40,60 @@ body {
     font-weight: normal;
 }
 
-/* Table of Contents - float left */
+/* Pre-paginated newspaper pages.
+   Each .newspaper-page maps to one physical page (page-break-before: always).
+   Content is distributed into 3 <td class="page-col"> columns by Go at
+   generation time — CSS column-count is NOT used because Qt WebKit 5.15 in
+   wkhtmltopdf does not reliably activate it without hacks that break
+   container sizing. Table columns work correctly without any special tricks. */
+.newspaper-page {
+    page-break-before: always;
+}
+
+.newspaper-page-first {
+    page-break-before: auto;
+}
+
+/* 3-column table injected by Go into each .newspaper-page */
+.page-table {
+    width: 100%;
+    border-collapse: collapse;
+    table-layout: fixed;
+}
+
+.page-col {
+    width: 33.33%;
+    vertical-align: top;
+    padding: 0 10px;
+    border-right: 1px solid #ccc;
+}
+
+.page-col:first-child {
+    padding-left: 0;
+}
+
+.page-col:last-child {
+    border-right: none;
+    padding-right: 0;
+}
+
+/* Small label shown when an article continues from the previous page */
+.article-cont-title {
+    font-size: 8pt;
+    font-style: italic;
+    color: #888;
+    margin: 0 0 4px 0;
+    border-bottom: 1px dotted #ccc;
+    padding-bottom: 2px;
+}
+
+/* Table of Contents — lives in column 1 of the first page */
 .toc {
     border: 2px solid #000;
     padding: 15px;
     background-color: #f9f9f9;
-    width: 200px;
-    float: left;
-    margin-right: 20px;
-    margin-bottom: 20px;
     box-sizing: border-box;
+    margin-bottom: 10px;
 }
 
 .toc h2 {
@@ -88,15 +133,10 @@ body {
     line-height: 1.2;
 }
 
-.toc-author {
+/* Single byline line: "Author, Publication" */
+.toc-byline {
     font-style: italic;
     color: #666;
-    font-size: 7.5pt;
-    display: block;
-}
-
-.toc-publication {
-    color: #888;
     font-size: 7.5pt;
     display: block;
 }
@@ -106,44 +146,27 @@ body {
     color: inherit;
 }
 
-/* Don't use grid or flex - wkhtmltopdf doesn't support them well */
-.newspaper-content {
-    width: 100%;
-    overflow: hidden;
-    /* This container holds both TOC and articles */
+/* Strip browser-default blue from all links; keep underline for body content */
+a {
+    color: inherit;
+    text-decoration: underline;
 }
 
-/* Articles container - 3 columns using wkhtmltopdf-compatible approach */
-/* See: https://github.com/wkhtmltopdf/wkhtmltopdf/issues/1872#issuecomment-50742814 */
-.articles-container {
-    /* WebKit columns with dummy values (required by wkhtmltopdf quirk) */
-    -webkit-columns: 0 0;
-    /* Column count via width: 50% = 2 cols, 33.33% = 3 cols, 25% = 4 cols */
-    width: 33.33%;
-    /* Gap and rule do work with -webkit prefix */
-    -webkit-column-gap: 20px;
-    -webkit-column-rule: 1px solid #ccc;
-
-    /* Standard CSS columns as fallback for modern browsers */
-    columns: 3;
-    column-count: 3;
-    column-gap: 20px;
-    column-rule: 1px solid #ccc;
-
-    text-align: justify;
-    /* Content will flow around the floated TOC */
+a:visited {
+    color: inherit;
 }
 
-/* Individual article styling */
+/* Individual articles - do NOT set break-inside: avoid here so text flows
+   naturally from column to column */
 .article {
-    -webkit-column-break-inside: avoid;
-    break-inside: avoid-column;
-    page-break-inside: avoid;
     margin-bottom: 15px;
 }
 
+/* Keep header together with first line of body text */
 .article-header {
     margin-bottom: 10px;
+    -webkit-column-break-after: avoid;
+    break-after: avoid-column;
 }
 
 .article-title {
@@ -170,30 +193,23 @@ body {
     margin: 5px 0 10px 0;
 }
 
-.article-content {
+.newspaper-page {
     text-align: justify;
     hyphens: auto;
     -webkit-hyphens: auto;
 }
 
-.article-content p {
+.newspaper-page p {
     margin-bottom: 6px;
     text-indent: 1em;
     orphans: 2;
     widows: 2;
 }
 
-/* First paragraph styling with drop cap */
-.article-content p:first-of-type {
+/* First paragraph after an article header: no indent */
+.article-header+p,
+.article-header+p:first-of-type {
     text-indent: 0;
-}
-
-.article-content p:first-of-type::first-letter {
-    float: left;
-    font-size: 3.5em;
-    line-height: 0.9;
-    font-weight: bold;
-    margin: 0.05em 0.1em 0 0;
 }
 
 /* Headings within content */
@@ -207,71 +223,78 @@ h3 {
     break-after: avoid-column;
 }
 
-/* Images */
+/* Images: full column width, height capped at 2.5in to prevent a single image
+   from consuming most of a column. Aspect ratio is preserved via height:auto. */
 img {
     width: 100%;
     max-width: 100%;
+    max-height: 2.5in;
     height: auto;
     display: block;
-    margin: 10px 0;
-    -webkit-column-break-inside: avoid;
-    break-inside: avoid-column;
-    page-break-inside: avoid;
+    margin: 6px 0;
+    object-fit: contain;
 }
 
-/* Image container styling - ensures images fit within column width */
 .captioned-image-container,
 figure {
     width: 100%;
-    margin: 12px 0;
-    -webkit-column-break-inside: avoid;
-    break-inside: avoid-column;
-    page-break-inside: avoid;
+    max-width: 100%;
+    margin: 6px 0;
     box-sizing: border-box;
 }
 
 .captioned-image-container img,
 figure img {
     width: 100%;
+    max-width: 100%;
+    max-height: 2.5in;
     height: auto;
     display: block;
-    box-sizing: border-box;
+    object-fit: contain;
 }
 
-/* Image wrapper elements */
 .image2-inset,
 picture {
-    width: 100%;
     display: block;
-    box-sizing: border-box;
+    width: 100%;
 }
 
 .image2-inset img,
 picture img {
     width: 100%;
+    max-width: 100%;
+    max-height: 2.5in;
     height: auto;
-    box-sizing: border-box;
+    object-fit: contain;
 }
 
 /* Lists */
-.article-content ul,
-.article-content ol {
+.newspaper-page ul,
+.newspaper-page ol {
     margin: 6px 0;
     padding-left: 1.2em;
 }
 
-.article-content li {
+.newspaper-page li {
     margin-bottom: 3px;
     padding-left: 0;
 }
 
-.article-content li p {
+.newspaper-page li::first-letter {
+    font-size: inherit;
+    line-height: inherit;
+    float: none;
+    margin: 0;
+    font-weight: inherit;
+}
+
+.newspaper-page li p {
     text-indent: 0;
     margin-bottom: 3px;
 }
 
 /* Blockquotes */
-.article-content blockquote {
+.newspaper-page blockquote {
     margin: 8px 0;
     padding: 8px 0 8px 12px;
     border-left: 3px solid #333;
@@ -281,9 +304,16 @@ picture img {
     break-inside: avoid-column;
 }
 
-.article-content blockquote p {
+.newspaper-page blockquote p {
     text-indent: 0;
     margin-bottom: 4px;
+}
+
+/* End-of-article separator */
+.article-sep {
+    border: none;
+    border-top: 1px solid #999;
+    margin: 10px 0;
 }
 
 /* Footnotes */
@@ -292,5 +322,3 @@ picture img {
     margin-top: 5px;
     color: #666;
 }
-
-/* Remove old newspaper-toc styles since we're using .toc now */
