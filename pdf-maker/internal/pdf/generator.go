@@ -42,18 +42,13 @@ type GenerateResult struct {
 // GeneratePDF creates a PDF from multiple articles.
 //
 // Routing:
-//   - "newspaper" (default) → Typst: native 3-column layout, no column-packing
-//     code required, produces well-balanced columns on every page.
-//   - "essay" → wkhtmltopdf: unchanged single-column rendering path.
+//   - "newspaper" (default) → Typst: native 3-column landscape layout.
+//   - "essay" → Typst: single-column portrait layout.
 func GeneratePDF(ctx context.Context, articles []*art.Article, opts GenerateOptions) GenerateResult {
-	layout := opts.LayoutType
-	if layout == "" {
-		layout = "newspaper"
+	if opts.LayoutType == "" {
+		opts.LayoutType = "newspaper"
 	}
-	if layout == "newspaper" {
-		return generateTypstPDF(ctx, articles, opts)
-	}
-	return generateWkhtmlPDF(ctx, articles, opts)
+	return generateTypstPDF(ctx, articles, opts)
 }
 
 // generateTypstPDF renders the newspaper layout via Typst.
@@ -85,8 +80,14 @@ func generateTypstPDF(ctx context.Context, articles []*art.Article, opts Generat
 		return result
 	}
 
-	// Assemble the .typ document
-	typContent, err := AssembleTypst(articles, opts.Title)
+	// Assemble the .typ document (dispatch by layout type)
+	var typContent string
+	var err error
+	if opts.LayoutType == "essay" {
+		typContent, err = AssembleEssayTypst(articles, opts.Title)
+	} else {
+		typContent, err = AssembleTypst(articles, opts.Title)
+	}
 	if err != nil {
 		result.Error = fmt.Errorf("assemble typst: %w", err)
 		return result

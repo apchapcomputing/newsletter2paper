@@ -113,6 +113,7 @@ func emitNode(s *goquery.Selection, sb *strings.Builder, removeImages bool) {
 		}
 
 	case "ul":
+		var listBuf strings.Builder
 		s.Children().Each(func(_ int, li *goquery.Selection) {
 			if goquery.NodeName(li) != "li" {
 				return
@@ -121,15 +122,20 @@ func emitNode(s *goquery.Selection, sb *strings.Builder, removeImages bool) {
 			convertNode(li, &inner, removeImages)
 			body := strings.TrimSpace(inner.String())
 			if body != "" {
-				sb.WriteString("- ")
-				sb.WriteString(body)
-				sb.WriteString("\n")
+				listBuf.WriteString("- ")
+				listBuf.WriteString(body)
+				listBuf.WriteString("\n")
 			}
 		})
-		sb.WriteString("\n")
+		if listBuf.Len() > 0 {
+			sb.WriteString("#pad(x: 1.5em)[\n")
+			sb.WriteString(listBuf.String())
+			sb.WriteString("]\n\n")
+		}
 
 	case "ol":
 		n := 1
+		var listBuf strings.Builder
 		s.Children().Each(func(_ int, li *goquery.Selection) {
 			if goquery.NodeName(li) != "li" {
 				return
@@ -138,13 +144,17 @@ func emitNode(s *goquery.Selection, sb *strings.Builder, removeImages bool) {
 			convertNode(li, &inner, removeImages)
 			body := strings.TrimSpace(inner.String())
 			if body != "" {
-				sb.WriteString(fmt.Sprintf("%d. ", n))
-				sb.WriteString(body)
-				sb.WriteString("\n")
+				listBuf.WriteString(fmt.Sprintf("%d. ", n))
+				listBuf.WriteString(body)
+				listBuf.WriteString("\n")
 				n++
 			}
 		})
-		sb.WriteString("\n")
+		if listBuf.Len() > 0 {
+			sb.WriteString("#pad(x: 1.5em)[\n")
+			sb.WriteString(listBuf.String())
+			sb.WriteString("]\n\n")
+		}
 
 	case "img":
 		if removeImages {
