@@ -367,7 +367,7 @@ export default function Home() {
         if (dateFrom > dateTo) {
           throw new Error('Start date must be before end date.');
         }
-        pdfApiUrl = `/api/pdf/generate/${currentIssueId}?start_date=${dateFrom}&end_date=${dateTo}`;
+        pdfApiUrl = `/api/pdf/generate/${currentIssueId}?start_date=${dateFrom}&end_date=${dateTo}&layout_type=${outputMode}`;
         logger.log(`📅 Custom date range: ${dateFrom} → ${dateTo}`);
       } else {
         // Map frequency to days_back parameter
@@ -377,7 +377,7 @@ export default function Home() {
           'monthly': 30
         };
         const daysBack = frequencyToDays[frequency] || 7;
-        pdfApiUrl = `/api/pdf/generate/${currentIssueId}?days_back=${daysBack}`;
+        pdfApiUrl = `/api/pdf/generate/${currentIssueId}?days_back=${daysBack}&layout_type=${outputMode}`;
         logger.log(`📅 Using frequency: ${frequency} (${daysBack} days back)`);
       }
 

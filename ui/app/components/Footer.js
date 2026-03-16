@@ -27,7 +27,7 @@ export default function Footer() {
                         }
                     }}
                 >
-                    Made by Ashlyn Chapman
+                    Built by Ashlyn Chapman
                 </Typography>
                 <Typography
                     variant="body2"

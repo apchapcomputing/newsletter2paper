@@ -9,7 +9,7 @@ import (
 	"pdf-maker/internal/clean"
 )
 
-// AssembleTypst builds a complete Typst (.typ) document for the newspaper layout.
+// AssembleNewspaperTypst builds a complete Typst (.typ) document for the newspaper layout.
 //
 // The document uses Typst's native columns: 3 page setting so no manual
 // column-packing is needed — the Typst typesetter handles balancing
@@ -21,7 +21,7 @@ import (
 //   - Floating masthead: title, date/article-count line, rule
 //   - Table of contents (#outline())
 //   - Per-article sections: heading with byline, then body content
-func AssembleTypst(articles []*art.Article, title string) (string, error) {
+func AssembleNewspaperTypst(articles []*art.Article, title string) (string, error) {
 	if len(articles) == 0 {
 		return "", fmt.Errorf("no articles provided")
 	}
@@ -93,8 +93,10 @@ func AssembleTypst(articles []*art.Article, title string) (string, error) {
 	// ── Table of contents (bordered box) ────────────────────────────────────
 	sb.WriteString("#rect(stroke: 0.5pt, inset: (x: 0.8em, y: 0.7em), width: 100%, radius: 2pt)[\n")
 	sb.WriteString("#v(0.1em)\n")
-	sb.WriteString("#text(size: 12pt, weight: \"medium\")[IN THIS EDITION]\n")
-	sb.WriteString("#v(0.4em)\n")
+	sb.WriteString("#align(center)[#text(size: 12pt, weight: \"medium\")[IN THIS EDITION]]\n")
+	sb.WriteString("#v(0.3em)\n")
+	sb.WriteString("#line(length: 100%, stroke: 0.4pt)\n")
+	sb.WriteString("#v(0.3em)\n")
 	for i, a := range articles {
 		label := fmt.Sprintf("article-%d", i+1)
 		title := escapeTypstContent(a.Title)
@@ -175,7 +177,7 @@ func AssembleEssayTypst(articles []*art.Article, title string) (string, error) {
 	if articleCount == 1 {
 		articleWord = "Article"
 	}
-	dateLine := fmt.Sprintf("%s #h(2em) %d %s",
+	dateLine := fmt.Sprintf("%s • %d %s",
 		time.Now().Format("Monday, January 2, 2006"),
 		articleCount,
 		articleWord,
@@ -225,41 +227,43 @@ func AssembleEssayTypst(articles []*art.Article, title string) (string, error) {
 	sb.WriteString("  {\n")
 	sb.WriteString("    align(center)[\n")
 	sb.WriteString(fmt.Sprintf("      #text(size: 32pt, weight: \"bold\")[%s]\n", escapeTypstContent(title)))
-	sb.WriteString("      #v(0.05em)\n")
+	sb.WriteString("      #v(-0.5em)\n")
 	sb.WriteString(fmt.Sprintf("      #text(size: 10pt, style: \"italic\")[\n        %s\n      ]\n", dateLine))
-	sb.WriteString("      #v(0.3em)\n")
+	sb.WriteString("      #v(0.2em)\n")
 	sb.WriteString("      #line(length: 100%, stroke: 1.5pt)\n")
-	sb.WriteString("      #v(0.3em)\n")
+	sb.WriteString("      #v(0.2em)\n")
 	sb.WriteString("    ]\n")
 	sb.WriteString("  }\n")
 	sb.WriteString(")\n\n")
 
 	// ── Table of contents (bordered box) ────────────────────────────────────
-	sb.WriteString("#rect(stroke: 0.5pt, inset: (x: 0.8em, y: 0.7em), width: 100%, radius: 2pt)[\n")
-	sb.WriteString("#v(0.1em)\n")
-	sb.WriteString("#text(size: 12pt, weight: \"medium\")[IN THIS EDITION]\n")
-	sb.WriteString("#v(0.4em)\n")
-	for i, a := range articles {
-		label := fmt.Sprintf("article-%d", i+1)
-		articleTitle := escapeTypstContent(a.Title)
-		var bp []string
-		if a.Author != "" {
-			bp = append(bp, escapeTypstContent(a.Author))
-		}
-		if a.Publication != "" {
-			bp = append(bp, escapeTypstContent(a.Publication))
-		}
-		byline := strings.Join(bp, " · ")
-		if byline != "" {
-			sb.WriteString(fmt.Sprintf(
-				"#link(<%s>)[*%s*]\\\n#text(size: 9pt, fill: gray, style: \"italic\")[%s]\n\n",
-				label, articleTitle, byline))
-		} else {
-			sb.WriteString(fmt.Sprintf("#link(<%s>)[*%s*]\n\n", label, articleTitle))
-		}
-	}
-	sb.WriteString("]\n")
-	sb.WriteString("#v(1em)\n\n")
+	// sb.WriteString("#rect(stroke: 0.5pt, inset: (x: 0.8em, y: 0.7em), width: 100%, radius: 2pt)[\n")
+	// sb.WriteString("#v(0.2em)\n")
+	// sb.WriteString("#align(center)[#text(size: 12pt, weight: \"medium\")[IN THIS EDITION]]\n")
+	// sb.WriteString("#v(0.1em)\n")
+	// sb.WriteString("#line(length: 100%, stroke: 0.4pt)\n")
+	// sb.WriteString("#v(0.2em)\n")
+	// for i, a := range articles {
+	// 	label := fmt.Sprintf("article-%d", i+1)
+	// 	articleTitle := escapeTypstContent(a.Title)
+	// 	var bp []string
+	// 	if a.Author != "" {
+	// 		bp = append(bp, escapeTypstContent(a.Author))
+	// 	}
+	// 	if a.Publication != "" {
+	// 		bp = append(bp, escapeTypstContent(a.Publication))
+	// 	}
+	// 	byline := strings.Join(bp, " · ")
+	// 	if byline != "" {
+	// 		sb.WriteString(fmt.Sprintf(
+	// 			"#link(<%s>)[*%s*]\\\n#text(size: 9pt, fill: gray, style: \"italic\")[%s]\n\n",
+	// 			label, articleTitle, byline))
+	// 	} else {
+	// 		sb.WriteString(fmt.Sprintf("#link(<%s>)[*%s*]\n\n", label, articleTitle))
+	// 	}
+	// }
+	// sb.WriteString("]\n")
+	// sb.WriteString("#v(1em)\n\n")
 
 	// ── Articles ────────────────────────────────────────────────────────────
 	for i, a := range articles {

@@ -86,7 +86,7 @@ func generateTypstPDF(ctx context.Context, articles []*art.Article, opts Generat
 	if opts.LayoutType == "essay" {
 		typContent, err = AssembleEssayTypst(articles, opts.Title)
 	} else {
-		typContent, err = AssembleTypst(articles, opts.Title)
+		typContent, err = AssembleNewspaperTypst(articles, opts.Title)
 	}
 	if err != nil {
 		result.Error = fmt.Errorf("assemble typst: %w", err)
