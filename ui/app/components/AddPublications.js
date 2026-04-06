@@ -26,9 +26,6 @@ const AddPublications = forwardRef(({ onOpenSearch, onSaveIssue, isSaving: isSav
             ? `custom:${dateFrom}:${dateTo}`
             : frequency
 
-    // Only show remove images option for essay format
-    const showImageOptions = outputMode === 'essay'
-
     // Expose handlePublicationAdded to parent via ref
     useImperativeHandle(ref, () => ({
         handlePublicationAdded
@@ -315,8 +312,8 @@ const AddPublications = forwardRef(({ onOpenSearch, onSaveIssue, isSaving: isSav
                     PUBLICATIONS TO PRINT
                 </Typography>
 
-                {/* Master checkbox to toggle all (only show if there are publications and essay mode) */}
-                {showImageOptions && selectedPublications.length > 0 && (
+                {/* Master checkbox to toggle all (only show if there are publications) */}
+                {selectedPublications.length > 0 && (
                     <Box sx={{ mb: 2, pl: 1 }}>
                         <Tooltip
                             title="Toggle image removal for all publications at once. You can then adjust individual publications as needed."
@@ -383,7 +380,7 @@ const AddPublications = forwardRef(({ onOpenSearch, onSaveIssue, isSaving: isSav
                                         display: 'flex',
                                         justifyContent: 'space-between',
                                         alignItems: 'flex-start',
-                                        mb: showImageOptions ? 1 : 0
+                                        mb: 1
                                     }}>
                                         <Box sx={{ display: 'flex', flexDirection: 'column', flex: 1 }}>
                                             <Typography variant="body1" sx={{ fontWeight: 500 }}>
@@ -394,38 +391,34 @@ const AddPublications = forwardRef(({ onOpenSearch, onSaveIssue, isSaving: isSav
                                             </Typography>
                                         </Box>
 
-                                        {
-                                            showImageOptions && (
-                                                <Tooltip
-                                                    title={publication.remove_images ? "Images will be removed from this publication" : "Images will be included from this publication"}
-                                                    placement="top"
-                                                >
-                                                    <Button
-                                                        onClick={() => toggleRemoveImages(publication.id || publication.name)}
-                                                        sx={{
-                                                            minWidth: '30px',
-                                                            width: '30px',
-                                                            height: '30px',
-                                                            p: 0,
-                                                            mr: 2,
-                                                            borderRadius: 0,
-                                                            backgroundColor: '#f5f5f5',
-                                                            color: publication.remove_images ? 'text.secondary' : 'var(--primary)',
-                                                            '&:hover': {
-                                                                backgroundColor: '#e0e0e0',
-                                                                borderColor: 'var(--primary)',
-                                                            }
-                                                        }}
-                                                    >
-                                                        {publication.remove_images ? (
-                                                            <HideImageIcon fontSize="small" />
-                                                        ) : (
-                                                            <ImageIcon fontSize="small" />
-                                                        )}
-                                                    </Button>
-                                                </Tooltip>
-                                            )
-                                        }
+                                        <Tooltip
+                                            title={publication.remove_images ? "Images will be removed from this publication" : "Images will be included from this publication"}
+                                            placement="top"
+                                        >
+                                            <Button
+                                                onClick={() => toggleRemoveImages(publication.id || publication.name)}
+                                                sx={{
+                                                    minWidth: '30px',
+                                                    width: '30px',
+                                                    height: '30px',
+                                                    p: 0,
+                                                    mr: 2,
+                                                    borderRadius: 0,
+                                                    backgroundColor: '#f5f5f5',
+                                                    color: publication.remove_images ? 'text.secondary' : 'var(--primary)',
+                                                    '&:hover': {
+                                                        backgroundColor: '#e0e0e0',
+                                                        borderColor: 'var(--primary)',
+                                                    }
+                                                }}
+                                            >
+                                                {publication.remove_images ? (
+                                                    <HideImageIcon fontSize="small" />
+                                                ) : (
+                                                    <ImageIcon fontSize="small" />
+                                                )}
+                                            </Button>
+                                        </Tooltip>
 
                                         <Button
                                             onClick={() => handleRemovePublication(publication.id || publication.name)}
