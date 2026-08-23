@@ -382,8 +382,23 @@ const AddPublications = forwardRef(({ onOpenSearch, onSaveIssue, isSaving: isSav
                                         alignItems: 'flex-start',
                                         mb: 1
                                     }}>
-                                        <Box sx={{ display: 'flex', flexDirection: 'column', flex: 1 }}>
-                                            <Typography variant="body1" sx={{ fontWeight: 500 }}>
+                                        <Box
+                                            component="a"
+                                            href={publication.url}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            sx={{
+                                                display: 'flex',
+                                                flexDirection: 'column',
+                                                flex: 1,
+                                                textDecoration: 'none',
+                                                color: 'inherit',
+                                                '&:hover .pub-name': {
+                                                    textDecoration: 'underline',
+                                                },
+                                            }}
+                                        >
+                                            <Typography className="pub-name" variant="body1" sx={{ fontWeight: 500 }}>
                                                 {publication.name || publication.title}
                                             </Typography>
                                             <Typography variant="body2" color="text.secondary">
