@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useImperativeHandle, forwardRef } from 'react'
-import { Box, Typography, Button, Checkbox, FormControlLabel, Tooltip } from '@mui/material'
+import { Box, Typography, Button, Checkbox, FormControlLabel, Tooltip, Link } from '@mui/material'
 import CloseIcon from '@mui/icons-material/Close'
 import ImageIcon from '@mui/icons-material/Image'
 import HideImageIcon from '@mui/icons-material/HideImage'
@@ -382,19 +382,19 @@ const AddPublications = forwardRef(({ onOpenSearch, onSaveIssue, isSaving: isSav
                                         alignItems: 'flex-start',
                                         mb: 1
                                     }}>
-                                        <Box
-                                            component="a"
+                                        <Link
                                             href={publication.url}
                                             target="_blank"
                                             rel="noopener noreferrer"
                                             sx={{
-                                                display: 'flex',
+                                                display: 'block',
                                                 flexDirection: 'column',
                                                 flex: 1,
                                                 textDecoration: 'none',
                                                 color: 'inherit',
                                                 '&:hover .pub-name': {
                                                     textDecoration: 'underline',
+                                                    color: 'primary.main'
                                                 },
                                             }}
                                         >
@@ -404,7 +404,7 @@ const AddPublications = forwardRef(({ onOpenSearch, onSaveIssue, isSaving: isSav
                                             <Typography variant="body2" color="text.secondary">
                                                 {publication.publisher || publication.handle || publication.url}
                                             </Typography>
-                                        </Box>
+                                        </Link>
 
                                         <Tooltip
                                             title={publication.remove_images ? "Images will be removed from this publication" : "Images will be included from this publication"}
