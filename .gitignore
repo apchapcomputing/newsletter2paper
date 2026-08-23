@@ -3,5 +3,18 @@ newsletter2newspaper
 __pycache__
 .vscode
 .vercel
+.claude
+.github
+AGENTS.md
 images
 newspapers
+
+# Shared directory for container communication (keep .gitkeep only)
+shared/*.html
+shared/*.pdf
+shared/*.json
+shared/temp_*
+
+# Compiled test binaries (Go)
+pdf-maker/test/
+pdf-maker/*.test
