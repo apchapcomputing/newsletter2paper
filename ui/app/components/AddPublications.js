@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useImperativeHandle, forwardRef } from 'react'
-import { Box, Typography, Button, Checkbox, FormControlLabel, Tooltip } from '@mui/material'
+import { Box, Typography, Button, Checkbox, FormControlLabel, Tooltip, CircularProgress } from '@mui/material'
 import CloseIcon from '@mui/icons-material/Close'
 import ImageIcon from '@mui/icons-material/Image'
 import HideImageIcon from '@mui/icons-material/HideImage'
@@ -11,9 +11,9 @@ import AddUrlModal from './AddUrlModal'
 import ArticlePreviewList from './ArticlePreviewList'
 import logger from '../../utils/logger'
 
-const AddPublications = forwardRef(({ onOpenSearch, onSaveIssue, isSaving: isSavingProp }, ref) => {
+const AddPublications = forwardRef(({ onOpenSearch, onSaveIssue, isSaving: isSavingProp, isPopulatingPublications = false }, ref) => {
     const { selectedPublications, removePublication, toggleRemoveImages } = useSelectedPublications()
-    const { outputMode, frequency, dateFrom, dateTo, currentIssueId } = useNewsletterConfig()
+    const { frequency, dateFrom, dateTo, currentIssueId } = useNewsletterConfig()
     const [isUrlModalOpen, setIsUrlModalOpen] = useState(false)
 
     // Cache keyed by time window → pubId → {status, articles, error}
@@ -449,6 +449,20 @@ const AddPublications = forwardRef(({ onOpenSearch, onSaveIssue, isSaving: isSav
                                 </Box>
                             )
                         })}
+                    </Box>
+                ) : isPopulatingPublications ? (
+                    <Box
+                        sx={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 1.5,
+                            py: 1,
+                        }}
+                    >
+                        <CircularProgress size={18} sx={{ color: 'var(--primary)' }} />
+                        <Typography variant="body2" color="text.secondary" sx={{ fontStyle: 'italic' }}>
+                            Loading saved publications...
+                        </Typography>
                     </Box>
                 ) : (
                     <Typography variant="body2" color="text.secondary" sx={{ fontStyle: 'italic' }}>

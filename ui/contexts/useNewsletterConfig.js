@@ -22,6 +22,7 @@ export const NewsletterConfigProvider = ({ children }) => {
     const [frequency, setFrequency] = useState('weekly');
     const [dateFrom, setDateFrom] = useState('');
     const [dateTo, setDateTo] = useState('');
+    const [targetEmail, setTargetEmail] = useState('');
     const [currentIssueId, setCurrentIssueId] = useState(null);
     const [isLoaded, setIsLoaded] = useState(false);
     const [userIssues, setUserIssues] = useState([]);
@@ -148,6 +149,7 @@ export const NewsletterConfigProvider = ({ children }) => {
                     setFrequency(config.frequency || 'weekly');
                     setDateFrom(config.dateFrom || '');
                     setDateTo(config.dateTo || '');
+                    setTargetEmail(config.targetEmail || user?.email || '');
                     localIssueId = config.issueId || null;
                     setCurrentIssueId(localIssueId);
                     logger.log('📋 Loaded from localStorage - issueId:', localIssueId);
@@ -160,6 +162,7 @@ export const NewsletterConfigProvider = ({ children }) => {
                     setFrequency('weekly');
                     setDateFrom('');
                     setDateTo('');
+                    setTargetEmail(user?.email || '');
                     setCurrentIssueId(null);
                 }
             } catch (error) {
@@ -235,6 +238,7 @@ export const NewsletterConfigProvider = ({ children }) => {
                     frequency,
                     dateFrom,
                     dateTo,
+                    targetEmail,
                     issueId: currentIssueId
                 };
                 localStorage.setItem('newsletterConfig', JSON.stringify(config));
@@ -242,7 +246,7 @@ export const NewsletterConfigProvider = ({ children }) => {
                 console.error('Error saving newsletter config to localStorage:', error);
             }
         }
-    }, [newspaperTitle, outputMode, removeImages, frequency, dateFrom, dateTo, currentIssueId, isLoaded]);
+    }, [newspaperTitle, outputMode, removeImages, frequency, dateFrom, dateTo, targetEmail, currentIssueId, isLoaded]);
 
     const updateTitle = (title) => {
         setNewspaperTitle(title);
@@ -268,6 +272,10 @@ export const NewsletterConfigProvider = ({ children }) => {
         setDateTo(value);
     };
 
+    const updateTargetEmail = (value) => {
+        setTargetEmail(value);
+    };
+
     const updateIssueId = (issueId) => {
         setCurrentIssueId(issueId);
     };
@@ -279,6 +287,7 @@ export const NewsletterConfigProvider = ({ children }) => {
         setFrequency('weekly');
         setDateFrom('');
         setDateTo('');
+        setTargetEmail('');
         setCurrentIssueId(null);
 
         // Clear localStorage
@@ -300,7 +309,7 @@ export const NewsletterConfigProvider = ({ children }) => {
                 title: issueData.title || null,
                 format: issueData.format || 'newspaper',
                 frequency: issueData.frequency || 'weekly',
-                target_email: user.email,
+                target_email: targetEmail || user.email,
                 status: 'draft',
                 remove_images: issueData.remove_images || false,
                 custom_start_date: issueData.custom_start_date || null,
@@ -543,6 +552,7 @@ export const NewsletterConfigProvider = ({ children }) => {
             // Restore custom dates – strip to YYYY-MM-DD for the date input
             setDateFrom(issue.custom_start_date ? issue.custom_start_date.slice(0, 10) : '');
             setDateTo(issue.custom_end_date ? issue.custom_end_date.slice(0, 10) : '');
+            setTargetEmail(issue.target_email || '');
             setCurrentIssueId(issue.id);
 
             return issue;
@@ -565,6 +575,7 @@ export const NewsletterConfigProvider = ({ children }) => {
             frequency,
             dateFrom,
             dateTo,
+            targetEmail,
             currentIssueId,
             isLoaded,
             userIssues,
@@ -577,6 +588,7 @@ export const NewsletterConfigProvider = ({ children }) => {
             updateFrequency,
             updateDateFrom,
             updateDateTo,
+            updateTargetEmail,
             updateIssueId,
             resetConfig,
             saveIssueToSupabase,

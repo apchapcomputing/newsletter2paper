@@ -11,6 +11,8 @@ services:
       - SUPABASE_URL=${SUPABASE_URL}
       - SUPABASE_KEY=${SUPABASE_KEY}
       - GO_PDF_CONTAINER=pdf-maker
+      - RESEND_API_KEY=${RESEND_API_KEY}
+      - EMAIL_FROM=${EMAIL_FROM}
     volumes:
       - ./shared:/shared
       - ./newsletter2paper:/app

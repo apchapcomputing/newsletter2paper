@@ -2,6 +2,7 @@
 
 import { Box, Button, Typography, TextField } from '@mui/material'
 import { useNewsletterConfig } from '../../contexts/useNewsletterConfig'
+import { useAuth } from '../../contexts/useAuth'
 
 const FORMAT_OPTIONS = [
     { value: 'essay', label: 'Essay' },
@@ -22,12 +23,35 @@ export default function ConfigureNewspaper() {
         frequency,
         dateFrom,
         dateTo,
+        targetEmail,
+        currentIssueId,
+        isAuthenticated,
         updateTitle,
         updateOutputMode,
         updateFrequency,
         updateDateFrom,
         updateDateTo,
+        updateTargetEmail,
+        saveIssueToSupabase,
+        saveGuestIssue,
     } = useNewsletterConfig()
+
+    // Persist the email change to the DB so it's available when PDF generation fires
+    const handleEmailBlur = async () => {
+        try {
+            if (isAuthenticated) {
+                await saveIssueToSupabase({
+                    title: newspaperTitle,
+                    format: outputMode,
+                    frequency,
+                    remove_images: false,
+                })
+            }
+        } catch (err) {
+            // Non-critical – silently ignore, the value is still in context state
+            console.warn('Could not persist email to DB:', err)
+        }
+    }
 
     // Validation for custom date range
     const isCustom = frequency === 'custom'
@@ -212,6 +236,29 @@ export default function ConfigureNewspaper() {
                             )}
                         </div>
                     )}
+                </Box>
+
+                {/* Email delivery */}
+                <Box>
+                    <Typography variant="body1" sx={{ mb: 1, fontWeight: 500 }}>
+                        EMAIL DELIVERY
+                    </Typography>
+                    <Typography
+                        variant="body2"
+                        sx={{ fontStyle: 'italic', color: 'text.secondary', mb: 2 }}
+                    >
+                        Send the PDF to this address after generation (optional)
+                    </Typography>
+                    <TextField
+                        variant="outlined"
+                        fullWidth
+                        type="email"
+                        value={targetEmail}
+                        onChange={(e) => updateTargetEmail(e.target.value)}
+                        onBlur={handleEmailBlur}
+                        placeholder="e.g., you@example.com"
+                        sx={{ '& .MuiOutlinedInput-root': { backgroundColor: '#f5f5f5' } }}
+                    />
                 </Box>
             </Box>
         </Box>
