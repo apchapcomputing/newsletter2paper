@@ -8,6 +8,8 @@ __pycache__
 AGENTS.md
 images
 newspapers
+docs
+output
 
 # Shared directory for container communication (keep .gitkeep only)
 shared/*.html
