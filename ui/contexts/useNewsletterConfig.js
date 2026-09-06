@@ -23,6 +23,9 @@ export const NewsletterConfigProvider = ({ children }) => {
     const [dateFrom, setDateFrom] = useState('');
     const [dateTo, setDateTo] = useState('');
     const [targetEmail, setTargetEmail] = useState('');
+    // Article window (days back) and auto-send toggle
+    const [articleWindow, setArticleWindow] = useState('7');
+    const [autoSend, setAutoSend] = useState(false);
     const [currentIssueId, setCurrentIssueId] = useState(null);
     const [isLoaded, setIsLoaded] = useState(false);
     const [userIssues, setUserIssues] = useState([]);
@@ -150,6 +153,9 @@ export const NewsletterConfigProvider = ({ children }) => {
                     setDateFrom(config.dateFrom || '');
                     setDateTo(config.dateTo || '');
                     setTargetEmail(config.targetEmail || user?.email || '');
+                    // Load new persisted UI state if available
+                    setArticleWindow(config.articleWindow || '7');
+                    setAutoSend(!!config.autoSend);
                     localIssueId = config.issueId || null;
                     setCurrentIssueId(localIssueId);
                     logger.log('📋 Loaded from localStorage - issueId:', localIssueId);
@@ -163,6 +169,8 @@ export const NewsletterConfigProvider = ({ children }) => {
                     setDateFrom('');
                     setDateTo('');
                     setTargetEmail(user?.email || '');
+                    setArticleWindow('7');
+                    setAutoSend(false);
                     setCurrentIssueId(null);
                 }
             } catch (error) {
@@ -239,6 +247,8 @@ export const NewsletterConfigProvider = ({ children }) => {
                     dateFrom,
                     dateTo,
                     targetEmail,
+                    articleWindow,
+                    autoSend,
                     issueId: currentIssueId
                 };
                 localStorage.setItem('newsletterConfig', JSON.stringify(config));
@@ -246,7 +256,7 @@ export const NewsletterConfigProvider = ({ children }) => {
                 console.error('Error saving newsletter config to localStorage:', error);
             }
         }
-    }, [newspaperTitle, outputMode, removeImages, frequency, dateFrom, dateTo, targetEmail, currentIssueId, isLoaded]);
+    }, [newspaperTitle, outputMode, removeImages, frequency, dateFrom, dateTo, targetEmail, currentIssueId, articleWindow, autoSend, isLoaded]);
 
     const updateTitle = (title) => {
         setNewspaperTitle(title);
@@ -274,6 +284,14 @@ export const NewsletterConfigProvider = ({ children }) => {
 
     const updateTargetEmail = (value) => {
         setTargetEmail(value);
+    };
+
+    const updateArticleWindow = (value) => {
+        setArticleWindow(value);
+    };
+
+    const updateAutoSend = (value) => {
+        setAutoSend(!!value);
     };
 
     const updateIssueId = (issueId) => {
@@ -575,6 +593,8 @@ export const NewsletterConfigProvider = ({ children }) => {
             frequency,
             dateFrom,
             dateTo,
+            articleWindow,
+            autoSend,
             targetEmail,
             currentIssueId,
             isLoaded,
@@ -589,6 +609,8 @@ export const NewsletterConfigProvider = ({ children }) => {
             updateDateFrom,
             updateDateTo,
             updateTargetEmail,
+            updateArticleWindow,
+            updateAutoSend,
             updateIssueId,
             resetConfig,
             saveIssueToSupabase,

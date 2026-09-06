@@ -1,4 +1,5 @@
 from fastapi import FastAPI
+from contextlib import asynccontextmanager
 from fastapi.middleware.cors import CORSMiddleware
 import os
 from routers import rss, issues, publications, articles, pdf
@@ -9,10 +10,35 @@ missing_vars = [var for var in required_env_vars if not os.getenv(var)]
 if missing_vars:
     raise RuntimeError(f"Missing required environment variables: {', '.join(missing_vars)}")
 
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """App lifespan: start and stop background services like the scheduler."""
+    try:
+        try:
+            from services.scheduler import SchedulerService
+            app.state.scheduler = SchedulerService()
+            app.state.scheduler.start()
+        except Exception as e:
+            import logging
+            logging.exception(f"Failed to start scheduler during lifespan startup: {e}")
+
+        yield
+
+    finally:
+        try:
+            sched = getattr(app.state, 'scheduler', None)
+            if sched:
+                sched.shutdown()
+        except Exception:
+            import logging
+            logging.exception("Error shutting down scheduler during lifespan")
+
+
 app = FastAPI(
     title="Newsletter2Paper API",
     description="API for converting newsletters to paper format",
-    version="1.0.0"
+    version="1.0.0",
+    lifespan=lifespan,
 )
 
 # Add CORS middleware

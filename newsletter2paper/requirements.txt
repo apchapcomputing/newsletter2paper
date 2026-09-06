@@ -57,3 +57,5 @@ zopfli==0.2.3.post1
 python-jose==3.3.0
 pytest==9.0.2
 resend>=2.0.0
+APScheduler>=3.10.1
+psycopg2-binary>=2.9.7
