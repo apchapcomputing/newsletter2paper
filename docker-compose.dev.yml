@@ -1,0 +1,67 @@
+version: '3.8'
+services:
+  # FastAPI Service (copied from primary compose for single-file dev runs)
+  fastapi:
+    build:
+      context: ./newsletter2paper
+      dockerfile: Dockerfile
+    container_name: newsletter2paper-api
+    ports:
+      - "8000:8000"
+    environment:
+      - SUPABASE_URL=${SUPABASE_URL}
+      - SUPABASE_KEY=${SUPABASE_KEY}
+      - GO_PDF_CONTAINER=pdf-maker
+    volumes:
+      - ./shared:/shared
+      - ./newsletter2paper:/app
+      - /var/run/docker.sock:/var/run/docker.sock
+    depends_on:
+      - pdf-maker
+    networks:
+      - newsletter-network
+    command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+    restart: unless-stopped
+
+  # Go PDF Maker Service
+  pdf-maker:
+    build:
+      context: ./pdf-maker
+      dockerfile: Dockerfile
+    container_name: pdf-maker
+    volumes:
+      - ./shared:/shared
+      - shared-images:/app/images
+    networks:
+      - newsletter-network
+    user: root
+    entrypoint: []
+    command: tail -f /dev/null
+    restart: unless-stopped
+
+  # Frontend (Next.js) for local development
+  ui:
+    image: node:20
+    container_name: newsletter2paper-ui
+    ports:
+      - "3000:3000"
+    working_dir: /app
+    environment:
+      - NODE_ENV=development
+    volumes:
+      - ./ui:/app
+      - /app/node_modules
+    command: sh -c "npm install --no-audit --no-fund && npm run dev"
+    depends_on:
+      - fastapi
+    networks:
+      - newsletter-network
+    restart: unless-stopped
+
+volumes:
+  shared-images:
+    driver: local
+
+networks:
+  newsletter-network:
+    driver: bridge
