@@ -404,7 +404,7 @@ const AddPublications = forwardRef(({ onOpenSearch, onSaveIssue, isSaving: isSav
                                             <Typography variant="body2" color="text.secondary">
                                                 {publication.publisher || publication.handle || publication.url}
                                             </Typography>
-                                        </Box>
+                                        </Link>
 
                                         <Tooltip
                                             title={publication.remove_images ? "Images will be removed from this publication" : "Images will be included from this publication"}
