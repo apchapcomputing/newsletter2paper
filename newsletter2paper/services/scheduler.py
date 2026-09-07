@@ -4,8 +4,12 @@ import asyncio
 from datetime import datetime, timezone, timedelta
 from typing import List
 
-from apscheduler.schedulers.background import BackgroundScheduler
+try:
+    from apscheduler.schedulers.background import BackgroundScheduler
+except Exception:
+    BackgroundScheduler = None
 from sqlalchemy import create_engine, text
+from urllib.parse import urlparse, parse_qsl, urlencode, urlunparse
 
 from services.go_pdf_service import GoPDFService
 from services.database_service import DatabaseService
@@ -19,10 +23,30 @@ class SchedulerService:
     def __init__(self, interval_seconds: int = 60, batch_size: int = 5):
         self.interval_seconds = interval_seconds
         self.batch_size = batch_size
-        self.scheduler = BackgroundScheduler()
+        # Create scheduler only if APScheduler is available in the environment.
+        if BackgroundScheduler is not None:
+            self.scheduler = BackgroundScheduler()
+        else:
+            self.scheduler = None
         self.db_url = os.environ.get('SUPABASE_DATABASE_URL')
         if not self.db_url:
             raise RuntimeError('SUPABASE_DATABASE_URL is required for scheduler')
+
+        # Some managed Postgres connection strings (e.g. Supabase) may include
+        # non-standard query params like `pgbouncer=true` which psycopg2/libpq
+        # treats as an invalid connection option. Strip unsupported params here
+        # so SQLAlchemy/psycopg2 can connect.
+        try:
+            parsed = urlparse(self.db_url)
+            qs = dict(parse_qsl(parsed.query))
+            if 'pgbouncer' in qs:
+                qs.pop('pgbouncer', None)
+                sanitized = parsed._replace(query=urlencode(qs, doseq=True))
+                self.db_url = sanitized.geturl()
+                logger.info('Sanitized SUPABASE_DATABASE_URL by removing unsupported query params')
+        except Exception:
+            # If parsing fails, leave the original URL and let create_engine raise a clear error
+            logger.debug('Failed to sanitize SUPABASE_DATABASE_URL; using original value')
 
         # Create a SQLAlchemy engine for direct Postgres access (FOR UPDATE SKIP LOCKED)
         self.engine = create_engine(self.db_url, pool_pre_ping=True)
@@ -32,6 +56,11 @@ class SchedulerService:
 
     def start(self) -> None:
         logger.info("Starting SchedulerService")
+        # If APScheduler isn't installed, we can't start the background scheduler.
+        if self.scheduler is None:
+            logger.warning("APScheduler not available; scheduler won't run. Install 'apscheduler' to enable background jobs.")
+            return
+
         # Add job to run periodically
         self.scheduler.add_job(self._job_check_and_process, 'interval', seconds=self.interval_seconds, id='scheduler_check')
         self.scheduler.start()
@@ -39,7 +68,8 @@ class SchedulerService:
     def shutdown(self) -> None:
         logger.info("Shutting down SchedulerService")
         try:
-            self.scheduler.shutdown(wait=False)
+            if self.scheduler is not None:
+                self.scheduler.shutdown(wait=False)
         except Exception:
             logger.exception("Failed to shutdown scheduler cleanly")
 

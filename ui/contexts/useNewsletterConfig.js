@@ -290,8 +290,52 @@ export const NewsletterConfigProvider = ({ children }) => {
         setArticleWindow(value);
     };
 
-    const updateAutoSend = (value) => {
-        setAutoSend(!!value);
+    const updateAutoSend = async (value) => {
+        const boolVal = !!value;
+        setAutoSend(boolVal);
+
+        // Persist auto_send to Supabase when user is authenticated.
+        try {
+            if (user && session && currentIssueId) {
+                const { error } = await supabase
+                    .from('issues')
+                    .update({ auto_send: boolVal })
+                    .eq('id', currentIssueId);
+
+                if (error) {
+                    console.error('Error updating auto_send on issue:', error);
+                }
+            } else if (user && session && !currentIssueId) {
+                // If there's no current issue yet, create one so the setting is persisted.
+                try {
+                    const result = await supabase
+                        .from('issues')
+                        .insert({
+                            title: newspaperTitle || 'My Newspaper',
+                            format: outputMode || 'essay',
+                            frequency: frequency || 'weekly',
+                            target_email: targetEmail || user.email,
+                            status: 'draft',
+                            remove_images: removeImages || false,
+                            custom_start_date: dateFrom || null,
+                            custom_end_date: dateTo || null,
+                            auto_send: boolVal
+                        })
+                        .select()
+                        .single();
+
+                    if (!result.error && result.data) {
+                        setCurrentIssueId(result.data.id);
+                        // Ensure user-issue association exists
+                        await supabase.from('user_issues').upsert({ user_id: user.id, issue_id: result.data.id }, { onConflict: 'user_id,issue_id' });
+                    }
+                } catch (err) {
+                    console.error('Error creating issue to persist auto_send:', err);
+                }
+            }
+        } catch (err) {
+            console.error('Error persisting auto_send:', err);
+        }
     };
 
     const updateIssueId = (issueId) => {

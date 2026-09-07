@@ -233,6 +233,25 @@ async def generate_pdf_for_issue(
         raise HTTPException(status_code=500, detail=f"PDF generation failed: {str(e)}")
 
 
+@router.post("/trigger-scheduled/{issue_id}")
+async def trigger_scheduled_issue(issue_id: str):
+    """
+    Manually trigger the scheduler processing for an issue. This endpoint is
+    intended for testing the automated workflow (PDF generation + email).
+    It will invoke the same processing logic used by the background scheduler.
+    """
+    try:
+        from services.scheduler import SchedulerService
+
+        svc = SchedulerService()
+        # _process_issue is async; await it directly to run the full flow.
+        await svc._process_issue(issue_id)
+        return {"success": True, "message": f"Triggered scheduled processing for {issue_id}"}
+    except Exception as e:
+        logging.exception(f"Manual trigger failed for {issue_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Trigger failed: {str(e)}")
+
+
 @router.get("/download/{issue_id}")
 async def download_pdf(
     issue_id: str,
