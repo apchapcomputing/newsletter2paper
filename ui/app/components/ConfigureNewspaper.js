@@ -1,7 +1,8 @@
 'use client'
 
-import { Box, Button, Typography, TextField } from '@mui/material'
+import { Box, Button, Typography, TextField, Switch, FormControlLabel } from '@mui/material'
 import { useNewsletterConfig } from '../../contexts/useNewsletterConfig'
+import { useAuth } from '../../contexts/useAuth'
 
 const FORMAT_OPTIONS = [
     { value: 'essay', label: 'Essay' },
@@ -15,6 +16,13 @@ const FREQUENCY_OPTIONS = [
     { value: 'custom', label: 'Custom' },
 ]
 
+const ARTICLE_WINDOW_OPTIONS = [
+    { value: '1', label: '1 day' },
+    { value: '7', label: '7 days' },
+    { value: '30', label: '30 days' },
+    { value: 'custom', label: 'Custom' }
+]
+
 export default function ConfigureNewspaper() {
     const {
         newspaperTitle,
@@ -22,12 +30,39 @@ export default function ConfigureNewspaper() {
         frequency,
         dateFrom,
         dateTo,
+        targetEmail,
+        currentIssueId,
+        isAuthenticated,
         updateTitle,
         updateOutputMode,
         updateFrequency,
         updateDateFrom,
         updateDateTo,
+        updateTargetEmail,
+        saveIssueToSupabase,
+        saveGuestIssue,
+        articleWindow,
+        autoSend,
+        updateArticleWindow,
+        updateAutoSend
     } = useNewsletterConfig()
+
+    // Persist the email change to the DB so it's available when PDF generation fires
+    const handleEmailBlur = async () => {
+        try {
+            if (isAuthenticated) {
+                await saveIssueToSupabase({
+                    title: newspaperTitle,
+                    format: outputMode,
+                    frequency,
+                    remove_images: false,
+                })
+            }
+        } catch (err) {
+            // Non-critical – silently ignore, the value is still in context state
+            console.warn('Could not persist email to DB:', err)
+        }
+    }
 
     // Validation for custom date range
     const isCustom = frequency === 'custom'
@@ -40,6 +75,30 @@ export default function ConfigureNewspaper() {
         : (dateFromMissing || dateToMissing)
             ? 'Both dates are required for a custom range'
             : null
+
+    // Compute a next scheduled Date for display based on frequency selection
+    const computeNextScheduled = (freq) => {
+        const now = new Date()
+        const d = new Date(now)
+        if (!freq) return d
+
+        switch (freq) {
+            case 'daily':
+                d.setDate(d.getDate() + 1)
+                break
+            case 'weekly':
+                d.setDate(d.getDate() + 7)
+                break
+            case 'monthly':
+                d.setMonth(d.getMonth() + 1)
+                break
+            default:
+                // Fallback to one week
+                d.setDate(d.getDate() + 7)
+        }
+
+        return d
+    }
 
     return (
         <Box sx={{
@@ -127,10 +186,10 @@ export default function ConfigureNewspaper() {
                     />
                 </Box>
 
-                {/* Printing Schedule */}
+                {/* Article Window */}
                 <Box>
                     <Typography variant="body1" sx={{ mb: 1, fontWeight: 500 }}>
-                        PRINTING SCHEDULE
+                        ARTICLE WINDOW
                     </Typography>
                     <Typography
                         variant="body2"
@@ -139,12 +198,12 @@ export default function ConfigureNewspaper() {
                         Choose the time period to retrieve articles from
                     </Typography>
 
-                    {/* Frequency toggle buttons */}
+                    {/* Article window toggle buttons */}
                     <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
-                        {FREQUENCY_OPTIONS.map(({ value, label }) => (
+                        {ARTICLE_WINDOW_OPTIONS.map(({ value, label }) => (
                             <Button
                                 key={value}
-                                onClick={() => updateFrequency(value)}
+                                onClick={() => updateArticleWindow(value)}
                                 sx={{
                                     flex: 1,
                                     py: 1.5,
@@ -152,9 +211,9 @@ export default function ConfigureNewspaper() {
                                     textTransform: 'none',
                                     fontSize: '1rem',
                                     backgroundColor: '#f5f5f5',
-                                    color: frequency === value ? 'var(--primary-light)' : 'var(--black)',
+                                    color: articleWindow === value ? 'var(--primary-light)' : 'var(--black)',
                                     border: '1px solid',
-                                    borderColor: frequency === value ? 'var(--primary-dark)' : '#ccc',
+                                    borderColor: articleWindow === value ? 'var(--primary-dark)' : '#ccc',
                                     '&:hover': {
                                         backgroundColor: '#f5f5f5',
                                         borderColor: 'var(--black)',
@@ -166,8 +225,8 @@ export default function ConfigureNewspaper() {
                         ))}
                     </Box>
 
-                    {/* Custom date range inputs */}
-                    {isCustom && (
+                    {/* Custom date range inputs for ARTICLE_WINDOW when 'custom' */}
+                    {articleWindow === 'custom' && (
                         <div className="mt-4">
                             <div className="flex flex-col sm:flex-row gap-4">
                                 <div className="flex-1">
@@ -213,6 +272,99 @@ export default function ConfigureNewspaper() {
                         </div>
                     )}
                 </Box>
+
+                {/* Auto-send toggle (authenticated users only) */}
+                {isAuthenticated && (
+                    <Box>
+                        <FormControlLabel
+                            control={
+                                <Switch
+                                    checked={autoSend}
+                                    onChange={(e) => updateAutoSend(e.target.checked)}
+                                    color="primary"
+                                />
+                            }
+                            label="Enable automatic delivery"
+                        />
+                    </Box>
+                )}
+
+                {/* Send Schedule shown when authenticated and autoSend enabled */}
+                {isAuthenticated && autoSend && (
+                    <Box>
+                        <Typography variant="body1" sx={{ mb: 1, fontWeight: 500 }}>
+                            SEND SCHEDULE
+                        </Typography>
+                        <Typography
+                            variant="body2"
+                            sx={{ fontStyle: 'italic', color: 'text.secondary', mb: 2 }}
+                        >
+                            Choose how often to automatically send the PDF
+                        </Typography>
+
+                        <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
+                            {FREQUENCY_OPTIONS.filter(opt => opt.value !== 'custom').map(({ value, label }) => (
+                                <Button
+                                    key={value}
+                                    onClick={() => updateFrequency(value)}
+                                    sx={{
+                                        flex: 1,
+                                        py: 1.5,
+                                        fontWeight: 'medium',
+                                        textTransform: 'none',
+                                        fontSize: '1rem',
+                                        backgroundColor: '#f5f5f5',
+                                        color: frequency === value ? 'var(--primary-light)' : 'var(--black)',
+                                        border: '1px solid',
+                                        borderColor: frequency === value ? 'var(--primary-dark)' : '#ccc',
+                                        '&:hover': {
+                                            backgroundColor: '#f5f5f5',
+                                            borderColor: 'var(--black)',
+                                        },
+                                    }}
+                                >
+                                    {label}
+                                </Button>
+                            ))}
+                        </Box>
+
+                        <Typography variant="caption" sx={{ display: 'block', mt: 1, color: 'text.secondary' }}>
+                            Next scheduled: {computeNextScheduled(frequency).toLocaleString()}
+                        </Typography>
+                    </Box>
+                )}
+
+                {/* Email delivery (only when authenticated). When automatic delivery is OFF show field disabled/greyed so users know automation isn't used. */}
+                {isAuthenticated && autoSend && (
+                    <Box>
+                        <Typography variant="body1" sx={{ mb: 1, fontWeight: 500 }}>
+                            EMAIL DELIVERY
+                        </Typography>
+                        <Typography
+                            variant="body2"
+                            sx={{ fontStyle: 'italic', color: 'text.secondary', mb: 2 }}
+                        >
+                            Send the PDF to this address after generation (optional)
+                        </Typography>
+                        <TextField
+                            variant="outlined"
+                            fullWidth
+                            type="email"
+                            value={targetEmail}
+                            onChange={(e) => updateTargetEmail(e.target.value)}
+                            onBlur={handleEmailBlur}
+                            placeholder="e.g., you@example.com"
+                            helperText={
+                                !targetEmail ? 'Enter an email to enable automatic delivery' : ''
+                            }
+                            sx={{
+                                '& .MuiOutlinedInput-root': {
+                                    backgroundColor: autoSend ? '#ffffff' : '#efefef'
+                                }
+                            }}
+                        />
+                    </Box>
+                )}
             </Box>
         </Box>
     )

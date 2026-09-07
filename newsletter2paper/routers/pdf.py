@@ -197,7 +197,31 @@ async def generate_pdf_for_issue(
         if result.get('html_path'):
             response['html_path'] = result['html_path']
             response['message'] += f" (HTML file kept at: {result['html_path']})"
-        
+
+        # Send email if the issue has a target_email configured
+        target_email = issue_info.get('target_email')
+        if target_email and result.get('pdf_url'):
+            try:
+                from services.email_service import EmailService
+                email_service = EmailService()
+                sent = email_service.send_pdf(
+                    email_address=target_email,
+                    pdf_url=result['pdf_url'],
+                    subject=f"Your PDF is ready: {issue_info.get('title', 'Newsletter')}",
+                    issue_title=issue_info.get('title'),
+                )
+                response['email_sent'] = sent
+                if sent:
+                    response['email_recipient'] = target_email
+            except Exception as email_err:
+                # Email failure must not break the PDF response
+                logging.warning(
+                    "Email delivery failed for issue %s: %s",
+                    issue_id, email_err
+                )
+                response['email_sent'] = False
+                response['email_error'] = str(email_err)
+
         return response
         
     except HTTPException:
@@ -207,6 +231,25 @@ async def generate_pdf_for_issue(
     except Exception as e:
         logging.error(f"PDF generation failed: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"PDF generation failed: {str(e)}")
+
+
+@router.post("/trigger-scheduled/{issue_id}")
+async def trigger_scheduled_issue(issue_id: str):
+    """
+    Manually trigger the scheduler processing for an issue. This endpoint is
+    intended for testing the automated workflow (PDF generation + email).
+    It will invoke the same processing logic used by the background scheduler.
+    """
+    try:
+        from services.scheduler import SchedulerService
+
+        svc = SchedulerService()
+        # _process_issue is async; await it directly to run the full flow.
+        await svc._process_issue(issue_id)
+        return {"success": True, "message": f"Triggered scheduled processing for {issue_id}"}
+    except Exception as e:
+        logging.exception(f"Manual trigger failed for {issue_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Trigger failed: {str(e)}")
 
 
 @router.get("/download/{issue_id}")

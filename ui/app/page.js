@@ -66,6 +66,7 @@ export default function Home() {
   const [isSaving, setIsSaving] = useState(false);
   const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
   const [pdfUrl, setPdfUrl] = useState(null);
+  const [isPopulatingPublications, setIsPopulatingPublications] = useState(false);
   const [selectAnchorEl, setSelectAnchorEl] = useState(null);
   const isSelectMenuOpen = Boolean(selectAnchorEl);
   const [autoSaveTimer, setAutoSaveTimer] = useState(null);
@@ -118,15 +119,18 @@ export default function Home() {
       // Only load from database if user is logged in
       if (!user) {
         logger.log('Guest user - publications managed via localStorage');
+        setIsPopulatingPublications(false);
         return;
       }
 
       if (!currentIssueId || !configLoaded) {
         logger.log('Waiting for issue ID or config...', { currentIssueId, configLoaded });
+        setIsPopulatingPublications(false);
         return;
       }
 
       try {
+        setIsPopulatingPublications(true);
         isLoadingPublications.current = true;
         logger.log(`🔄 Loading publications for issue: ${currentIssueId}`);
         const pubResponse = await fetch(`/api/issues/${currentIssueId}/publications`);
@@ -166,6 +170,7 @@ export default function Home() {
         // Use setTimeout to ensure the flag is reset after state updates complete
         setTimeout(() => {
           isLoadingPublications.current = false;
+          setIsPopulatingPublications(false);
           logger.log('✓ Publications loading complete');
         }, 100);
       }
@@ -744,6 +749,7 @@ export default function Home() {
           onOpenSearch={() => setIsSearchModalOpen(true)}
           onSaveIssue={handleSaveIssue}
           isSaving={isSaving}
+          isPopulatingPublications={isPopulatingPublications}
         />
 
         <DecorativeLine />

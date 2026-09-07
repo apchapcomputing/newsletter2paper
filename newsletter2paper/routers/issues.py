@@ -18,6 +18,8 @@ class CreateIssueRequest(BaseModel):
     format: str  # "newspaper" or "essay"
     frequency: str = "weekly"  # "daily", "weekly", "monthly", "custom"
     target_email: Optional[str] = None
+    auto_send: bool = False
+    article_window_days: int = 7
     custom_start_date: Optional[datetime] = None
     custom_end_date: Optional[datetime] = None
 
@@ -42,6 +44,8 @@ class UpdateIssueRequest(BaseModel):
     format: Optional[str] = None
     frequency: Optional[str] = None
     target_email: Optional[str] = None
+    auto_send: Optional[bool] = None
+    article_window_days: Optional[int] = None
     custom_start_date: Optional[datetime] = None
     custom_end_date: Optional[datetime] = None
 
@@ -61,6 +65,13 @@ class UpdateIssueRequest(BaseModel):
             if self.custom_start_date > self.custom_end_date:
                 raise ValueError("custom_start_date must be before custom_end_date")
         return self
+
+    @field_validator("article_window_days")
+    @classmethod
+    def validate_article_window_days(cls, v: Optional[int]) -> Optional[int]:
+        if v is not None and v <= 0:
+            raise ValueError("article_window_days must be a positive integer")
+        return v
 
 class PublicationSettings(BaseModel):
     publication_id: UUID
@@ -89,6 +100,8 @@ async def create_issue(
             'format': request.format,
             'frequency': request.frequency,
             'target_email': request.target_email,
+            'auto_send': request.auto_send,
+            'article_window_days': request.article_window_days,
             'custom_start_date': request.custom_start_date.isoformat() if request.custom_start_date else None,
             'custom_end_date': request.custom_end_date.isoformat() if request.custom_end_date else None,
             'created_at': datetime.now(timezone.utc).isoformat(),
@@ -136,6 +149,10 @@ async def update_issue(
                 update_data['custom_end_date'] = None
         if request.target_email is not None:
             update_data['target_email'] = request.target_email
+        if request.auto_send is not None:
+            update_data['auto_send'] = request.auto_send
+        if request.article_window_days is not None:
+            update_data['article_window_days'] = request.article_window_days
         # Always write custom dates when explicitly provided (even as None to clear them)
         if 'custom_start_date' not in update_data:  # don't overwrite if already set by frequency change
             update_data['custom_start_date'] = request.custom_start_date.isoformat() if request.custom_start_date else None

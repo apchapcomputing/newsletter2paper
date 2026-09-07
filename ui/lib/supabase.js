@@ -10,6 +10,12 @@ export function createClient() {
     const siteUrl = process.env.NEXT_PUBLIC_UI_URL ||
         (typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000')
 
+    // Debug log to help diagnose failed network calls during auth refresh
+    if (typeof window !== 'undefined' && window?.console?.debug) {
+        // Don't log sensitive keys; only log the URL and redirect target
+        console.debug('[supabase] using url:', supabaseUrl, 'redirectTo:', `${siteUrl}/auth/callback`)
+    }
+
     return createBrowserClient(
         supabaseUrl,
         supabaseAnonKey,

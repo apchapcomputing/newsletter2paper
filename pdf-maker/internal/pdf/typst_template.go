@@ -91,7 +91,8 @@ func AssembleNewspaperTypst(articles []*art.Article, title string) (string, erro
 	sb.WriteString(")\n\n")
 
 	// ── Table of contents (bordered box) ────────────────────────────────────
-	sb.WriteString("#rect(stroke: 0.5pt, inset: (x: 0.8em, y: 0.7em), width: 100%, radius: 2pt)[\n")
+	sb.WriteString("#rect(stroke: 0.5pt, inset: (x: 0.3em, y: 0.6em), width: 100%, radius: 2pt)[\n")
+	sb.WriteString("#set par(first-line-indent: 0pt)\n")
 	sb.WriteString("#v(0.1em)\n")
 	sb.WriteString("#align(center)[#text(size: 12pt, weight: \"medium\")[IN THIS EDITION]]\n")
 	sb.WriteString("#v(0.3em)\n")
@@ -237,7 +238,8 @@ func AssembleEssayTypst(articles []*art.Article, title string) (string, error) {
 	sb.WriteString(")\n\n")
 
 	// ── Table of contents (bordered box) ────────────────────────────────────
-	// sb.WriteString("#rect(stroke: 0.5pt, inset: (x: 0.8em, y: 0.7em), width: 100%, radius: 2pt)[\n")
+	// sb.WriteString("#rect(stroke: 0.5pt, inset: (x: 0.3em, y: 0.6em), width: 100%, radius: 2pt)[\n")
+	// sb.WriteString("#set par(first-line-indent: 0pt)\n")
 	// sb.WriteString("#v(0.2em)\n")
 	// sb.WriteString("#align(center)[#text(size: 12pt, weight: \"medium\")[IN THIS EDITION]]\n")
 	// sb.WriteString("#v(0.1em)\n")

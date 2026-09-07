@@ -22,6 +22,10 @@ export const NewsletterConfigProvider = ({ children }) => {
     const [frequency, setFrequency] = useState('weekly');
     const [dateFrom, setDateFrom] = useState('');
     const [dateTo, setDateTo] = useState('');
+    const [targetEmail, setTargetEmail] = useState('');
+    // Article window (days back) and auto-send toggle
+    const [articleWindow, setArticleWindow] = useState('7');
+    const [autoSend, setAutoSend] = useState(false);
     const [currentIssueId, setCurrentIssueId] = useState(null);
     const [isLoaded, setIsLoaded] = useState(false);
     const [userIssues, setUserIssues] = useState([]);
@@ -148,6 +152,10 @@ export const NewsletterConfigProvider = ({ children }) => {
                     setFrequency(config.frequency || 'weekly');
                     setDateFrom(config.dateFrom || '');
                     setDateTo(config.dateTo || '');
+                    setTargetEmail(config.targetEmail || user?.email || '');
+                    // Load new persisted UI state if available
+                    setArticleWindow(config.articleWindow || '7');
+                    setAutoSend(!!config.autoSend);
                     localIssueId = config.issueId || null;
                     setCurrentIssueId(localIssueId);
                     logger.log('📋 Loaded from localStorage - issueId:', localIssueId);
@@ -160,6 +168,9 @@ export const NewsletterConfigProvider = ({ children }) => {
                     setFrequency('weekly');
                     setDateFrom('');
                     setDateTo('');
+                    setTargetEmail(user?.email || '');
+                    setArticleWindow('7');
+                    setAutoSend(false);
                     setCurrentIssueId(null);
                 }
             } catch (error) {
@@ -235,6 +246,9 @@ export const NewsletterConfigProvider = ({ children }) => {
                     frequency,
                     dateFrom,
                     dateTo,
+                    targetEmail,
+                    articleWindow,
+                    autoSend,
                     issueId: currentIssueId
                 };
                 localStorage.setItem('newsletterConfig', JSON.stringify(config));
@@ -242,7 +256,7 @@ export const NewsletterConfigProvider = ({ children }) => {
                 console.error('Error saving newsletter config to localStorage:', error);
             }
         }
-    }, [newspaperTitle, outputMode, removeImages, frequency, dateFrom, dateTo, currentIssueId, isLoaded]);
+    }, [newspaperTitle, outputMode, removeImages, frequency, dateFrom, dateTo, targetEmail, currentIssueId, articleWindow, autoSend, isLoaded]);
 
     const updateTitle = (title) => {
         setNewspaperTitle(title);
@@ -268,6 +282,62 @@ export const NewsletterConfigProvider = ({ children }) => {
         setDateTo(value);
     };
 
+    const updateTargetEmail = (value) => {
+        setTargetEmail(value);
+    };
+
+    const updateArticleWindow = (value) => {
+        setArticleWindow(value);
+    };
+
+    const updateAutoSend = async (value) => {
+        const boolVal = !!value;
+        setAutoSend(boolVal);
+
+        // Persist auto_send to Supabase when user is authenticated.
+        try {
+            if (user && session && currentIssueId) {
+                const { error } = await supabase
+                    .from('issues')
+                    .update({ auto_send: boolVal })
+                    .eq('id', currentIssueId);
+
+                if (error) {
+                    console.error('Error updating auto_send on issue:', error);
+                }
+            } else if (user && session && !currentIssueId) {
+                // If there's no current issue yet, create one so the setting is persisted.
+                try {
+                    const result = await supabase
+                        .from('issues')
+                        .insert({
+                            title: newspaperTitle || 'My Newspaper',
+                            format: outputMode || 'essay',
+                            frequency: frequency || 'weekly',
+                            target_email: targetEmail || user.email,
+                            status: 'draft',
+                            remove_images: removeImages || false,
+                            custom_start_date: dateFrom || null,
+                            custom_end_date: dateTo || null,
+                            auto_send: boolVal
+                        })
+                        .select()
+                        .single();
+
+                    if (!result.error && result.data) {
+                        setCurrentIssueId(result.data.id);
+                        // Ensure user-issue association exists
+                        await supabase.from('user_issues').upsert({ user_id: user.id, issue_id: result.data.id }, { onConflict: 'user_id,issue_id' });
+                    }
+                } catch (err) {
+                    console.error('Error creating issue to persist auto_send:', err);
+                }
+            }
+        } catch (err) {
+            console.error('Error persisting auto_send:', err);
+        }
+    };
+
     const updateIssueId = (issueId) => {
         setCurrentIssueId(issueId);
     };
@@ -279,6 +349,7 @@ export const NewsletterConfigProvider = ({ children }) => {
         setFrequency('weekly');
         setDateFrom('');
         setDateTo('');
+        setTargetEmail('');
         setCurrentIssueId(null);
 
         // Clear localStorage
@@ -300,7 +371,7 @@ export const NewsletterConfigProvider = ({ children }) => {
                 title: issueData.title || null,
                 format: issueData.format || 'newspaper',
                 frequency: issueData.frequency || 'weekly',
-                target_email: user.email,
+                target_email: targetEmail || user.email,
                 status: 'draft',
                 remove_images: issueData.remove_images || false,
                 custom_start_date: issueData.custom_start_date || null,
@@ -543,6 +614,7 @@ export const NewsletterConfigProvider = ({ children }) => {
             // Restore custom dates – strip to YYYY-MM-DD for the date input
             setDateFrom(issue.custom_start_date ? issue.custom_start_date.slice(0, 10) : '');
             setDateTo(issue.custom_end_date ? issue.custom_end_date.slice(0, 10) : '');
+            setTargetEmail(issue.target_email || '');
             setCurrentIssueId(issue.id);
 
             return issue;
@@ -565,6 +637,9 @@ export const NewsletterConfigProvider = ({ children }) => {
             frequency,
             dateFrom,
             dateTo,
+            articleWindow,
+            autoSend,
+            targetEmail,
             currentIssueId,
             isLoaded,
             userIssues,
@@ -577,6 +652,9 @@ export const NewsletterConfigProvider = ({ children }) => {
             updateFrequency,
             updateDateFrom,
             updateDateTo,
+            updateTargetEmail,
+            updateArticleWindow,
+            updateAutoSend,
             updateIssueId,
             resetConfig,
             saveIssueToSupabase,
