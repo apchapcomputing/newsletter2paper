@@ -83,6 +83,7 @@ class GoPDFService:
                 "content": article.get("content"),  # Raw HTML if already fetched
                 "publication_id": article.get("publication_id"),
                 "remove_images": article.get("remove_images", False),  # Per-publication image removal
+                "platform": article.get("platform"),  # Platform hint for Go content extractor
             }
             
             # Remove None values to keep JSON clean (but keep False booleans)

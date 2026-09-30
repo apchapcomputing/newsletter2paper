@@ -43,8 +43,69 @@ services:
     command: tail -f /dev/null
     restart: unless-stopped
 
+  # Telegram bot
+  telegram-bot:
+    build:
+      context: ./bot/telegram
+      dockerfile: Dockerfile
+    container_name: newsletter-telegram-bot
+    environment:
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
+      - FASTAPI_BASE_URL=http://fastapi:8000
+    depends_on:
+      - fastapi
+    networks:
+      - newsletter-network
+    restart: unless-stopped
+
+  # Discord bot
+  discord-bot:
+    build:
+      context: ./bot/discord
+      dockerfile: Dockerfile
+    container_name: newsletter-discord-bot
+    environment:
+      - DISCORD_BOT_TOKEN=${DISCORD_BOT_TOKEN}
+      - FASTAPI_BASE_URL=http://fastapi:8000
+    depends_on:
+      - fastapi
+    networks:
+      - newsletter-network
+    restart: unless-stopped
+
+  # Signal CLI REST API bridge
+  signal-cli:
+    image: bbernhard/signal-cli-rest-api:latest
+    container_name: newsletter-signal-cli
+    environment:
+      - MODE=json-rpc
+    volumes:
+      - signal-data:/home/.local/share/signal-cli
+    networks:
+      - newsletter-network
+    restart: unless-stopped
+
+  # Signal bot (polls signal-cli bridge)
+  signal-bot:
+    build:
+      context: ./bot/signal
+      dockerfile: Dockerfile
+    container_name: newsletter-signal-bot
+    environment:
+      - SIGNAL_NUMBER=${SIGNAL_NUMBER}
+      - SIGNAL_CLI_URL=http://signal-cli:8080
+      - FASTAPI_BASE_URL=http://fastapi:8000
+    depends_on:
+      - signal-cli
+      - fastapi
+    networks:
+      - newsletter-network
+    restart: unless-stopped
+
 volumes:
   shared-images:
+    driver: local
+  signal-data:
     driver: local
 
 networks:
