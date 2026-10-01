@@ -1,0 +1,112 @@
+name: Tests
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: tests-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  changes:
+    name: Detect changes
+    runs-on: ubuntu-latest
+    outputs:
+      backend: ${{ steps.filter.outputs.backend }}
+      frontend: ${{ steps.filter.outputs.frontend }}
+      pdfmaker: ${{ steps.filter.outputs.pdfmaker }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            backend:
+              - 'newsletter2paper/**'
+              - '.github/workflows/tests.yml'
+            frontend:
+              - 'ui/**'
+              - '.github/workflows/tests.yml'
+            pdfmaker:
+              - 'pdf-maker/**'
+              - '.github/workflows/tests.yml'
+
+  backend:
+    name: Backend (pytest unit)
+    needs: changes
+    if: needs.changes.outputs.backend == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: newsletter2paper
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+          cache-dependency-path: newsletter2paper/requirements.txt
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Unit tests
+        run: pytest tests/unit
+
+  frontend:
+    name: Frontend (lint + vitest)
+    needs: changes
+    if: needs.changes.outputs.frontend == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: ui
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: ui/package-lock.json
+      - run: npm ci
+      - run: npm run lint
+      # No vitest files exist yet; don't fail until tests are added.
+      - run: npm test -- --passWithNoTests
+
+  pdf-maker:
+    name: PDF maker (go vet + test)
+    needs: changes
+    if: needs.changes.outputs.pdfmaker == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: pdf-maker
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: pdf-maker/go.mod
+          cache-dependency-path: pdf-maker/go.sum
+      - run: go vet ./...
+      - run: go test ./...
+
+  # Single status check to require in branch protection. Skipped jobs
+  # (no relevant changes) count as success.
+  tests-passed:
+    name: Tests passed
+    needs: [changes, backend, frontend, pdf-maker]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check results
+        run: |
+          echo '${{ toJSON(needs) }}'
+          if echo '${{ join(needs.*.result, ' ') }}' | grep -E -q 'failure|cancelled'; then
+            exit 1
+          fi
