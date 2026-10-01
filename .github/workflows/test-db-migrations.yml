@@ -61,8 +61,6 @@ jobs:
         run: |
           container=$(docker ps --format '{{.Names}}' | grep supabase_db | head -n 1)
           for f in supabase/migrations/*.sql; do
-            # The baseline uses plain CREATE TABLE / INSERT and is not meant to be re-run
-            [[ "$f" == *_baseline_schema.sql ]] && continue
             echo "Re-applying $f"
             docker exec -i "$container" psql -U postgres -v ON_ERROR_STOP=1 < "$f"
           done
