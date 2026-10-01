@@ -37,7 +37,13 @@ jobs:
           for f in newsletter2paper/supabase/migrations/*.sql; do
             name=$(basename "$f")
             # The baseline mirrors data/create-tables.sql, not data/migrations/
-            [[ "$name" == *_baseline_schema.sql ]] && continue
+            if [[ "$name" == *_baseline_schema.sql ]]; then
+              if ! diff -q "$f" data/create-tables.sql > /dev/null; then
+                echo "::error file=$f::Differs from data/create-tables.sql"
+                status=1
+              fi
+              continue
+            fi
             ts=${name%%_*}
             desc=${name#*_}
             mirror="data/migrations/${ts:0:4}_${ts:4:2}_${ts:6:2}_${desc}"

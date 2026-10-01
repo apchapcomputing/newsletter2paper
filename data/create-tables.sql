@@ -2,7 +2,7 @@
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
 -- Create users table
-CREATE TABLE users (
+CREATE TABLE IF NOT EXISTS users (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     email VARCHAR(255) NOT NULL UNIQUE,
     username VARCHAR(255) NOT NULL UNIQUE,
@@ -14,7 +14,7 @@ CREATE TABLE users (
 );
 
 -- Create publications table
-CREATE TABLE publications (
+CREATE TABLE IF NOT EXISTS publications (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     title VARCHAR(255) NOT NULL,
     url VARCHAR(512) NOT NULL,
@@ -25,7 +25,7 @@ CREATE TABLE publications (
 );
 
 -- Create issues table
-CREATE TABLE issues (
+CREATE TABLE IF NOT EXISTS issues (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     format VARCHAR(50) NOT NULL,
     target_email VARCHAR(255),
@@ -36,7 +36,7 @@ CREATE TABLE issues (
 );
 
 -- Create articles table
-CREATE TABLE articles (
+CREATE TABLE IF NOT EXISTS articles (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     title VARCHAR(255) NOT NULL,
     subtitle VARCHAR(255),
@@ -50,7 +50,7 @@ CREATE TABLE articles (
 );
 
 -- Create user_issues junction table
-CREATE TABLE user_issues (
+CREATE TABLE IF NOT EXISTS user_issues (
     user_id UUID REFERENCES users(id) ON DELETE CASCADE,
     issue_id UUID REFERENCES issues(id) ON DELETE CASCADE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
@@ -59,7 +59,7 @@ CREATE TABLE user_issues (
 );
 
 -- Create issue_publications junction table
-CREATE TABLE issue_publications (
+CREATE TABLE IF NOT EXISTS issue_publications (
     issue_id UUID REFERENCES issues(id) ON DELETE CASCADE,
     publication_id UUID REFERENCES publications(id) ON DELETE CASCADE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
@@ -68,15 +68,20 @@ CREATE TABLE issue_publications (
 );
 
 -- Create indexes for better performance
-CREATE INDEX idx_publications_title ON publications(title);
-CREATE INDEX idx_articles_publication_id ON articles(publication_id);
-CREATE INDEX idx_articles_date_published ON articles(date_published);
-CREATE INDEX idx_user_issues_user_id ON user_issues(user_id);
-CREATE INDEX idx_user_issues_issue_id ON user_issues(issue_id);
-CREATE INDEX idx_issue_publications_issue_id ON issue_publications(issue_id);
-CREATE INDEX idx_issue_publications_publication_id ON issue_publications(publication_id);
+CREATE INDEX IF NOT EXISTS idx_publications_title ON publications(title);
+CREATE INDEX IF NOT EXISTS idx_articles_publication_id ON articles(publication_id);
+CREATE INDEX IF NOT EXISTS idx_articles_date_published ON articles(date_published);
+CREATE INDEX IF NOT EXISTS idx_user_issues_user_id ON user_issues(user_id);
+CREATE INDEX IF NOT EXISTS idx_user_issues_issue_id ON user_issues(issue_id);
+CREATE INDEX IF NOT EXISTS idx_issue_publications_issue_id ON issue_publications(issue_id);
+CREATE INDEX IF NOT EXISTS idx_issue_publications_publication_id ON issue_publications(publication_id);
 
 -- Add some sample data
+-- Guarded so the file can be re-run without duplicating rows or breaking the subselects
+DO $$
+BEGIN
+IF NOT EXISTS (SELECT 1 FROM users WHERE email = 'john.doe@example.com') THEN
+
 INSERT INTO users (email, username, password, first_name, last_name) VALUES
     ('john.doe@example.com', 'johndoe', 'hashed_password_1', 'John', 'Doe'),
     ('sarah.smith@example.com', 'sarahs', 'hashed_password_2', 'Sarah', 'Smith'),
@@ -148,3 +153,6 @@ INSERT INTO issue_publications (issue_id, publication_id) VALUES
      (SELECT id FROM publications WHERE title = 'Tech Insights Weekly')),
     ((SELECT id FROM issues WHERE target_email = 'james.brown@example.com'), 
      (SELECT id FROM publications WHERE title = 'Future of Work Digest'));
+
+END IF;
+END $$;
