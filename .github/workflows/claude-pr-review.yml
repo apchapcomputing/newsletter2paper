@@ -1,21 +1,31 @@
 name: Claude PR Review
 
+# Runs when a PR is opened / marked ready, or on demand by commenting
+# `@claude review` on a PR. Deliberately NOT on every push, to conserve the
+# subscription usage behind CLAUDE_CODE_OAUTH_TOKEN.
 on:
   pull_request:
-    types: [opened, synchronize, ready_for_review, reopened]
+    types: [opened, ready_for_review, reopened]
+  issue_comment:
+    types: [created]
 
-# One review at a time per PR; a new push cancels the stale run.
+# One review at a time per PR; a newer request cancels the stale run.
 concurrency:
-  group: claude-pr-review-${{ github.event.pull_request.number }}
+  group: claude-pr-review-${{ github.event.pull_request.number || github.event.issue.number }}
   cancel-in-progress: true
 
 jobs:
   review:
     name: Review pull request
-    # Skip drafts, and PRs from forks (they cannot read repo secrets).
+    # PR events: skip drafts. Comment events: only `@claude review` on a PR,
+    # from someone with write access.
     if: >
-      github.event.pull_request.draft == false &&
-      github.event.pull_request.head.repo.full_name == github.repository
+      (github.event_name == 'pull_request' &&
+       github.event.pull_request.draft == false) ||
+      (github.event_name == 'issue_comment' &&
+       github.event.issue.pull_request &&
+       startsWith(github.event.comment.body, '@claude review') &&
+       contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association))
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
@@ -25,36 +35,64 @@ jobs:
       id-token: write
 
     steps:
-      - name: Checkout code
+      - name: Resolve PR
+        id: pr
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number || github.event.issue.number }}
+        run: |
+          # Fork PRs cannot read repo secrets and must not be checked out
+          # with them, so only review same-repo PRs.
+          head_repo=$(gh pr view "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" \
+            --json headRepository --jq '.headRepository.nameWithOwner')
+          echo "number=$PR_NUMBER" >> "$GITHUB_OUTPUT"
+          if [ "$head_repo" = "$GITHUB_REPOSITORY" ]; then
+            echo "same_repo=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "same_repo=false" >> "$GITHUB_OUTPUT"
+            echo "Skipping fork PR from $head_repo"
+          fi
+
+      - name: Checkout PR head
+        if: steps.pr.outputs.same_repo == 'true'
         uses: actions/checkout@v4
         with:
+          ref: refs/pull/${{ steps.pr.outputs.number }}/head
           fetch-depth: 1
 
       - name: Claude review
+        if: steps.pr.outputs.same_repo == 'true'
         uses: anthropics/claude-code-action@v1
         with:
-          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           github_token: ${{ secrets.GITHUB_TOKEN }}
           prompt: |
             REPO: ${{ github.repository }}
-            PR NUMBER: ${{ github.event.pull_request.number }}
+            PR NUMBER: ${{ steps.pr.outputs.number }}
 
-            Review this pull request. Read CLAUDE.md first for the architecture
-            and commands, and check the change against the relevant spec in
-            openspec/specs/<domain>/spec.md.
+            You are reviewing a pull request. Do not modify any files.
 
-            Focus on:
-            - Correctness bugs, especially in the scheduler (services/scheduler.py),
-              email delivery, and the FastAPI -> Go `docker exec` bridge.
-            - Security: secrets in code, missing auth or RLS checks, unsafe SQL,
-              and anything that exposes user data or article text.
-            - Behavior changes without a matching update to openspec/specs/ or tests.
-            - Migrations in data/migrations/ that are unsafe to apply by hand
-              (no migration runner exists).
-            - UI regressions in ui/ (Next.js App Router, MUI).
+            ## Process
+            1. Read REVIEW.md (review rules) and, if present, CLAUDE.md.
+            2. Gather context: `gh pr view ${{ steps.pr.outputs.number }} --comments`
+               and `gh pr diff ${{ steps.pr.outputs.number }}`. Note any prior
+               review comments so you do not repeat them.
+            3. For behavior changes, check the relevant spec in
+               openspec/specs/<domain>/spec.md.
+            4. Analyze the diff against the REVIEW.md checklist: correctness,
+               security, tests, maintainability, docs/spec drift.
 
-            Ignore style nits that the linters already catch. Leave inline
-            comments on specific lines for real issues, then post one short
-            summary comment. If nothing is wrong, say so in a single sentence.
+            ## Output
+            - Inline comments (mcp__github_inline_comment__create_inline_comment)
+              on specific lines, only for real issues. Prefix each with a
+              severity marker: 🔴 Important (bug to fix before merge),
+              🟡 Nit, 🟣 Pre-existing (not introduced by this PR).
+            - Then ONE summary comment, maintained as a single comment across
+              runs: run `gh pr comment ${{ steps.pr.outputs.number }} --edit-last --create-if-none --body "<summary>"`.
+              The summary opens with a one-line tally (e.g. "1 important, 3 nits")
+              or "No blocking issues." when clean, then a short list of
+              findings with file:line references. No emojis other than the
+              severity markers. Keep it concise.
           claude_args: |
-            --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*)"
+            --max-turns 20
+            --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Read,Grep,Glob"
