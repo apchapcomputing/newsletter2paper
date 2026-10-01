@@ -9,9 +9,11 @@ on:
   issue_comment:
     types: [created]
 
-# One review at a time per PR; a newer request cancels the stale run.
+# One review at a time per PR; a newer request cancels the stale run. Comments
+# that aren't `@claude review` (Vercel bot, chatter, this bot's own summary)
+# get a unique group so they can't cancel a running review.
 concurrency:
-  group: claude-pr-review-${{ github.event.pull_request.number || github.event.issue.number }}
+  group: claude-pr-review-${{ github.event.pull_request.number || (startsWith(github.event.comment.body, '@claude review') && github.event.issue.number) || github.run_id }}
   cancel-in-progress: true
 
 jobs:

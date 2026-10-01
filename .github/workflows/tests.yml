@@ -75,7 +75,8 @@ jobs:
           cache-dependency-path: ui/package-lock.json
       - run: npm ci
       - run: npm run lint
-      - run: npm test
+      # No vitest files exist yet; don't fail until tests are added.
+      - run: npm test -- --passWithNoTests
 
   pdf-maker:
     name: PDF maker (go vet + test)
