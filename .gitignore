@@ -20,3 +20,4 @@ shared/temp_*
 # Compiled test binaries (Go)
 pdf-maker/test/
 pdf-maker/*.test
+node_modules
