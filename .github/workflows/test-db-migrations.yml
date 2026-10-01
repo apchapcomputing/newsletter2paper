@@ -1,0 +1,70 @@
+name: Test DB Migrations
+
+on:
+  pull_request:
+    paths:
+      - 'newsletter2paper/supabase/migrations/**'
+      - 'data/migrations/**'
+      - '.github/workflows/test-db-migrations.yml'
+
+jobs:
+  test-migrations:
+    name: Apply migrations to local Supabase
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: newsletter2paper
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: newsletter2paper/package-lock.json
+
+      - name: Install Supabase CLI
+        run: npm ci
+
+      - name: Check supabase/migrations and data/migrations are in sync
+        working-directory: .
+        run: |
+          status=0
+          for f in newsletter2paper/supabase/migrations/*.sql; do
+            name=$(basename "$f")
+            # The baseline mirrors data/create-tables.sql, not data/migrations/
+            [[ "$name" == *_baseline_schema.sql ]] && continue
+            ts=${name%%_*}
+            desc=${name#*_}
+            mirror="data/migrations/${ts:0:4}_${ts:4:2}_${ts:6:2}_${desc}"
+            if [ ! -f "$mirror" ]; then
+              echo "::error file=$f::Missing mirror $mirror"
+              status=1
+            elif ! diff -q "$f" "$mirror" > /dev/null; then
+              echo "::error file=$f::Differs from $mirror"
+              status=1
+            fi
+          done
+          exit $status
+
+      - name: Start local Postgres and apply migrations
+        run: npx supabase db start
+
+      - name: Reset database (replay all migrations from scratch)
+        run: npx supabase db reset
+
+      - name: Re-apply each migration (idempotency)
+        run: |
+          container=$(docker ps --format '{{.Names}}' | grep supabase_db | head -n 1)
+          for f in supabase/migrations/*.sql; do
+            echo "Re-applying $f"
+            docker exec -i "$container" psql -U postgres -v ON_ERROR_STOP=1 < "$f"
+          done
+
+      - name: Stop local Supabase
+        if: always()
+        run: npx supabase stop --no-backup
