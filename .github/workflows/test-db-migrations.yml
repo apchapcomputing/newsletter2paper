@@ -24,11 +24,9 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: npm
-          cache-dependency-path: newsletter2paper/package-lock.json
 
       - name: Install Supabase CLI
-        run: npm ci
+        run: npm install
 
       - name: Check supabase/migrations and data/migrations are in sync
         working-directory: .
