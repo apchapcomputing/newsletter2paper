@@ -3,7 +3,7 @@
 import unittest
 from unittest.mock import patch, MagicMock, AsyncMock
 import requests
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from uuid import UUID
 from services.rss_service import RSSService
 
@@ -21,7 +21,7 @@ class MockResponse:
             raise requests.RequestException(f"HTTP {self.status_code}")
 
 
-class TestEnhancedContentExtraction(unittest.TestCase):
+class TestEnhancedContentExtraction(unittest.IsolatedAsyncioTestCase):
     """Test cases for enhanced article content extraction."""
 
     def setUp(self):
@@ -113,7 +113,9 @@ class TestEnhancedContentExtraction(unittest.TestCase):
         article = articles[0]
         self.assertEqual(article.title, "Article with CDATA Title")
         self.assertEqual(article.author, "John Doe")
-        self.assertIn("Full article content", article.subtitle)
+        # The subtitle is a short blurb: <description> wins over the full
+        # <content:encoded> body, and CDATA markup is not unwrapped into the text.
+        self.assertEqual(article.subtitle, "This is a HTML description with CDATA")
         self.assertEqual(article.content_url, "https://example.com/article1")
 
     @patch('services.rss_service.RSSService.fetch_rss_feed_content')
@@ -128,7 +130,8 @@ class TestEnhancedContentExtraction(unittest.TestCase):
         
         self.assertEqual(article.title, "Atom Article Title")
         self.assertEqual(article.author, "Jane Smith")
-        self.assertEqual(article.subtitle, "Full Atom content")
+        # Atom: <summary> is preferred over the full <content>.
+        self.assertEqual(article.subtitle, "Atom article summary")
         self.assertEqual(article.content_url, "https://example.com/atom-article")
 
     @patch('services.rss_service.RSSService.fetch_rss_feed_content')
@@ -140,9 +143,9 @@ class TestEnhancedContentExtraction(unittest.TestCase):
         
         self.assertEqual(len(articles), 2)
         
-        # First article should use content:encoded
+        # Preference order is description > summary > content:encoded
         first_article = articles[0]
-        self.assertEqual(first_article.subtitle, "Enhanced content with encoding")
+        self.assertEqual(first_article.subtitle, "Primary description content")
         
         # Second article should fallback to summary
         second_article = articles[1]
@@ -192,7 +195,7 @@ class TestEnhancedContentExtraction(unittest.TestCase):
         self.assertEqual(articles[0].title, "Article 3")  # Skip 2, start from 3rd
 
 
-class TestUtilityMethods(unittest.TestCase):
+class TestUtilityMethods(unittest.IsolatedAsyncioTestCase):
     """Test cases for new utility methods."""
 
     def setUp(self):
@@ -270,7 +273,7 @@ class TestUtilityMethods(unittest.TestCase):
     async def test_fetch_articles_from_feeds_with_date_filter(self):
         """Test fetching articles with date filtering."""
         feed_urls = ["https://example.com/feed"]
-        start_date = datetime.now() - timezone.utc
+        start_date = datetime.now(timezone.utc) - timedelta(days=7)
         
         with patch.object(self.rss_service, 'get_articles') as mock_get_articles:
             with patch.object(self.rss_service, 'filter_articles_by_date') as mock_filter:
@@ -308,7 +311,7 @@ class TestUtilityMethods(unittest.TestCase):
             self.assertEqual(mock_get_articles.call_count, 2)
 
 
-class TestIssueArticleFetching(unittest.TestCase):
+class TestIssueArticleFetching(unittest.IsolatedAsyncioTestCase):
     """Test cases for enhanced issue article fetching."""
 
     def setUp(self):
