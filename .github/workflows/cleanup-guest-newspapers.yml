@@ -1,0 +1,58 @@
+name: Weekly Database Cleanup
+
+on:
+  schedule:
+    # Run every Sunday at 2:00 AM UTC
+    - cron: '0 2 * * 0'
+  workflow_dispatch:  # Allow manual triggering from GitHub UI
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Install PostgreSQL client
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client
+
+      - name: Run database cleanup
+        env:
+          SUPABASE_DB_HOST: ${{ secrets.SUPABASE_DB_HOST }}
+          SUPABASE_DB_PORT: ${{ secrets.SUPABASE_DB_PORT }}
+          SUPABASE_DB_NAME: ${{ secrets.SUPABASE_DB_NAME }}
+          SUPABASE_DB_USER: ${{ secrets.SUPABASE_DB_USER }}
+          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+        run: |
+          # Execute the cleanup migration script
+          psql \
+            -h "$SUPABASE_DB_HOST" \
+            -p "$SUPABASE_DB_PORT" \
+            -U "$SUPABASE_DB_USER" \
+            -d "$SUPABASE_DB_NAME" \
+            -f data/migrations/2026_09_30_cleanup_guest_newspapers.sql
+
+      - name: Log cleanup completion
+        if: success()
+        run: echo "✅ Database cleanup completed successfully"
+
+      - name: Notify on failure
+        if: failure()
+        run: |
+          echo "❌ Database cleanup failed"
+          exit 1
+
+      - name: Send notification (optional)
+        if: always()
+        # You can add Slack/Discord/email notifications here
+        run: |
+          if [ "${{ job.status }}" == "success" ]; then
+            echo "Cleanup job status: SUCCESS"
+          else
+            echo "Cleanup job status: FAILED"
+          fi
