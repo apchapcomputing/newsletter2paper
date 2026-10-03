@@ -4,6 +4,7 @@ on:
   pull_request:
     paths:
       - 'newsletter2paper/supabase/migrations/**'
+      - 'newsletter2paper/supabase/tests/**'
       - 'data/migrations/**'
       - '.github/workflows/test-db-migrations.yml'
 
@@ -68,6 +69,11 @@ jobs:
             echo "Re-applying $f"
             docker exec -i "$container" psql -U postgres -v ON_ERROR_STOP=1 < "$f"
           done
+
+      - name: Run RLS policy tests
+        run: |
+          container=$(docker ps --format '{{.Names}}' | grep supabase_db | head -n 1)
+          docker exec -i "$container" psql -U postgres -v ON_ERROR_STOP=1 < supabase/tests/rls_policies.sql
 
       - name: Stop local Supabase
         if: always()
