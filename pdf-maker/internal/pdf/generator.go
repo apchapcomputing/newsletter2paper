@@ -6,10 +6,12 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 
 	art "pdf-maker/internal/article"
+	"pdf-maker/internal/media"
 )
 
 // GenerateOptions configures PDF generation behavior.
@@ -91,6 +93,13 @@ func generateTypstPDF(ctx context.Context, articles []*art.Article, opts Generat
 	absImagesDir, _ := filepath.Abs("images")
 	typContent = fixTypstImagePaths(typContent, absImagesDir)
 
+	// Validate every referenced image up front so bad ones never cost a recompile.
+	var dropped []string
+	typContent, dropped = sanitizeTypstImages(typContent)
+	for _, d := range dropped {
+		fmt.Fprintf(os.Stderr, "⚠️  dropping unusable image before compile: %s\n", d)
+	}
+
 	// Write .typ source to a temp file in the same directory as the output PDF
 	typPath := opts.TempHTMLPath
 	if typPath == "" {
@@ -113,7 +122,8 @@ func generateTypstPDF(ctx context.Context, articles []*art.Article, opts Generat
 
 	// Compile loop: on "failed to decode image" errors, strip the bad image
 	// from the Typst source and retry (up to 10 images).
-	const maxImgRetries = 10
+	// Safety net for anything the pre-check missed; allow one retry per image.
+	maxImgRetries := len(typstImageRe.FindAllString(typContent, -1)) + 3
 	var output []byte
 	var compileErr error
 	for i := 0; i < maxImgRetries; i++ {
@@ -202,4 +212,38 @@ func stripBadImage(typContent, imagePath string) string {
 // paths so Typst can find them regardless of where the .typ source file is written.
 func fixTypstImagePaths(typContent, absImagesDir string) string {
 	return strings.ReplaceAll(typContent, `image("images/`, fmt.Sprintf(`image("%s/`, absImagesDir))
+}
+
+var typstImageRe = regexp.MustCompile(`image\("([^"]+)"`)
+
+// sanitizeTypstImages checks each local image referenced in the Typst source.
+// Files whose extension disagrees with their content are renamed (Typst picks
+// the decoder from the extension); missing or non-decodable files are removed
+// from the source. It returns the updated source and the paths it dropped.
+func sanitizeTypstImages(typContent string) (string, []string) {
+	var dropped []string
+	seen := map[string]bool{}
+	for _, m := range typstImageRe.FindAllStringSubmatch(typContent, -1) {
+		path := m[1]
+		if seen[path] {
+			continue
+		}
+		seen[path] = true
+
+		if media.DetectImageExt(path) == "" {
+			dropped = append(dropped, path)
+			typContent = stripBadImage(typContent, path)
+			continue
+		}
+		fixed, err := media.FixImageExtension(path)
+		if err != nil {
+			dropped = append(dropped, path)
+			typContent = stripBadImage(typContent, path)
+			continue
+		}
+		if fixed != path {
+			typContent = strings.ReplaceAll(typContent, fmt.Sprintf("image(%q", path), fmt.Sprintf("image(%q", fixed))
+		}
+	}
+	return typContent, dropped
 }

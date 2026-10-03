@@ -169,6 +169,9 @@ func DownloadAndCacheImages(htmlContent string, opts DownloadOptions) (string, D
 
 		// Check if image already exists (cached)
 		if _, err := os.Stat(localPath); err == nil {
+			if fixed, err := FixImageExtension(localPath); err == nil {
+				localPath = fixed
+			}
 			if opts.Verbose {
 				fmt.Printf("  - Using cached image: %s\n", filename)
 			}
@@ -203,6 +206,12 @@ func DownloadAndCacheImages(htmlContent string, opts DownloadOptions) (string, D
 			// Remove the img tag on failure
 			img.Remove()
 			return
+		}
+
+		// Typst picks the decoder from the file extension, so make sure it
+		// matches the real content (URLs often say .png but serve JPEG/WebP).
+		if fixed, err := FixImageExtension(localPath); err == nil {
+			localPath = fixed
 		}
 
 		// Update img src to local path
@@ -319,6 +328,48 @@ func validateImageFile(path string) error {
 		return nil
 	}
 	return fmt.Errorf("unrecognised image format (header bytes: %d %d %d %d)", b[0], b[1], b[2], b[3])
+}
+
+// DetectImageExt returns the file extension matching the file's magic bytes,
+// or "" if the format is not recognised.
+func DetectImageExt(path string) string {
+	f, err := os.Open(path)
+	if err != nil {
+		return ""
+	}
+	defer f.Close()
+	b := make([]byte, 12)
+	n, _ := f.Read(b)
+	b = b[:n]
+	switch {
+	case n >= 3 && b[0] == 0xFF && b[1] == 0xD8 && b[2] == 0xFF:
+		return "jpg"
+	case n >= 4 && b[0] == 0x89 && b[1] == 'P' && b[2] == 'N' && b[3] == 'G':
+		return "png"
+	case n >= 4 && string(b[:4]) == "GIF8":
+		return "gif"
+	case n >= 12 && string(b[:4]) == "RIFF" && string(b[8:12]) == "WEBP":
+		return "webp"
+	}
+	return ""
+}
+
+// FixImageExtension renames the file if its extension disagrees with its
+// content and returns the (possibly new) path.
+func FixImageExtension(path string) (string, error) {
+	want := DetectImageExt(path)
+	if want == "" {
+		return path, nil
+	}
+	ext := strings.ToLower(strings.TrimPrefix(filepath.Ext(path), "."))
+	if ext == want || (want == "jpg" && ext == "jpeg") {
+		return path, nil
+	}
+	newPath := strings.TrimSuffix(path, filepath.Ext(path)) + "." + want
+	if err := os.Rename(path, newPath); err != nil {
+		return path, err
+	}
+	return newPath, nil
 }
 
 // getImageExtension extracts the file extension from an image URL.
