@@ -3,7 +3,7 @@ name: Deploy DB Migrations
 # Applies pending migrations to the production Supabase project after a merge to main.
 # PRs are tested separately by test-db-migrations.yml against a throwaway database.
 #
-# Runs in the `production` GitHub Environment. Configure that environment with:
+# Runs in the `production-db` GitHub Environment. Configure that environment with:
 #   - required reviewers (so each deploy waits for a manual approval)
 #   - secrets: SUPABASE_ACCESS_TOKEN, SUPABASE_DB_PASSWORD, SUPABASE_PROJECT_REF
 on:
@@ -23,7 +23,7 @@ jobs:
   deploy-migrations:
     name: Apply migrations to production
     runs-on: ubuntu-latest
-    environment: production
+    environment: production-db
 
     defaults:
       run:
