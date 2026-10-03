@@ -30,14 +30,15 @@ ALTER TABLE public.issues
 ALTER TABLE public.issues
   ADD COLUMN IF NOT EXISTS guest_token text;
 
-ALTER TABLE public.users              ENABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS public.users ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.publications       ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.articles           ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.issues             ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.user_issues        ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.issue_publications ENABLE ROW LEVEL SECURITY;
 
--- users: no policies on purpose. Nothing but the service role may read it
+-- users: the legacy baseline table is absent in production, hence IF EXISTS above. Where it
+-- exists there are no policies on purpose, so only the service role can read it
 -- (it has a legacy `password` column).
 
 -- publications / articles: public catalog, read-only for clients.
