@@ -10,32 +10,25 @@ import (
 	"time"
 
 	art "pdf-maker/internal/article"
-	"pdf-maker/internal/clean"
 )
 
 // GenerateOptions configures PDF generation behavior.
 type GenerateOptions struct {
-	OutputPath      string        // Full path to output PDF file
-	TempHTMLPath    string        // Optional: path to save intermediate HTML/Typst (for debugging)
-	KeepHTML        bool          // Whether to preserve intermediate source file (HTML or .typ)
-	Title           string        // PDF metadata title (default: "Your Articles")
-	LayoutType      string        // Layout type: "essay" or "newspaper" (default)
-	RemoveImages    bool          // Whether to remove all images from the PDF
-	PageSize        string        // e.g., "Letter", "A4" (default: Letter) — wkhtmltopdf only
-	MarginTop       string        // e.g., "10mm" — wkhtmltopdf only
-	MarginBottom    string        // e.g., "10mm" — wkhtmltopdf only
-	MarginLeft      string        // e.g., "10mm" — wkhtmltopdf only
-	MarginRight     string        // e.g., "10mm" — wkhtmltopdf only
-	Timeout         time.Duration // subprocess execution timeout
-	WkhtmltopdfPath string        // Override wkhtmltopdf binary path (default: "wkhtmltopdf")
-	TypstPath       string        // Override typst binary path (default: "typst")
+	OutputPath   string        // Full path to output PDF file
+	TempHTMLPath string        // Optional: path to save the intermediate Typst source (for debugging)
+	KeepHTML     bool          // Whether to preserve the intermediate .typ source file
+	Title        string        // PDF metadata title (default: "Your Articles")
+	LayoutType   string        // Layout type: "essay" or "newspaper" (default)
+	RemoveImages bool          // Whether to remove all images from the PDF
+	Timeout      time.Duration // subprocess execution timeout
+	TypstPath    string        // Override typst binary path (default: "typst")
 }
 
 // GenerateResult holds the outcome of PDF generation.
 type GenerateResult struct {
 	Success  bool
 	PDFPath  string
-	HTMLPath string // path to the kept intermediate source file (.html or .typ)
+	HTMLPath string // path to the kept intermediate .typ source file
 	Error    error
 }
 
@@ -51,7 +44,7 @@ func GeneratePDF(ctx context.Context, articles []*art.Article, opts GenerateOpti
 	return generateTypstPDF(ctx, articles, opts)
 }
 
-// generateTypstPDF renders the newspaper layout via Typst.
+// generateTypstPDF renders both the newspaper and essay layouts via Typst.
 func generateTypstPDF(ctx context.Context, articles []*art.Article, opts GenerateOptions) GenerateResult {
 	result := GenerateResult{}
 
@@ -166,161 +159,6 @@ func generateTypstPDF(ctx context.Context, articles []*art.Article, opts Generat
 	return result
 }
 
-// generateWkhtmlPDF renders the essay layout via wkhtmltopdf (unchanged path).
-func generateWkhtmlPDF(ctx context.Context, articles []*art.Article, opts GenerateOptions) GenerateResult {
-	result := GenerateResult{}
-
-	if len(articles) == 0 {
-		result.Error = fmt.Errorf("no articles provided")
-		return result
-	}
-
-	// Set defaults
-	if opts.Title == "" {
-		opts.Title = "Your Articles"
-	}
-	if opts.PageSize == "" {
-		opts.PageSize = "Letter"
-	}
-	if opts.MarginTop == "" {
-		opts.MarginTop = "15mm"
-	}
-	if opts.MarginBottom == "" {
-		opts.MarginBottom = "15mm"
-	}
-	if opts.MarginLeft == "" {
-		opts.MarginLeft = "12mm"
-	}
-	if opts.MarginRight == "" {
-		opts.MarginRight = "12mm"
-	}
-	if opts.Timeout == 0 {
-		opts.Timeout = 60 * time.Second
-	}
-	if opts.WkhtmltopdfPath == "" {
-		opts.WkhtmltopdfPath = "wkhtmltopdf"
-	}
-	if opts.OutputPath == "" {
-		timestamp := time.Now().Format("20060102-150405")
-		opts.OutputPath = filepath.Join("newspapers", fmt.Sprintf("articles_%s.pdf", timestamp))
-	}
-
-	// Ensure output directory exists
-	outDir := filepath.Dir(opts.OutputPath)
-	if err := os.MkdirAll(outDir, 0o755); err != nil {
-		result.Error = fmt.Errorf("mkdir output dir: %w", err)
-		return result
-	}
-
-	// Generate combined HTML
-	html, err := AssembleHTML(articles, opts.Title, opts.LayoutType)
-	if err != nil {
-		result.Error = fmt.Errorf("assemble html: %w", err)
-		return result
-	}
-
-	// Remove images if requested
-	if opts.RemoveImages {
-		cleanedHTML, imagesRemoved, err := clean.RemoveAllImages(html)
-		if err != nil {
-			result.Error = fmt.Errorf("remove images: %w", err)
-			return result
-		}
-		html = cleanedHTML
-		if imagesRemoved > 0 {
-			fmt.Fprintf(os.Stderr, "Removed %d images from HTML\n", imagesRemoved)
-		}
-	}
-
-	// Fix image paths to be absolute file:// URLs for wkhtmltopdf (skip if images removed)
-	// This is necessary because wkhtmltopdf needs absolute paths when HTML file
-	// is in a different directory than the images
-	if !opts.RemoveImages {
-		absImagesDir, _ := filepath.Abs("images")
-		html = fixImagePaths(html, absImagesDir)
-	}
-
-	// Write HTML to temp file
-	htmlPath := opts.TempHTMLPath
-	if htmlPath == "" {
-		htmlPath = filepath.Join(outDir, fmt.Sprintf("temp_%d.html", time.Now().UnixNano()))
-	}
-	if err := os.WriteFile(htmlPath, []byte(html), 0o644); err != nil {
-		result.Error = fmt.Errorf("write html: %w", err)
-		return result
-	}
-	result.HTMLPath = htmlPath
-
-	// Invoke wkhtmltopdf with xvfb-run wrapper for proper image rendering
-	absHTMLPath, _ := filepath.Abs(htmlPath)
-	absPDFPath, _ := filepath.Abs(opts.OutputPath)
-
-	// Check if xvfb-run is available (Docker environment)
-	useXvfb := false
-	if _, err := exec.LookPath("xvfb-run"); err == nil {
-		useXvfb = true
-	}
-
-	var cmd *exec.Cmd
-	args := []string{
-		"--enable-local-file-access",
-		"--load-error-handling", "ignore",
-		"--load-media-error-handling", "ignore",
-		"--no-stop-slow-scripts",
-		"--disable-javascript",
-		"--enable-external-links",
-		"--enable-internal-links",
-		"--images",
-		"--page-size", opts.PageSize,
-		"--margin-top", opts.MarginTop,
-		"--margin-bottom", opts.MarginBottom,
-		"--margin-left", opts.MarginLeft,
-		"--margin-right", opts.MarginRight,
-		"--title", opts.Title,
-		"--print-media-type",
-		absHTMLPath,
-		absPDFPath,
-	}
-
-	// Newspaper layout requires landscape orientation.
-	// The CSS @page rule should handle this, but wkhtmltopdf's CLI flag is
-	// more reliable than the CSS @page size directive.
-	if opts.LayoutType == "newspaper" || opts.LayoutType == "" {
-		args = append([]string{"--orientation", "Landscape"}, args...)
-	}
-
-	execCtx, cancel := context.WithTimeout(ctx, opts.Timeout)
-	defer cancel()
-
-	if useXvfb {
-		// Use xvfb-run wrapper for virtual display (needed for image rendering in Docker)
-		xvfbArgs := append([]string{"-a", "--server-args=-screen 0 1024x768x24", opts.WkhtmltopdfPath}, args...)
-		cmd = exec.CommandContext(execCtx, "xvfb-run", xvfbArgs...)
-	} else {
-		cmd = exec.CommandContext(execCtx, opts.WkhtmltopdfPath, args...)
-	}
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		result.Error = fmt.Errorf("wkhtmltopdf failed: %w (output: %s)", err, string(output))
-		return result
-	}
-
-	// Log wkhtmltopdf output if there were warnings (even on success)
-	if len(output) > 0 {
-		fmt.Fprintf(os.Stderr, "wkhtmltopdf output:\n%s\n", string(output))
-	}
-
-	// Cleanup temp HTML unless requested to keep
-	if !opts.KeepHTML {
-		_ = os.Remove(htmlPath)
-		result.HTMLPath = ""
-	}
-
-	result.Success = true
-	result.PDFPath = absPDFPath
-	return result
-}
-
 // extractImagePathFromTypstError parses a Typst "failed to decode image" error
 // and returns the local file path that caused the failure.
 func extractImagePathFromTypstError(output string) string {
@@ -358,21 +196,6 @@ func stripBadImage(typContent, imagePath string) string {
 	}
 	closeEnd = figStart + closeEnd + len(")\n\n")
 	return typContent[:figStart] + typContent[closeEnd:]
-}
-
-// fixImagePaths converts relative image paths to absolute file:// URLs.
-// This is necessary for wkhtmltopdf to find images when the HTML file is in a different directory.
-func fixImagePaths(htmlContent string, absImagesDir string) string {
-	// Simple string replacement approach - replace relative image paths with absolute file:// URLs
-	// This handles the common case where images are in "images/filename.ext"
-
-	// Replace src="images/ with src="file:///absolute/path/to/images/
-	htmlContent = strings.ReplaceAll(htmlContent, `src="images/`, fmt.Sprintf(`src="file://%s/`, absImagesDir))
-
-	// Also handle single quotes
-	htmlContent = strings.ReplaceAll(htmlContent, `src='images/`, fmt.Sprintf(`src='file://%s/`, absImagesDir))
-
-	return htmlContent
 }
 
 // fixTypstImagePaths rewrites relative "images/..." paths inside #image(...) calls to absolute

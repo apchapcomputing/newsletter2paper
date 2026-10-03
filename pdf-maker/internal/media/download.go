@@ -173,7 +173,7 @@ func DownloadAndCacheImages(htmlContent string, opts DownloadOptions) (string, D
 				fmt.Printf("  - Using cached image: %s\n", filename)
 			}
 			img.SetAttr("src", localPath)
-			// Remove srcset to prevent browser/wkhtmltopdf from using remote URLs
+			// Remove srcset so only the local src is used, not remote URLs
 			img.RemoveAttr("srcset")
 			// Also remove srcset from parent picture/source elements
 			img.Parent().Find("source").RemoveAttr("srcset")
@@ -207,7 +207,7 @@ func DownloadAndCacheImages(htmlContent string, opts DownloadOptions) (string, D
 
 		// Update img src to local path
 		img.SetAttr("src", localPath)
-		// Remove srcset to prevent browser/wkhtmltopdf from using remote URLs
+		// Remove srcset so only the local src is used, not remote URLs
 		img.RemoveAttr("srcset")
 		// Also remove srcset from parent picture/source elements
 		img.Parent().Find("source").RemoveAttr("srcset")
