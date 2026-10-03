@@ -1,4 +1,5 @@
 import { createBrowserClient } from '@supabase/ssr'
+import { createGuestTokenFetch } from './guestTokenFetch'
 
 export function createClient() {
     // Provide fallback values for build time when env vars might not be available
@@ -20,19 +21,7 @@ export function createClient() {
         supabaseUrl,
         supabaseAnonKey,
         {
-            global: {
-                // Guest issues are protected by RLS with a per-browser secret (see
-                // supabase/migrations/*_enable_rls.sql). Read it per request so it is
-                // picked up as soon as saveGuestIssue creates it.
-                fetch: (input, init = {}) => {
-                    let token = null
-                    try { token = typeof window !== 'undefined' ? window.localStorage.getItem('guestSessionId') : null } catch { /* storage unavailable */ }
-                    if (!token) return fetch(input, init)
-                    const headers = new Headers(init.headers || (input instanceof Request ? input.headers : undefined))
-                    headers.set('x-guest-token', token)
-                    return fetch(input, { ...init, headers })
-                }
-            },
+            global: { fetch: createGuestTokenFetch() },
             auth: {
                 redirectTo: `${siteUrl}/auth/callback`,
                 autoRefreshToken: true,
