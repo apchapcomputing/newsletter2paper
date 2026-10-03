@@ -130,3 +130,31 @@ Stops the containers. Use `npx supabase db reset` any time you want a clean slat
 | `supabase: command not found` | Use `npx supabase ...` from `newsletter2paper/`. It is not installed globally. |
 | `No such container: supabase_db_...` | The name contains your project ID. Get it from `docker ps`. |
 | Migration ignored | Check the filename has a numeric prefix and ends in `.sql`. |
+
+## Deploying to production
+
+Merging a PR that changes `supabase/migrations/**` to `main` starts the **Deploy DB Migrations**
+workflow (`.github/workflows/deploy-db-migrations.yml`). It waits for approval in the `production`
+GitHub Environment, then runs `supabase db push` (after a dry run that lists what will be applied).
+You can also start it from the Actions tab (`workflow_dispatch`).
+
+### One-time setup
+
+1. In the repo settings, create an Environment named `production` and add yourself as a required reviewer.
+2. Add these secrets to that environment: `SUPABASE_ACCESS_TOKEN` (an account access token),
+   `SUPABASE_DB_PASSWORD` (the project's database password) and `SUPABASE_PROJECT_REF`.
+3. If the existing migrations were applied to production by hand, mark them as applied once so
+   `db push` doesn't replay them (the baseline inserts sample rows):
+
+   ```
+   cd newsletter2paper
+   npx supabase link --project-ref <ref>
+   npx supabase migration repair --status applied 20250101000000 20260904000000 20260906000000
+   npx supabase db push --dry-run   # should list only migrations you have not applied yet
+   ```
+
+   Do this before the first deploy and before merging any new migration.
+
+Before approving a deploy, check that the code the migration depends on is already live (for example,
+the RLS migration needs the backend on the service role key and the UI that sends `x-guest-token`).
+
