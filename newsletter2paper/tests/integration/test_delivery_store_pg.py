@@ -8,6 +8,7 @@ Runs only when SCHEDULER_TEST_DATABASE_URL is set; CI points it at the local Sup
         pytest tests/integration/test_delivery_store_pg.py
 """
 import os
+import uuid
 from datetime import datetime, timedelta, timezone
 
 import pytest
@@ -30,6 +31,8 @@ def engine():
     yield eng
     with eng.begin() as conn:
         conn.execute(text("DELETE FROM public.issues WHERE title LIKE 'delivery-store-test%'"))
+        if conn.execute(text("SELECT to_regclass('public.users')")).scalar():
+            conn.execute(text("DELETE FROM public.users WHERE email LIKE 'delivery-store-test-%'"))
     eng.dispose()
 
 
@@ -277,3 +280,59 @@ def test_rollback_restores_columns_from_delivery_records(engine, store):
             assert conn.execute(text("SELECT to_regclass('public.issue_deliveries')")).scalar() is None
         finally:
             tx.rollback()
+
+
+def make_owner(engine, issue_id):
+    user_id = str(uuid.uuid4())
+    with engine.begin() as conn:
+        # The local baseline still has the legacy users table (and an FK to it); production doesn't.
+        if conn.execute(text("SELECT to_regclass('public.users')")).scalar():
+            conn.execute(text(
+                "INSERT INTO public.users (id, email, username, password, first_name, last_name) "
+                "VALUES (:id, :email, :email, 'x', 'T', 'T')"
+            ), {'id': user_id, 'email': f'delivery-store-test-{user_id}@example.com'})
+        conn.execute(text("INSERT INTO public.user_issues (user_id, issue_id) VALUES (:u, :i)"),
+                     {'u': user_id, 'i': issue_id})
+    return user_id
+
+
+def make_sent_delivery(engine, issue_id, sent_ago):
+    with engine.begin() as conn:
+        return str(conn.execute(text(
+            "INSERT INTO public.issue_deliveries (issue_id, trigger, scheduled_for, status, pdf_url, sent_at) "
+            "VALUES (:i, 'manual', now(), 'sent', 'https://pdf.example/a.pdf', now() - :ago) RETURNING id"
+        ), {'i': issue_id, 'ago': sent_ago}).scalar())
+
+
+class TestAnalyticsLookups:
+    def test_owner_id(self, engine, store):
+        issue_id = make_issue(engine)
+        assert store.owner_id(issue_id) is None  # guest issue
+        user_id = make_owner(engine, issue_id)
+        assert store.owner_id(issue_id) == user_id
+
+    def test_first_real_open_sets_opened_at_once(self, engine, store):
+        delivery_id = make_sent_delivery(engine, make_issue(engine), timedelta(hours=2))
+        first = store.record_open(delivery_id, timedelta(seconds=30))
+        assert first['pdf_url'] == 'https://pdf.example/a.pdf'
+        assert first['first_open'] is True and first['likely_scanner'] is False
+        opened_at = row(engine, "SELECT opened_at FROM public.issue_deliveries WHERE id = :id", id=delivery_id)['opened_at']
+        assert opened_at is not None
+        again = store.record_open(delivery_id, timedelta(seconds=30))
+        assert again['first_open'] is False
+        assert row(engine, "SELECT opened_at FROM public.issue_deliveries WHERE id = :id", id=delivery_id)['opened_at'] == opened_at
+
+    def test_scanner_prefetch_does_not_count_as_an_open(self, engine, store):
+        delivery_id = make_sent_delivery(engine, make_issue(engine), timedelta(seconds=5))
+        info = store.record_open(delivery_id, timedelta(seconds=30))
+        assert info['likely_scanner'] is True
+        assert row(engine, "SELECT opened_at FROM public.issue_deliveries WHERE id = :id", id=delivery_id)['opened_at'] is None
+
+    def test_unsent_or_unknown_delivery_is_none(self, engine, store):
+        issue_id = make_issue(engine)
+        with engine.begin() as conn:
+            pending = str(conn.execute(text(
+                "INSERT INTO public.issue_deliveries (issue_id, trigger, scheduled_for) "
+                "VALUES (:i, 'manual', now()) RETURNING id"), {'i': issue_id}).scalar())
+        assert store.record_open(pending, timedelta(seconds=30)) is None
+        assert store.record_open(str(uuid.uuid4()), timedelta(seconds=30)) is None

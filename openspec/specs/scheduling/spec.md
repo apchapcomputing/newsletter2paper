@@ -158,6 +158,14 @@ The system SHALL clear `next_run_at` and `last_run_error` (and reset `failed` to
 
 ---
 
+### Requirement: Delivery Analytics
+
+The scheduler SHALL record each delivery's outcome in PostHog (`delivery_sent`, `delivery_failed`, `delivery_skipped`)
+and SHALL send unexpected run exceptions to Error tracking, as specified in the analytics spec. Analytics failures
+SHALL NOT affect a run.
+
+---
+
 ### Requirement: Next Run Computation
 
 The system SHALL compute `next_run_at` from the issue's frequency in the issue's `schedule_timezone` (UTC if unknown), preserving local wall-clock time across DST: daily = +1 day, weekly = +7 days, monthly = +1 calendar month (day clamped to month end).

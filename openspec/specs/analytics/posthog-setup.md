@@ -2,6 +2,13 @@
 
 Configuration done in the PostHog UI, which the code can't express. The event catalogue is in `spec.md`.
 
+## Environment
+
+| Where | Variables |
+|---|---|
+| Vercel (UI) | `NEXT_PUBLIC_POSTHOG_KEY`, `NEXT_PUBLIC_POSTHOG_HOST`; optionally `POSTHOG_PERSONAL_API_KEY` and `POSTHOG_PROJECT_ID` for source maps |
+| Droplet `.env` (API) | `POSTHOG_API_KEY` (the same project key), `POSTHOG_HOST`, and `PUBLIC_API_URL` (the API's public https URL) once migration `20261007000000_delivery_opened_at.sql` is applied |
+
 ## PMF survey (configured in PostHog, no code)
 
 Create a survey under Surveys, set to Popover:

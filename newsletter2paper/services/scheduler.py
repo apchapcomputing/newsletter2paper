@@ -15,6 +15,7 @@ from urllib.parse import urlparse, parse_qsl, urlencode, urlunparse
 from services.go_pdf_service import GoPDFService
 from services.database_service import DatabaseService
 from services.email_service import PERMANENT, TRANSIENT, SendResult
+from services import analytics_service as analytics
 from services.delivery_store import CADENCE_COLUMNS, CLOSED_STATUSES, Claim, ClaimLost, DeliveryStore, SendNowCooldown  # noqa: F401
 
 logger = logging.getLogger(__name__)
@@ -32,6 +33,11 @@ RSS_BUDGET_SECONDS = int(os.environ.get('SCHEDULER_RSS_BUDGET_SECONDS', '300'))
 EMAIL_BUDGET_SECONDS = 60
 # Frequencies that send once and then turn auto_send off; they have no recurring period.
 ONE_SHOT_FREQUENCIES = {'once', 'custom'}
+# Delivery emails link to {PUBLIC_API_URL}/d/{delivery_id}, which records the open and redirects
+# to the PDF. Unset: the email links to the PDF directly.
+PUBLIC_API_URL = os.environ.get('PUBLIC_API_URL', '').rstrip('/')
+# error prefixes safe to report; the rest of an error message may contain the recipient address.
+ERROR_CATEGORIES = ('email', 'config', 'pdf', 'unexpected error')
 
 
 def _resolve_tz(tz_name: Optional[str]) -> ZoneInfo:
@@ -190,9 +196,11 @@ class SchedulerService:
                     asyncio.run(self._process_issue(claim))
                 except Exception as e:
                     logger.exception(f"Failed processing issue {claim.issue_id}: {e}")
+                    analytics.capture_exception(e, properties={'issue_id': claim.issue_id, 'stage': 'process_issue'})
                     self.release_after_error(claim, f"unexpected error: {e}")
         except Exception as e:
             logger.exception(f"Scheduler check failed: {e}")
+            analytics.capture_exception(e, properties={'stage': 'scheduler_tick'})
 
     def _initialize_unscheduled(self) -> None:
         """Give auto_send issues without next_run_at their first cadence boundary.
@@ -283,7 +291,7 @@ class SchedulerService:
             idempotency_key = delivery.get('idempotency_key') or f"delivery-{delivery['id']}-{delivery['attempts']}"
             self.store.mark_sending(claim, delivery['id'], pdf_url, target_email, idempotency_key)
             in_flight = True
-            sent = self._send_email(issue, target_email, pdf_url, idempotency_key)
+            sent = self._send_email(issue, target_email, self._email_link(delivery, pdf_url), idempotency_key)
             if not sent.ok:
                 self._fail(claim, issue, delivery, sent.error, now, force, error_kind=sent.error_kind,
                            retry_after=sent.retry_after, keep_key=sent.outcome_unknown)
@@ -295,6 +303,8 @@ class SchedulerService:
             raise
         except Exception as e:
             logger.exception(f"Issue {claim.issue_id}: unexpected error in delivery {delivery['id']}")
+            analytics.capture_exception(e, self._owner(issue) if analytics.enabled() else None, {
+                'issue_id': str(issue['id']), 'delivery_id': str(delivery['id']), 'stage': 'delivery'})
             # Once the email may have been accepted, the retry must reuse its idempotency key.
             self._fail(claim, issue, delivery, f"unexpected error: {e}", now, force, keep_key=in_flight)
             return {'success': False, 'error': str(e)}
@@ -329,6 +339,28 @@ class SchedulerService:
             remove_images=issue.get('remove_images', False),
             verbose=False,
         )
+
+    @staticmethod
+    def _email_link(delivery: dict, pdf_url: str) -> str:
+        # Must be the same on every attempt: Resend rejects a reused idempotency key whose payload differs.
+        return f"{PUBLIC_API_URL}/d/{delivery['id']}" if PUBLIC_API_URL else pdf_url
+
+    def _owner(self, issue: dict) -> Optional[str]:
+        try:
+            return self.store.owner_id(issue['id'])
+        except Exception:
+            logger.exception(f"Could not look up the owner of issue {issue.get('id')}")
+            return None
+
+    def _track(self, event: str, issue: dict, delivery: dict, **props) -> None:
+        """Product event for a delivery, keyed by the issue owner. Called after the fenced write,
+        so a run that lost its claim reports nothing."""
+        if not analytics.enabled():
+            return
+        analytics.capture(event, self._owner(issue) or f"issue:{issue['id']}", {
+            'issue_id': str(issue['id']), 'delivery_id': str(delivery['id']),
+            'trigger': delivery.get('trigger'), 'frequency': issue.get('frequency'), **props,
+        })
 
     def _send_email(self, issue: dict, target_email: str, pdf_url: str, idempotency_key: str) -> SendResult:
         try:
@@ -371,11 +403,13 @@ class SchedulerService:
             'status': 'sent', 'sent_at': now, 'pdf_url': pdf_url, 'resend_message_id': message_id,
             'error': None, 'error_kind': None, 'next_attempt_at': None,
         }, cadence=self._cadence(issue))
+        self._track('delivery_sent', issue, delivery, attempts=delivery['attempts'] + 1)
         logger.info(f"Issue {claim.issue_id} delivered ({'manual' if force else 'scheduled'}, delivery {delivery['id']})")
 
     def _skip(self, claim, issue, delivery, now, force) -> None:
         issue_fields = {'schedule_status': claim.previous_status} if force else self._next_slot(issue, now)
         self.store.finish(claim, issue_fields, delivery['id'], {'status': 'skipped'}, cadence=self._cadence(issue))
+        self._track('delivery_skipped', issue, delivery, reason='no_articles')
 
     def _fail(self, claim, issue, delivery, error, now, force, error_kind=TRANSIENT, retry_after=None,
               keep_key=False) -> None:
@@ -390,6 +424,12 @@ class SchedulerService:
         attempts = delivery['attempts'] + 1
         cadence = self._cadence(issue)
         key_fields = {} if keep_key else {'idempotency_key': None}
+        category = next((c for c in ERROR_CATEGORIES if error.startswith(c + ':')), 'other')
+
+        def track(final: bool) -> None:
+            self._track('delivery_failed', issue, delivery, error_kind=error_kind, error_category=category,
+                        attempts=attempts, final=final)
+
         if force:
             # Manual sends are not retried.
             self.store.finish(
@@ -398,6 +438,7 @@ class SchedulerService:
                                  **key_fields},
                 cadence=cadence,
             )
+            track(final=True)
             return
         if error_kind == PERMANENT or attempts >= MAX_RUN_ATTEMPTS:
             # Give up on this edition but keep the schedule alive.
@@ -412,6 +453,7 @@ class SchedulerService:
                 'status': 'abandoned', 'attempts': attempts, 'error': error, 'error_kind': error_kind,
                 'next_attempt_at': None,
             }, cadence=cadence)
+            track(final=True)
             return
         retry_at = now + max(retry_delay(attempts), timedelta(seconds=retry_after or 0))
         self.store.finish(
@@ -420,6 +462,7 @@ class SchedulerService:
                              'next_attempt_at': retry_at, **key_fields},
             cadence=cadence,
         )
+        track(final=False)
 
     def release_after_error(self, claim: Claim, error: str, force: bool = False) -> None:
         """Last-resort handler for errors before a delivery exists, so rows never stay 'processing'."""
