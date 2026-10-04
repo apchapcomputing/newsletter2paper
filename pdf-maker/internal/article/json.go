@@ -20,6 +20,7 @@ type ArticleInput struct {
 	Content       string `json:"content,omitempty"`        // Or raw HTML content
 	PublicationID string `json:"publication_id,omitempty"`
 	RemoveImages  bool   `json:"remove_images,omitempty"` // Per-publication image removal setting
+	Platform      string `json:"platform,omitempty"`      // substack, ghost, beehiiv, generic
 }
 
 // IssueInput represents the full payload with issue metadata and articles.
@@ -69,6 +70,7 @@ func (ai *ArticleInput) ToArticle() *Article {
 		Link:         ai.ContentURL,
 		Content:      ai.Content,
 		RemoveImages: ai.RemoveImages,
+		Platform:     ai.Platform,
 	}
 
 	// Parse date if provided

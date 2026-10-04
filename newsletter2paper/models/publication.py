@@ -31,7 +31,12 @@ class Publication(SQLModel, table=True):
         nullable=True,
         sa_column_kwargs={"server_default": "CURRENT_TIMESTAMP"}
     )
-    
+    platform: Optional[str] = Field(
+        default=None,
+        max_length=50,
+        nullable=True
+    )
+
     # Relationship with Article
     articles: List["Article"] = Relationship(back_populates="publication")
     

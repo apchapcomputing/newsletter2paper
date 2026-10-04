@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from contextlib import asynccontextmanager
 from fastapi.middleware.cors import CORSMiddleware
 import os
-from routers import rss, issues, publications, articles, pdf
+from routers import rss, issues, publications, articles, pdf, oneoff
 
 # Verify required environment variables
 required_env_vars = ['SUPABASE_URL', 'SUPABASE_KEY']
@@ -56,6 +56,7 @@ app.include_router(issues.router)
 app.include_router(publications.router)
 app.include_router(articles.router)
 app.include_router(pdf.router)
+app.include_router(oneoff.router)
 
 # Root endpoint
 @app.get("/")

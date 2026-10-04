@@ -4,6 +4,7 @@ from typing import List, Optional
 from pydantic import BaseModel
 
 from services.database_service import DatabaseService
+from services.platform_service import PlatformService
 
 router = APIRouter(prefix="/publications", tags=["publications"])
 
@@ -12,6 +13,7 @@ class CreatePublicationRequest(BaseModel):
     url: str
     rss_feed_url: str
     publisher: str
+    platform: Optional[str] = None
 
 # Dependency to get database service
 def get_db_service():
@@ -61,24 +63,26 @@ async def create_publication(
         if existing.data:
             raise HTTPException(status_code=400, detail="Publication with this URL already exists")
         
+        platform = request.platform or PlatformService().detect(request.url)
         publication_data = {
             'title': request.title,
             'url': request.url,
             'rss_feed_url': request.rss_feed_url,
-            'publisher': request.publisher
+            'publisher': request.publisher,
+            'platform': platform,
         }
-        
+
         result = db_service.client.table('publications').insert(publication_data).execute()
-        
+
         if not result.data:
             raise HTTPException(status_code=500, detail="Failed to create publication")
-            
+
         return {
             "success": True,
             "publication": result.data[0],
             "message": "Publication created successfully"
         }
-        
+
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to create publication: {str(e)}")
 
@@ -132,13 +136,15 @@ async def find_or_create_publication(
             }
         
         # If not found, create new publication
+        platform = request.platform or PlatformService().detect(request.url)
         publication_data = {
             'title': request.title,
             'url': request.url,
             'rss_feed_url': request.rss_feed_url,
-            'publisher': request.publisher
+            'publisher': request.publisher,
+            'platform': platform,
         }
-        
+
         result = db_service.client.table('publications').insert(publication_data).execute()
         
         if not result.data:

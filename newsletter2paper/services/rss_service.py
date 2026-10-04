@@ -681,15 +681,17 @@ class RSSService:
                     }
                 }
             
-            # Extract publications with their remove_images settings from junction table
+            # Extract publications with their settings from junction table
             publications = []
-            publication_settings = {}  # Map pub_id -> remove_images setting
+            publication_settings = {}  # Map pub_id -> {remove_images, platform}
             for item in publications_result.data:
                 if item['publications']:
                     pub = item['publications']
                     pub_id = pub['id']
-                    # Store the remove_images setting from the junction table
-                    publication_settings[pub_id] = item.get('remove_images', False)
+                    publication_settings[pub_id] = {
+                        'remove_images': item.get('remove_images', False),
+                        'platform': pub.get('platform'),
+                    }
                     publications.append(pub)
             
             # Determine the article date window
@@ -730,6 +732,7 @@ class RSSService:
                         if article.date_published and article.date_published >= cutoff_date:
                             if effective_end is None or article.date_published <= effective_end:
                                 # Convert Article object to dictionary for easier handling
+                                pub_settings = publication_settings.get(pub_id, {})
                                 article_dict = {
                                     'id': str(article.id),
                                     'title': article.title,
@@ -740,7 +743,8 @@ class RSSService:
                                     'publication_id': pub_id,
                                     'publication_title': publication.get('title', ''),
                                     'publication_publisher': publication.get('publisher', ''),
-                                    'remove_images': publication_settings.get(pub_id, False)  # Per-publication setting
+                                    'remove_images': pub_settings.get('remove_images', False),
+                                    'platform': pub_settings.get('platform'),
                                 }
                                 recent_articles.append(article_dict)
 
