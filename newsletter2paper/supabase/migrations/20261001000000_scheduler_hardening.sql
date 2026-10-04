@@ -1,6 +1,6 @@
 -- 2026-10-01: Scheduler hardening
 -- Adds retry/idempotency columns and a trigger that resets the schedule when auto_send is toggled.
--- Apply manually to Supabase BEFORE deploying the matching scheduler code.
+-- Apply to Supabase BEFORE deploying the matching scheduler code (supabase db push, or paste into the SQL editor).
 --
 -- Behaviour change: rows with auto_send = true and next_run_at IS NULL are no longer sent
 -- immediately. The scheduler initialises next_run_at to the first cadence boundary instead.
