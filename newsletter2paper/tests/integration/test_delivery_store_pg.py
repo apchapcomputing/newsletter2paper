@@ -100,7 +100,7 @@ class TestFencing:
         assert new.issue_id == issue_id and new.token != old.token
 
         with pytest.raises(ClaimLost):
-            store.mark_sending(old, delivery['id'], 'http://pdf', 'a@b.co')
+            store.mark_sending(old, delivery['id'], 'http://pdf', 'a@b.co', 'delivery-key-0')
         with pytest.raises(ClaimLost):
             store.finish(old, {'schedule_status': 'idle', 'last_run_error': 'stale'}, delivery['id'], {'status': 'sent'})
 
@@ -149,7 +149,7 @@ class TestDeliveries:
         issue_id = make_issue(engine)
         claim = store.claim_next_due(LOCK_TIMEOUT)
         delivery = store.open_scheduled_delivery(claim, slot(), '2026-W40')
-        store.mark_sending(claim, delivery['id'], 'http://pdf', 'a@b.co')
+        store.mark_sending(claim, delivery['id'], 'http://pdf', 'a@b.co', 'delivery-key-0')
         # Process dies here. The lock goes stale and the next poll reclaims the issue.
         with engine.begin() as conn:
             conn.execute(text("UPDATE public.issues SET locked_at = now() - interval '1 hour' WHERE id = :id"),
@@ -158,6 +158,7 @@ class TestDeliveries:
         reopened = store.open_scheduled_delivery(recovered, slot() + timedelta(hours=1), 'ignored')
         assert reopened['id'] == delivery['id']
         assert reopened['status'] == 'sending' and reopened['attempts'] == 0 and reopened['pdf_url'] == 'http://pdf'
+        assert reopened['idempotency_key'] == 'delivery-key-0'  # the recovered run resends with the same key
 
 
 class TestCadenceTrigger:
@@ -179,7 +180,7 @@ class TestCadenceTrigger:
         issue_id = make_issue(engine)
         claim = store.claim_next_due(LOCK_TIMEOUT)
         delivery = store.open_scheduled_delivery(claim, slot(), '2026-W40')
-        store.mark_sending(claim, delivery['id'], 'http://pdf', 'a@b.co')
+        store.mark_sending(claim, delivery['id'], 'http://pdf', 'a@b.co', 'delivery-key-0')
         with engine.begin() as conn:
             conn.execute(text("UPDATE public.issues SET auto_send = false WHERE id = :id"), {"id": issue_id})
         assert row(engine, "SELECT status FROM public.issue_deliveries WHERE id = :id", id=delivery['id'])['status'] == 'sending'
@@ -189,7 +190,7 @@ class TestCadenceTrigger:
         cadence = loaded_cadence(engine, issue_id)
         claim = store.claim_next_due(LOCK_TIMEOUT)
         delivery = store.open_scheduled_delivery(claim, slot(), '2026-W40')
-        store.mark_sending(claim, delivery['id'], 'http://pdf', 'a@b.co')
+        store.mark_sending(claim, delivery['id'], 'http://pdf', 'a@b.co', 'delivery-key-0')
         with engine.begin() as conn:  # owner switches to daily while the email is going out
             conn.execute(text("UPDATE public.issues SET frequency = 'daily' WHERE id = :id"), {"id": issue_id})
 
@@ -261,7 +262,7 @@ def test_rollback_restores_columns_from_delivery_records(engine, store):
     store.finish(claim, {'schedule_status': 'processing'}, sent['id'],
                  {'status': 'sent', 'sent_at': datetime.now(timezone.utc)})
     retry = store.open_scheduled_delivery(claim, slot() + timedelta(days=7), '2026-W41')
-    store.mark_sending(claim, retry['id'], 'http://pdf', 'a@b.co')
+    store.mark_sending(claim, retry['id'], 'http://pdf', 'a@b.co', 'delivery-key-0')
     store.finish(claim, {'schedule_status': 'failed'}, retry['id'], {'status': 'failed', 'attempts': 2})
 
     with engine.connect() as conn:

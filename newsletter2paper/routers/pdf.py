@@ -201,26 +201,21 @@ async def generate_pdf_for_issue(
         # Send email if the issue has a target_email configured
         target_email = issue_info.get('target_email')
         if target_email and result.get('pdf_url'):
-            try:
-                from services.email_service import EmailService
-                email_service = EmailService()
-                sent = email_service.send_pdf(
-                    email_address=target_email,
-                    pdf_url=result['pdf_url'],
-                    subject=f"Your PDF is ready: {issue_info.get('title', 'Newsletter')}",
-                    issue_title=issue_info.get('title'),
-                )
-                response['email_sent'] = sent
-                if sent:
-                    response['email_recipient'] = target_email
-            except Exception as email_err:
-                # Email failure must not break the PDF response
-                logging.warning(
-                    "Email delivery failed for issue %s: %s",
-                    issue_id, email_err
-                )
-                response['email_sent'] = False
-                response['email_error'] = str(email_err)
+            # Email failure must not break the PDF response; report its cause instead.
+            from services.email_service import EmailService
+            sent = EmailService().send(
+                email_address=target_email,
+                pdf_url=result['pdf_url'],
+                subject=f"Your PDF is ready: {issue_info.get('title', 'Newsletter')}",
+                issue_title=issue_info.get('title'),
+            )
+            response['email_sent'] = sent.ok
+            if sent.ok:
+                response['email_recipient'] = target_email
+            else:
+                logging.warning("Email delivery failed for issue %s: %s", issue_id, sent.error)
+                response['email_error'] = sent.error
+                response['email_error_kind'] = sent.error_kind
 
         return response
         

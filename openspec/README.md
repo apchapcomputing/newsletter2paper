@@ -32,10 +32,12 @@ openspec/
 | Domain | Description |
 | --- | --- |
 | `authentication` | User identity, sessions, guest mode, RLS |
+| `email-delivery` | Resend sends, structured results, error classification, safe email content |
 | `articles` | RSS article fetching, time-window filtering, pagination |
 | `issues` | Newsletter configuration, frequency modes, publication associations |
 | `pdf-generation` | End-to-end PDF pipeline, layout selection, image removal |
 | `publications` | Publication registration, discovery, search |
+| `scheduling` | Automatic delivery: polling, claims, delivery records, retries |
 
 ## Working with Changes
 
