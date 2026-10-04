@@ -6,6 +6,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from routers import issues
+from services.scheduler import SendNowCooldown
 from tests.unit.conftest import FakeSupabase
 
 ISSUE_ID = uuid4()
@@ -145,11 +146,15 @@ class TestAddPublications:
 
 
 class TestSendNow:
+    USER_ID = str(uuid4())
+
     class FakeScheduler:
         def __init__(self, claim='idle', fail=False):
             self.claim, self.fail, self.sent, self.failures = claim, fail, [], []
 
         def claim_for_send_now(self, issue_id):
+            if isinstance(self.claim, Exception):
+                raise self.claim
             return self.claim
 
         async def send_now(self, issue_id, previous_status):
@@ -160,14 +165,52 @@ class TestSendNow:
         def _record_failure_by_id(self, issue_id, error, **kw):
             self.failures.append((issue_id, error, kw))
 
-    def post(self, db, scheduler):
+    def post(self, db, scheduler, authed=True):
         c = client_for(db)
+        if authed:
+            c.app.dependency_overrides[issues.get_current_user_id] = lambda: self.USER_ID
         if scheduler is not None:
             c.app.state.scheduler = scheduler
         return c.post(f"/issues/{ISSUE_ID}/send-now")
 
-    def db(self, email="a@b.co"):
-        return FakeSupabase({("issues", "select"): [{"id": str(ISSUE_ID), "target_email": email}]})
+    def db(self, email="a@b.co", owned=True):
+        return FakeSupabase({
+            ("issues", "select"): [{"id": str(ISSUE_ID), "target_email": email}],
+            ("user_issues", "select"): [{"issue_id": str(ISSUE_ID)}] if owned else [],
+        })
+
+    def test_requires_bearer_token(self):
+        sched = self.FakeScheduler()
+        assert self.post(self.db(), sched, authed=False).status_code == 401
+        assert sched.sent == []
+
+    def test_invalid_token_is_401(self):
+        db = self.db()
+        db.client.auth.get_user.side_effect = Exception("bad jwt")
+        c = client_for(db)
+        c.app.state.scheduler = sched = self.FakeScheduler()
+        resp = c.post(f"/issues/{ISSUE_ID}/send-now", headers={"Authorization": "Bearer nope"})
+        assert resp.status_code == 401 and sched.sent == []
+
+    def test_valid_token_resolves_user(self):
+        db = self.db()
+        db.client.auth.get_user.return_value.user.id = self.USER_ID
+        c = client_for(db)
+        c.app.state.scheduler = sched = self.FakeScheduler()
+        resp = c.post(f"/issues/{ISSUE_ID}/send-now", headers={"Authorization": "Bearer good"})
+        assert resp.status_code == 202
+        db.client.auth.get_user.assert_called_once_with("good")
+        assert ("user_id", self.USER_ID) in db.calls_for("user_issues", "select")[0][3]
+
+    def test_issue_owned_by_someone_else_is_404(self):
+        sched = self.FakeScheduler()
+        assert self.post(self.db(owned=False), sched).status_code == 404
+        assert sched.sent == []
+
+    def test_cooldown_is_429_with_retry_after(self):
+        resp = self.post(self.db(), self.FakeScheduler(claim=SendNowCooldown(300)))
+        assert resp.status_code == 429
+        assert resp.headers["Retry-After"] == "300"
 
     def test_accepted_runs_send_in_background(self):
         sched = self.FakeScheduler(claim='failed')

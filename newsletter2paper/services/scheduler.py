@@ -20,6 +20,15 @@ logger = logging.getLogger(__name__)
 LOCK_TIMEOUT_MINUTES = int(os.environ.get('SCHEDULER_LOCK_TIMEOUT_MINUTES', '15'))
 MAX_RUN_ATTEMPTS = int(os.environ.get('SCHEDULER_MAX_ATTEMPTS', '5'))
 MAX_BACKOFF = timedelta(hours=24)
+# Minimum gap between a send-now and the issue's previous claim (locked_at is never cleared,
+# so it doubles as "last run started"); caps PDF/email load per issue.
+SEND_NOW_COOLDOWN_MINUTES = int(os.environ.get('SEND_NOW_COOLDOWN_MINUTES', '10'))
+
+
+class SendNowCooldown(Exception):
+    def __init__(self, retry_after: int):
+        super().__init__(f"retry after {retry_after}s")
+        self.retry_after = retry_after
 # Frequencies that send once and then turn auto_send off; they have no recurring period.
 ONE_SHOT_FREQUENCIES = {'once', 'custom'}
 
@@ -211,26 +220,30 @@ class SchedulerService:
 
     def claim_for_send_now(self, issue_id: str) -> Optional[str]:
         """Atomically lock one issue for a manual send. Returns the schedule_status to restore
-        afterwards, or None if it is already being processed."""
+        afterwards, or None if it is already being processed. Raises SendNowCooldown if the
+        issue was claimed (manually or by the poll) within SEND_NOW_COOLDOWN_MINUTES."""
         with self.engine.begin() as conn:
             row = conn.execute(
-                text(
-                    """
-                    UPDATE public.issues AS i
-                    SET schedule_status = 'processing', locked_at = now()
-                    FROM (SELECT id, schedule_status AS prev FROM public.issues WHERE id = :id FOR UPDATE) old
-                    WHERE i.id = old.id
-                      AND (old.prev <> 'processing' OR i.locked_at < now() - make_interval(mins => :lock_timeout))
-                    RETURNING old.prev
-                    """
-                ),
-                {"id": str(issue_id), "lock_timeout": LOCK_TIMEOUT_MINUTES},
+                text("SELECT schedule_status, locked_at, now() FROM public.issues WHERE id = :id FOR UPDATE"),
+                {"id": str(issue_id)},
             ).fetchone()
-        if not row:
-            return None
+            if not row:
+                return None
+            prev, locked_at, db_now = row
+            if locked_at is not None:
+                age = db_now - locked_at
+                if prev == 'processing' and age < timedelta(minutes=LOCK_TIMEOUT_MINUTES):
+                    return None
+                cooldown = timedelta(minutes=SEND_NOW_COOLDOWN_MINUTES)
+                if age < cooldown:
+                    raise SendNowCooldown(int((cooldown - age).total_seconds()) + 1)
+            conn.execute(
+                text("UPDATE public.issues SET schedule_status = 'processing', locked_at = now() WHERE id = :id"),
+                {"id": str(issue_id)},
+            )
         # A stale 'processing' lock belongs to a crashed run; restoring it would leave the row
         # stuck again, so hand it back to the poll as 'idle' (next_run_at is untouched).
-        return 'idle' if row[0] == 'processing' else row[0]
+        return 'idle' if prev == 'processing' else prev
 
     # ------------------------------------------------------------------
     # Processing

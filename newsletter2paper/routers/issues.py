@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 from pydantic import BaseModel, field_validator, model_validator
 
 from services.database_service import DatabaseService
+from services.scheduler import SendNowCooldown
 from models.issue import Issue
 from models.issue_publication import IssuePublication
 
@@ -86,6 +87,19 @@ class AddPublicationsRequest(BaseModel):
 # Dependency to get database service
 def get_db_service():
     return DatabaseService()
+
+def get_current_user_id(request: Request, db_service: DatabaseService = Depends(get_db_service)) -> str:
+    """Resolve the caller's Supabase user from an `Authorization: Bearer <access token>` header."""
+    scheme, _, token = request.headers.get('Authorization', '').partition(' ')
+    if scheme.lower() != 'bearer' or not token:
+        raise HTTPException(status_code=401, detail="Sign in to continue")
+    try:
+        user = db_service.client.auth.get_user(token).user
+    except Exception:
+        user = None
+    if not user:
+        raise HTTPException(status_code=401, detail="Session is invalid or expired")
+    return str(user.id)
 
 @router.post("/", response_model=dict)
 async def create_issue(
@@ -216,7 +230,8 @@ def send_issue_now(
     issue_id: UUID,
     request: Request,
     background_tasks: BackgroundTasks,
-    db_service: DatabaseService = Depends(get_db_service)
+    db_service: DatabaseService = Depends(get_db_service),
+    user_id: str = Depends(get_current_user_id),
 ):
     """
     Generate the PDF and email it to the issue's target_email right now, without
@@ -225,10 +240,16 @@ def send_issue_now(
 
     Sync on purpose: the DB claim, PDF subprocess and email calls are blocking, so the
     endpoint and its background task run in the threadpool instead of the event loop.
+
+    Only the issue's owner may call it (the backend's service key bypasses RLS, so ownership
+    is checked here), and each issue is rate-limited by SEND_NOW_COOLDOWN_MINUTES.
     """
+    owned = db_service.client.table('user_issues').select('issue_id')\
+        .eq('issue_id', str(issue_id)).eq('user_id', user_id).execute()
     result = db_service.client.table('issues').select('id, target_email')\
         .eq('id', str(issue_id)).execute()
-    if not result.data:
+    # Same 404 for "missing" and "not yours" so issue IDs can't be probed.
+    if not owned.data or not result.data:
         raise HTTPException(status_code=404, detail="Issue not found")
     if not result.data[0].get('target_email'):
         raise HTTPException(status_code=400, detail="Issue has no target_email to send to")
@@ -237,7 +258,14 @@ def send_issue_now(
     if svc is None:
         raise HTTPException(status_code=503, detail="Scheduler is not running")
 
-    previous_status = svc.claim_for_send_now(str(issue_id))
+    try:
+        previous_status = svc.claim_for_send_now(str(issue_id))
+    except SendNowCooldown as e:
+        raise HTTPException(
+            status_code=429,
+            detail=f"This issue was sent recently; try again in {max(1, round(e.retry_after / 60))} min",
+            headers={"Retry-After": str(e.retry_after)},
+        )
     if previous_status is None:
         raise HTTPException(status_code=409, detail="Issue is already being processed")
 

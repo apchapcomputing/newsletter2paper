@@ -6,7 +6,16 @@ export async function POST(request, context) {
     try {
         const { issueId } = await context.params;
 
-        const response = await fetch(`${API_URL}/issues/${issueId}/send-now`, { method: 'POST' });
+        const authorization = request.headers.get('authorization');
+        if (!authorization) {
+            return NextResponse.json({ error: 'Sign in to send now' }, { status: 401 });
+        }
+
+        // The backend verifies this Supabase access token and checks the caller owns the issue.
+        const response = await fetch(`${API_URL}/issues/${issueId}/send-now`, {
+            method: 'POST',
+            headers: { Authorization: authorization },
+        });
         const body = await response.json().catch(() => ({}));
 
         if (!response.ok) {

@@ -7,7 +7,10 @@ import pytest
 os.environ.setdefault('SUPABASE_DATABASE_URL', 'sqlite://')
 
 from services import scheduler as sch
-from services.scheduler import SchedulerService, compute_next_run, period_key, retry_delay
+from services.scheduler import (
+    LOCK_TIMEOUT_MINUTES, SEND_NOW_COOLDOWN_MINUTES, SchedulerService, SendNowCooldown,
+    compute_next_run, period_key, retry_delay,
+)
 
 UTC = timezone.utc
 
@@ -222,20 +225,40 @@ class TestFinalizeFailure:
 
 
 class TestClaimForSendNow:
-    def make(self, row):
+    NOW = datetime(2026, 3, 4, 12, 0, tzinfo=timezone.utc)
+
+    def make(self, prev, locked_minutes_ago=None):
         s = SchedulerService.__new__(SchedulerService)
         s.engine = MagicMock()
         conn = s.engine.begin.return_value.__enter__.return_value
-        conn.execute.return_value.fetchone.return_value = row
+        locked_at = None if locked_minutes_ago is None else self.NOW - timedelta(minutes=locked_minutes_ago)
+        conn.execute.return_value.fetchone.return_value = None if prev is None else (prev, locked_at, self.NOW)
+        s.conn = conn
         return s
 
     @pytest.mark.parametrize('prev', ['idle', 'failed'])
     def test_returns_previous_status(self, prev):
-        assert self.make((prev,)).claim_for_send_now('i1') == prev
+        assert self.make(prev).claim_for_send_now('i1') == prev
 
     def test_reclaimed_stale_lock_restores_idle(self):
         # Restoring 'processing' would leave the row stuck after the manual send.
-        assert self.make(('processing',)).claim_for_send_now('i1') == 'idle'
+        s = self.make('processing', locked_minutes_ago=LOCK_TIMEOUT_MINUTES + 1)
+        assert s.claim_for_send_now('i1') == 'idle'
 
     def test_already_processing_returns_none(self):
+        s = self.make('processing', locked_minutes_ago=1)
+        assert s.claim_for_send_now('i1') is None
+        assert s.conn.execute.call_count == 1  # no UPDATE
+
+    def test_missing_issue_returns_none(self):
         assert self.make(None).claim_for_send_now('i1') is None
+
+    def test_recent_claim_raises_cooldown(self):
+        s = self.make('idle', locked_minutes_ago=SEND_NOW_COOLDOWN_MINUTES - 2)
+        with pytest.raises(SendNowCooldown) as exc:
+            s.claim_for_send_now('i1')
+        assert 0 < exc.value.retry_after <= 2 * 60 + 1
+        assert s.conn.execute.call_count == 1  # no UPDATE
+
+    def test_claim_after_cooldown_succeeds(self):
+        assert self.make('idle', locked_minutes_ago=SEND_NOW_COOLDOWN_MINUTES + 1).claim_for_send_now('i1') == 'idle'

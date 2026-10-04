@@ -48,12 +48,16 @@ export default function ConfigureNewspaper() {
         updateAutoSend
     } = useNewsletterConfig()
 
+    const { session } = useAuth()
     const [sendNowState, setSendNowState] = useState({ status: 'idle', message: '' })
 
     const handleSendNow = async () => {
         setSendNowState({ status: 'sending', message: '' })
         try {
-            const res = await fetch(`/api/issues/${currentIssueId}/send-now`, { method: 'POST' })
+            const res = await fetch(`/api/issues/${currentIssueId}/send-now`, {
+                method: 'POST',
+                headers: session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {},
+            })
             const data = await res.json().catch(() => ({}))
             if (!res.ok) {
                 setSendNowState({ status: 'error', message: data.error || 'Could not start sending' })

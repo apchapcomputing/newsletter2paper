@@ -116,11 +116,11 @@ The system SHALL expose `POST /pdf/trigger-scheduled/{issue_id}` to run the sche
 
 ### Requirement: Send Now
 
-The system SHALL expose `POST /issues/{issue_id}/send-now` to generate and email an issue immediately without changing its schedule.
+The system SHALL expose `POST /issues/{issue_id}/send-now` to generate and email an issue immediately without changing its schedule. The caller MUST send a valid Supabase access token (`Authorization: Bearer <token>`) and own the issue (a `user_issues` row), and each issue is limited to one claim per `SEND_NOW_COOLDOWN_MINUTES` (default 10).
 
 #### Scenario: Send now accepted
 
-- GIVEN an issue with a `target_email` that is not being processed
+- GIVEN a signed-in user who owns an issue with a `target_email` that is not being processed and was not claimed within the cooldown
 - WHEN the client sends `POST /issues/{issue_id}/send-now`
 - THEN the API returns 202, work continues in the background, and `next_run_at`, `last_sent_period` and retry state are unchanged (only `last_run_at` / `last_run_error` are updated)
 
@@ -132,6 +132,6 @@ The system SHALL expose `POST /issues/{issue_id}/send-now` to generate and email
 
 #### Scenario: Rejected send now
 
-- GIVEN the issue does not exist (404), has no `target_email` (400), or is already `processing` (409)
+- GIVEN no or an invalid access token (401), the issue does not exist or belongs to another user (404, indistinguishable), it has no `target_email` (400), it is already `processing` (409), or its `locked_at` is within `SEND_NOW_COOLDOWN_MINUTES` (429 with `Retry-After`)
 - WHEN the client sends `POST /issues/{issue_id}/send-now`
 - THEN the corresponding error is returned and nothing is started
