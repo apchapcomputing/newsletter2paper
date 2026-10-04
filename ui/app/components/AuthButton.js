@@ -81,6 +81,7 @@ export default function AuthButton() {
 
             <AuthModal
                 open={authModalOpen}
+                trigger="header"
                 onClose={() => setAuthModalOpen(false)}
             />
         </>

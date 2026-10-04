@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { Box, Button, Typography, TextField, Switch, FormControlLabel } from '@mui/material'
 import { useNewsletterConfig } from '../../contexts/useNewsletterConfig'
 import { useAuth } from '../../contexts/useAuth'
+import { track } from '../../lib/analytics'
 
 const FORMAT_OPTIONS = [
     { value: 'essay', label: 'Essay' },
@@ -53,6 +54,7 @@ export default function ConfigureNewspaper() {
     const hasRecipient = Boolean(targetEmail && targetEmail.trim())
 
     const handleSendNow = async () => {
+        track('send_now_clicked')
         setSendNowState({ status: 'sending', message: '' })
         try {
             const res = await fetch(`/api/issues/${currentIssueId}/send-now`, {

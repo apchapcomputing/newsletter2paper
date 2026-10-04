@@ -6,6 +6,7 @@ import { useSelectedPublications } from '../../contexts/useSelectedPublications'
 import { getRssFeedUrl } from '../../utils/rssUtils'
 import { searchSubstack } from '../../utils/substackUtils'
 import logger from '../../utils/logger'
+import { track } from '../../lib/analytics'
 
 export default function AddUrlModal({ open, onClose, onPublicationAdded }) {
     const { addPublication, updatePublicationId } = useSelectedPublications()
@@ -141,6 +142,7 @@ export default function AddUrlModal({ open, onClose, onPublicationAdded }) {
                         handle: handle,
                     }
                     addPublication(newPub)
+                    track('publication_added', { source: 'url' })
 
                     // Also create/find the publication in the database
                     try {

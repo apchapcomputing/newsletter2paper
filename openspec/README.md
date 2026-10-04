@@ -31,6 +31,7 @@ openspec/
 
 | Domain | Description |
 | --- | --- |
+| `analytics` | PostHog events, consent, identity, error tracking |
 | `authentication` | User identity, sessions, guest mode, RLS |
 | `email-delivery` | Resend sends, structured results, error classification, safe email content |
 | `articles` | RSS article fetching, time-window filtering, pagination |

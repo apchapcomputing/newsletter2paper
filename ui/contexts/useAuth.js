@@ -3,7 +3,22 @@
 import { createContext, useContext, useEffect, useState } from 'react'
 import { createClient } from '../lib/supabase'
 import logger from '../utils/logger'
-import { identify, reset } from '../lib/analytics'
+import { identify, reset, track } from '../lib/analytics'
+
+// Set by app/auth/callback after a successful sign-in, so the completion event fires once per
+// sign-in rather than on every session restore.
+export const AUTH_COMPLETED_PARAM = 'signed_in'
+const NEW_ACCOUNT_MS = 10 * 60 * 1000
+
+export function trackCompletedSignIn(user) {
+    if (typeof window === 'undefined' || !user) return
+    const url = new URL(window.location.href)
+    if (!url.searchParams.has(AUTH_COMPLETED_PARAM)) return
+    url.searchParams.delete(AUTH_COMPLETED_PARAM)
+    window.history.replaceState(window.history.state, '', url.pathname + url.search + url.hash)
+    const isNew = Date.now() - new Date(user.created_at).getTime() < NEW_ACCOUNT_MS
+    track(isNew ? 'signup_completed' : 'signed_in', { method: user.app_metadata?.provider || 'email' })
+}
 
 const AuthContext = createContext({
     user: null,
@@ -38,6 +53,7 @@ export function AuthProvider({ children }) {
                 setSession(session)
                 setUser(session?.user ?? null)
                 identify(session?.user?.id)
+                trackCompletedSignIn(session?.user)
             }
             setLoading(false)
         }
@@ -69,6 +85,7 @@ export function AuthProvider({ children }) {
     }, [])
 
     const signInWithMagicLink = async (email) => {
+        track('signup_started', { method: 'email' })
         try {
             const { data, error } = await supabase.auth.signInWithOtp({
                 email,
@@ -87,6 +104,7 @@ export function AuthProvider({ children }) {
     }
 
     const signInWithProvider = async (provider) => {
+        track('signup_started', { method: provider })
         try {
             const { data, error } = await supabase.auth.signInWithOAuth({
                 provider,
