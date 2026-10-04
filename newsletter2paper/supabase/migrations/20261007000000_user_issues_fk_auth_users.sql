@@ -8,8 +8,10 @@
 -- This migration:
 --   1. drops the legacy public.users table and its foreign key (only where it exists, and only
 --      if it holds nothing but the baseline's @example.com sample rows);
---   2. deletes user_issues rows whose user no longer exists in auth.users. They are unreachable:
---      RLS matches user_issues.user_id against auth.uid(), which can never equal a deleted user;
+--   2. copies user_issues rows whose user no longer exists in auth.users to
+--      public.user_issues_dangling_archive, then deletes them. They are unreachable (RLS matches
+--      user_id against auth.uid(), which can never equal a deleted user), but the archive makes
+--      the delete reversible; the archive table is not exposed to clients (RLS on, no policies);
 --   3. adds user_issues_user_id_fkey -> auth.users(id) ON DELETE CASCADE.
 --
 -- Deleting an account now removes its links; the issue rows stay (see the PR description).
@@ -34,10 +36,25 @@ BEGIN
     DROP TABLE public.users;  -- no CASCADE: fail loudly if anything else depends on it
   END IF;
 
+  CREATE TABLE IF NOT EXISTS public.user_issues_dangling_archive (
+    user_id     uuid NOT NULL,
+    issue_id    uuid NOT NULL,
+    created_at  timestamptz,
+    updated_at  timestamptz,
+    archived_at timestamptz NOT NULL DEFAULT now()
+  );
+  ALTER TABLE public.user_issues_dangling_archive ENABLE ROW LEVEL SECURITY;  -- no policies: service role only
+  REVOKE ALL ON public.user_issues_dangling_archive FROM anon, authenticated;
+
+  INSERT INTO public.user_issues_dangling_archive (user_id, issue_id, created_at, updated_at)
+  SELECT ui.user_id, ui.issue_id, ui.created_at, ui.updated_at
+  FROM public.user_issues ui
+  WHERE NOT EXISTS (SELECT 1 FROM auth.users u WHERE u.id = ui.user_id);
+
   DELETE FROM public.user_issues ui
   WHERE NOT EXISTS (SELECT 1 FROM auth.users u WHERE u.id = ui.user_id);
   GET DIAGNOSTICS dangling = ROW_COUNT;
-  RAISE NOTICE 'deleted % user_issues rows pointing at users that do not exist in auth.users', dangling;
+  RAISE NOTICE 'archived and deleted % user_issues rows pointing at users that do not exist in auth.users', dangling;
 
   IF NOT EXISTS (
     SELECT 1 FROM pg_constraint
@@ -53,7 +70,14 @@ END $$;
 
 COMMIT;
 
--- Rollback (drops the constraint only; public.users is not recreated because nothing used it):
+-- Rollback: drop the constraint and put back the archived links. (public.users is not recreated
+-- because nothing used it.) Restored rows whose issue was deleted since are skipped.
 -- BEGIN;
 -- ALTER TABLE public.user_issues DROP CONSTRAINT IF EXISTS user_issues_user_id_fkey;
+-- INSERT INTO public.user_issues (user_id, issue_id, created_at, updated_at)
+--   SELECT a.user_id, a.issue_id, a.created_at, a.updated_at
+--   FROM public.user_issues_dangling_archive a
+--   WHERE EXISTS (SELECT 1 FROM public.issues i WHERE i.id = a.issue_id)
+--   ON CONFLICT DO NOTHING;
 -- COMMIT;
+-- Once you are sure nothing needs restoring: DROP TABLE public.user_issues_dangling_archive;

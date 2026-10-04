@@ -21,6 +21,16 @@ BEGIN
     RAISE EXCEPTION 'FAIL: expected one ON DELETE CASCADE foreign key from user_issues to auth.users, found %', n;
   END IF;
 
+  -- Links removed by the migration are archived, and the archive is not readable by clients.
+  IF to_regclass('public.user_issues_dangling_archive') IS NULL THEN
+    RAISE EXCEPTION 'FAIL: user_issues_dangling_archive is missing';
+  END IF;
+  IF has_table_privilege('authenticated', 'public.user_issues_dangling_archive', 'select')
+     OR has_table_privilege('anon', 'public.user_issues_dangling_archive', 'select') THEN
+    RAISE EXCEPTION 'FAIL: clients can read user_issues_dangling_archive';
+  END IF;
+  RAISE NOTICE 'ok: dangling-link archive exists and is not client-readable';
+
   INSERT INTO issues(id, format, frequency, title) VALUES (i, 'essay', 'weekly', 'fk test');
 
   -- A link for a user that does not exist is rejected.
