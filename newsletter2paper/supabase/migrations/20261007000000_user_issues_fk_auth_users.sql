@@ -1,4 +1,4 @@
--- 2026-10-06: user_issues.user_id references auth.users; remove the unused public.users table.
+-- 2026-10-07: user_issues.user_id references auth.users; remove the unused public.users table.
 --
 -- Supabase Auth (auth.users) owns identity. The baseline used to create a local public.users
 -- table (username/password/...) that production never had and nothing reads. Because of that,

@@ -39,7 +39,7 @@ CREATE TABLE IF NOT EXISTS articles (
 
 -- Create user_issues junction table
 CREATE TABLE IF NOT EXISTS user_issues (
-    -- References auth.users(id); the foreign key is added by migration 20261006000000
+    -- References auth.users(id); the foreign key is added by migration 20261007000000
     -- (Supabase Auth owns identity, and the auth schema is not part of this file).
     user_id UUID NOT NULL,
     issue_id UUID REFERENCES issues(id) ON DELETE CASCADE,

@@ -1,1 +1,0 @@
-../../newsletter2paper/supabase/migrations/20261006000000_user_issues_fk_auth_users.sql
