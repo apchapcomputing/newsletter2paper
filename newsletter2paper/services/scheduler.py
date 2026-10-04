@@ -20,6 +20,8 @@ logger = logging.getLogger(__name__)
 LOCK_TIMEOUT_MINUTES = int(os.environ.get('SCHEDULER_LOCK_TIMEOUT_MINUTES', '15'))
 MAX_RUN_ATTEMPTS = int(os.environ.get('SCHEDULER_MAX_ATTEMPTS', '5'))
 MAX_BACKOFF = timedelta(hours=24)
+# Frequencies that send once and then turn auto_send off; they have no recurring period.
+ONE_SHOT_FREQUENCIES = {'once', 'custom'}
 
 
 def _resolve_tz(tz_name: Optional[str]) -> ZoneInfo:
@@ -254,7 +256,9 @@ class SchedulerService:
         tz_name = issue.get('schedule_timezone')
         period = period_key(freq, now, tz_name)
 
-        if not force and issue.get('last_sent_period') == period:
+        # One-shot issues are guarded by auto_send turning off after a successful send, and their
+        # period key is the constant 'once', so checking it would block every re-enabled send.
+        if not force and freq not in ONE_SHOT_FREQUENCIES and issue.get('last_sent_period') == period:
             logger.info(f"Issue {issue_id} already sent for period {period}; skipping")
             self._finalize_idle(issue, now)
             return {'success': True, 'error': None}

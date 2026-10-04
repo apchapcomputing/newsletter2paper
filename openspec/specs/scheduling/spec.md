@@ -72,9 +72,15 @@ generate a PDF using the issue's `format` and `remove_images`, and email it to `
 
 #### Scenario: At most one delivery per period
 
-- GIVEN `last_sent_period` equals the current period key (daily `YYYY-MM-DD`, weekly ISO `YYYY-Www`, monthly `YYYY-MM`, in `schedule_timezone`)
+- GIVEN a recurring issue (`daily`, `weekly` or `monthly`) whose `last_sent_period` equals the current period key (daily `YYYY-MM-DD`, weekly ISO `YYYY-Www`, monthly `YYYY-MM`, in `schedule_timezone`)
 - WHEN the issue is processed by the scheduler
 - THEN nothing is sent and `next_run_at` is advanced
+
+#### Scenario: Re-enabled one-shot issue sends again
+
+- GIVEN a `once` or `custom` issue that was sent before (so `last_sent_period='once'` and `auto_send` was turned off)
+- WHEN the owner turns `auto_send` back on and the issue becomes due
+- THEN the period check does not apply and the issue is generated and sent; one-shot issues rely on `auto_send` turning off after a successful send
 
 #### Scenario: Newly enabled issue waits for the first cadence
 

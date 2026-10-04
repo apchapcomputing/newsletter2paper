@@ -114,6 +114,16 @@ class TestProcessIssue:
         svc.email.assert_not_called()
         assert names(svc) == ['_finalize_idle']
 
+    @pytest.mark.parametrize('freq', ['once', 'custom'])
+    async def test_reenabled_one_shot_sends_again(self, svc, freq):
+        # A previous send left last_sent_period='once'; re-enabling must not be skipped forever.
+        svc._load['issue'] = issue(frequency=freq, last_sent_period=period_key(freq, datetime.now(UTC)))
+        svc.generate.return_value = {'success': True, 'pdf_url': 'http://pdf'}
+        res = await svc._process_issue('i1')
+        assert res['success']
+        svc.email.assert_called_once()
+        assert names(svc) == ['_finalize_success']
+
     async def test_force_ignores_idempotency(self, svc):
         period = period_key('weekly', datetime.now(UTC))
         svc._load['issue'] = issue(last_sent_period=period)
