@@ -77,6 +77,11 @@ jobs:
           container=$(docker ps --format '{{.Names}}' | grep supabase_db | head -n 1)
           docker exec -i "$container" psql -U postgres -v ON_ERROR_STOP=1 < supabase/tests/rls_policies.sql
 
+      - name: Run user_issues foreign key tests
+        run: |
+          container=$(docker ps --format '{{.Names}}' | grep supabase_db | head -n 1)
+          docker exec -i "$container" psql -U postgres -v ON_ERROR_STOP=1 < supabase/tests/user_issues_fk.sql
+
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
