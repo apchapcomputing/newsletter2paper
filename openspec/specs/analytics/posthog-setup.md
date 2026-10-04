@@ -20,3 +20,58 @@ Create a survey under Surveys, set to Popover:
 **Display conditions:** people who have done `pdf_generated` at least twice, or `auto_send_enabled` at least once. Show once per person, after a 5 second delay. A survey can only remember that it was shown when the visitor accepted the consent banner, so cookieless visitors won't see it.
 
 **Reading it:** if 40% or more answer "Very disappointed", that's the usual product/market-fit benchmark (Sean Ellis). Treat it as a rule of thumb and only trust it after about 40 responses.
+
+## Dashboard: "Is it valuable?"
+
+Create each insight below and add it to one dashboard. **"Printers"** means people with `pdf_generated` or `delivery_sent`.
+
+| Insight | Type | Definition |
+|---|---|---|
+| Weekly printers (north star) | Trends | Unique users with `pdf_generated` or `delivery_sent`, weekly |
+| Activation | Funnel, 1-day window | `$pageview` → `publication_added` → `pdf_generated` |
+| Monetization | Funnel, 30-day window | `pdf_generated` → `signup_completed` → `auto_send_enabled` (add `subscription_started` once Stripe exists) |
+| Retention | Retention, weekly | Start: `pdf_generated`. Return: `pdf_generated` or `delivery_sent`. Break down by `is_guest`. Look for a curve that flattens, not one that decays to zero. |
+| Edition open rate | Trends, formula | A = `edition_opened` where `first_open = true` and `likely_scanner = false`; B = `delivery_sent`; formula `A / B`, weekly |
+| Acquisition | Funnel (activation) | Break down by `$initial_referring_domain`, then by `$initial_utm_source` |
+| Repeat use | Trends | Unique users with `pdf_generated` at least 2 times in 30 days |
+| PMF survey | Survey results | the survey from the section above |
+
+## Dashboard: "Health"
+
+| Insight | Type | Definition |
+|---|---|---|
+| Errors | Error tracking | Issues list, sorted by occurrences in the last 7 days (browser, Next server and API, grouped) |
+| PDF failure rate | Trends, formula | `pdf_generate_failed` / `pdf_generate_clicked`, daily, broken down by `error_type` |
+| Delivery failures | Trends | `delivery_failed` broken down by `error_category` and `final` |
+| Deliveries sent | Trends | `delivery_sent` per day |
+
+**Alerts** (Insight → Alerts, notify by email):
+- PDF failures: `pdf_generate_failed` count above 5 in an hour.
+- Lost editions: `delivery_failed` with `final = true`, count above 0 in a day.
+- Scheduler silent: `delivery_sent` count is 0 over a day while any issue has auto-send on. Until the scheduler emits a heartbeat, check this one by hand when it fires; it can fire on a genuinely quiet day.
+- Error tracking: turn on email notifications for new issues.
+
+## UTM convention
+
+Tag every link you post or pay for. PostHog reads `utm_*` and the referrer automatically.
+
+| Parameter | Value | Examples |
+|---|---|---|
+| `utm_source` | channel | `reddit`, `x`, `hn`, `newsletter`, `producthunt` |
+| `utm_medium` | `organic` or `paid` | |
+| `utm_campaign` | the post or ad | `launch-oct26`, `r-substack-printing` |
+
+Example: `https://newsletter2paper.xyz/?utm_source=reddit&utm_medium=organic&utm_campaign=r-substack-printing`
+
+## Decision guide
+
+Settle these thresholds before you spend on marketing, and review the dashboards for 15 minutes each week. These are common rules of thumb, not laws, and they mean little before about 100 activated users or 40 survey responses.
+
+- **Keep marketing:** at least 40% "very disappointed" on the PMF survey, plus a retention curve that flattens above zero.
+- **Activation is fine but nobody comes back:** the core value isn't landing. Read the survey's "main benefit" answers and talk to the "tried once" cohort before deciding to pivot.
+- **Activation is poor:** fix onboarding and the landing message before judging the product.
+- **Edition open rate is low for auto-send users:** the paid feature isn't valued as delivered. Look at timing, frequency and content before building more features.
+
+## Privacy policy
+
+Add a line along these lines: "We use PostHog (EU) for anonymous product analytics and error reports. With your consent we store an anonymous identifier in your browser; without it, visits are counted without cookies. We never send your email address or newsletter content to analytics."
