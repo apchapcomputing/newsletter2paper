@@ -174,10 +174,24 @@ CREATE POLICY issue_publications_write ON public.issue_publications
 
 COMMIT;
 
--- Rollback:
+-- Rollback (tables that do not exist, like public.users in production, are skipped).
+-- Dropping the functions with CASCADE also drops every policy that uses them; the policies
+-- that don't (publications, articles, user_issues, issues_owner_insert) are dropped explicitly. The added
+-- issues.guest_token and issues.status columns are left in place.
 -- BEGIN;
--- ALTER TABLE public.users DISABLE ROW LEVEL SECURITY;
--- (repeat for publications, articles, issues, user_issues, issue_publications)
--- DROP FUNCTION IF EXISTS public.is_issue_owner(uuid);
--- DROP FUNCTION IF EXISTS public.request_guest_token();
+-- ALTER TABLE IF EXISTS public.users              DISABLE ROW LEVEL SECURITY;
+-- ALTER TABLE IF EXISTS public.publications       DISABLE ROW LEVEL SECURITY;
+-- ALTER TABLE IF EXISTS public.articles           DISABLE ROW LEVEL SECURITY;
+-- ALTER TABLE IF EXISTS public.issues             DISABLE ROW LEVEL SECURITY;
+-- ALTER TABLE IF EXISTS public.user_issues        DISABLE ROW LEVEL SECURITY;
+-- ALTER TABLE IF EXISTS public.issue_publications DISABLE ROW LEVEL SECURITY;
+-- DROP POLICY IF EXISTS publications_read ON public.publications;
+-- DROP POLICY IF EXISTS articles_read ON public.articles;
+-- DROP POLICY IF EXISTS user_issues_select ON public.user_issues;
+-- DROP POLICY IF EXISTS user_issues_insert ON public.user_issues;
+-- DROP POLICY IF EXISTS user_issues_update ON public.user_issues;
+-- DROP POLICY IF EXISTS user_issues_delete ON public.user_issues;
+-- DROP POLICY IF EXISTS issues_owner_insert ON public.issues;
+-- DROP FUNCTION IF EXISTS public.is_issue_owner(uuid) CASCADE;
+-- DROP FUNCTION IF EXISTS public.request_guest_token() CASCADE;
 -- COMMIT;
