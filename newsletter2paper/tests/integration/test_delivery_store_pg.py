@@ -243,3 +243,36 @@ def test_send_now_claim_sets_a_token(engine, store):
     assert isinstance(claim, Claim)
     r = row(engine, "SELECT claim_token FROM public.issues WHERE id = :id", id=issue_id)
     assert str(r['claim_token']) == claim.token
+
+
+def rollback_sql():
+    """The commented-out rollback block from the migration, minus its BEGIN/COMMIT."""
+    path = os.path.join(os.path.dirname(__file__), '..', '..', 'supabase', 'migrations',
+                        '20261005000000_issue_deliveries.sql')
+    lines = open(path).read().split('-- Rollback', 1)[1].splitlines()
+    start, end = lines.index('-- BEGIN;'), lines.index('-- COMMIT;')
+    return '\n'.join(line[3:] for line in lines[start + 1:end])
+
+
+def test_rollback_restores_columns_from_delivery_records(engine, store):
+    issue_id = make_issue(engine)
+    claim = store.claim_next_due(LOCK_TIMEOUT)
+    sent = store.open_scheduled_delivery(claim, slot(), '2026-W40')
+    store.finish(claim, {'schedule_status': 'processing'}, sent['id'],
+                 {'status': 'sent', 'sent_at': datetime.now(timezone.utc)})
+    retry = store.open_scheduled_delivery(claim, slot() + timedelta(days=7), '2026-W41')
+    store.mark_sending(claim, retry['id'], 'http://pdf', 'a@b.co')
+    store.finish(claim, {'schedule_status': 'failed'}, retry['id'], {'status': 'failed', 'attempts': 2})
+
+    with engine.connect() as conn:
+        tx = conn.begin()  # DDL is transactional in Postgres; undone below
+        try:
+            conn.exec_driver_sql(rollback_sql())
+            r = conn.execute(text(
+                "SELECT run_attempts, last_sent_period, pending_pdf_url, pending_period FROM public.issues WHERE id = :id"
+            ), {"id": issue_id}).mappings().one()
+            assert dict(r) == {'run_attempts': 2, 'last_sent_period': '2026-W40',
+                               'pending_pdf_url': 'http://pdf', 'pending_period': '2026-W41'}
+            assert conn.execute(text("SELECT to_regclass('public.issue_deliveries')")).scalar() is None
+        finally:
+            tx.rollback()

@@ -100,10 +100,30 @@ ALTER TABLE public.issues
 
 COMMIT;
 
--- Rollback (restores the columns empty; re-apply 20261001000000_scheduler_hardening.sql for its trigger):
+-- Rollback (for reverting to the 20261001 scheduler code). Restores PR #5's columns with their
+-- original types and fills them from the delivery records, so the old scheduler doesn't resend a
+-- period that was already delivered or lose a pending email-only retry. Then restores the
+-- auto_send-only trigger by re-applying 20261001000000_scheduler_hardening.sql.
+-- WARNING: dropping issue_deliveries permanently deletes the send history (every edition, its
+-- status, error, PDF link and Resend message id). Export the table first if it is needed.
 -- BEGIN;
+-- ALTER TABLE public.issues
+--   ADD COLUMN IF NOT EXISTS run_attempts integer NOT NULL DEFAULT 0,
+--   ADD COLUMN IF NOT EXISTS last_sent_period text,
+--   ADD COLUMN IF NOT EXISTS pending_pdf_url text,
+--   ADD COLUMN IF NOT EXISTS pending_period text;
+-- UPDATE public.issues i SET last_sent_period = d.period_key
+--   FROM (SELECT DISTINCT ON (issue_id) issue_id, period_key FROM public.issue_deliveries
+--         WHERE trigger = 'scheduled' AND status = 'sent' ORDER BY issue_id, sent_at DESC NULLS LAST) d
+--   WHERE i.id = d.issue_id;
+-- UPDATE public.issues i SET run_attempts = d.attempts, pending_pdf_url = d.pdf_url,
+--     pending_period = CASE WHEN d.pdf_url IS NOT NULL THEN d.period_key END
+--   FROM public.issue_deliveries d
+--   WHERE i.id = d.issue_id AND d.trigger = 'scheduled' AND d.status IN ('failed', 'sending');
 -- DROP TRIGGER IF EXISTS trg_reset_schedule_on_cadence_change ON public.issues;
 -- DROP FUNCTION IF EXISTS public.reset_schedule_on_cadence_change();
 -- ALTER TABLE public.issues DROP COLUMN IF EXISTS claim_token;
--- DROP TABLE IF EXISTS public.issue_deliveries;
+-- DROP TABLE IF EXISTS public.issue_deliveries;  -- deletes the send history
 -- COMMIT;
+-- Then run 20261001000000_scheduler_hardening.sql again (idempotent) to recreate
+-- trg_reset_schedule_on_auto_send_change.
