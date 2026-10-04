@@ -154,4 +154,42 @@ BEGIN
   PERFORM pg_temp.expect('anon cannot write publications', n, 0);
 END $$;
 
+-- issue_deliveries: owners read their own history; only the scheduler (superuser) writes.
+INSERT INTO issue_deliveries(issue_id,trigger,period_key,scheduled_for,status) VALUES
+  ('11111111-0000-0000-0000-00000000000a','scheduled','2026-W40',now(),'sent'),
+  ('22222222-0000-0000-0000-00000000000b','scheduled','2026-W40',now(),'sent');
+
+DO $$
+DECLARE n bigint;
+  a constant uuid := 'aaaaaaaa-0000-0000-0000-00000000000a';
+BEGIN
+  PERFORM pg_temp.ctx('authenticated', a, 'a@rls.test');
+  SELECT count(*) INTO n FROM issue_deliveries;              RESET ROLE;
+  PERFORM pg_temp.expect('A sees only own deliveries', n, 1);
+
+  PERFORM pg_temp.ctx('anon');
+  BEGIN
+    SELECT count(*) INTO n FROM issue_deliveries;
+  EXCEPTION WHEN insufficient_privilege THEN n := 0; END;
+  RESET ROLE;
+  PERFORM pg_temp.expect('anon cannot read deliveries', n, 0);
+
+  PERFORM pg_temp.ctx('authenticated', a, 'a@rls.test');
+  BEGIN
+    INSERT INTO issue_deliveries(issue_id,trigger,period_key,scheduled_for)
+      VALUES ('11111111-0000-0000-0000-00000000000a','scheduled','2026-W41',now());
+    n := 1;
+  EXCEPTION WHEN insufficient_privilege THEN n := 0; END;
+  RESET ROLE;
+  PERFORM pg_temp.expect('A cannot write own deliveries', n, 0);
+
+  PERFORM pg_temp.ctx('authenticated', a, 'a@rls.test');
+  BEGIN
+    UPDATE issue_deliveries SET status = 'pending';
+    GET DIAGNOSTICS n = ROW_COUNT;
+  EXCEPTION WHEN insufficient_privilege THEN n := 0; END;
+  RESET ROLE;
+  PERFORM pg_temp.expect('A cannot update deliveries', n, 0);
+END $$;
+
 ROLLBACK;

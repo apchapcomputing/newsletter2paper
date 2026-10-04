@@ -6,6 +6,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from routers import issues
+from services.delivery_store import Claim
 from services.scheduler import SendNowCooldown
 from tests.unit.conftest import FakeSupabase
 
@@ -155,15 +156,15 @@ class TestSendNow:
         def claim_for_send_now(self, issue_id):
             if isinstance(self.claim, Exception):
                 raise self.claim
-            return self.claim
+            return None if self.claim is None else Claim(issue_id, 'tok', self.claim)
 
-        async def send_now(self, issue_id, previous_status):
+        async def send_now(self, claim):
             if self.fail:
                 raise RuntimeError("boom")
-            self.sent.append((issue_id, previous_status))
+            self.sent.append((claim.issue_id, claim.previous_status))
 
-        def _record_failure_by_id(self, issue_id, error, **kw):
-            self.failures.append((issue_id, error, kw))
+        def release_after_error(self, claim, error, **kw):
+            self.failures.append((claim.issue_id, error, kw))
 
     def post(self, db, scheduler, authed=True):
         c = client_for(db)

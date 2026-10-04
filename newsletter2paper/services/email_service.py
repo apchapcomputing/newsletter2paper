@@ -46,9 +46,25 @@ class EmailService:
         bool
             True if the email was sent successfully, False otherwise.
         """
+        return self.send_pdf_message(email_address, pdf_url, subject, issue_title) is not None
+
+    def send_pdf_message(
+        self,
+        email_address: str,
+        pdf_url: str,
+        subject: Optional[str] = None,
+        issue_title: Optional[str] = None,
+        idempotency_key: Optional[str] = None,
+    ) -> Optional[str]:
+        """
+        Like `send_pdf`, but returns the Resend message id (None on failure).
+
+        Resend treats repeated requests with the same `idempotency_key` (within 24h) as one
+        email, so a retry after a crash cannot deliver twice.
+        """
         if not email_address:
             logger.warning("send_pdf called with no email address – skipping.")
-            return False
+            return None
 
         resolved_subject = subject or f"Your newsletter PDF is ready"
         display_title = issue_title or "Your newsletter"
@@ -68,18 +84,21 @@ class EmailService:
                 "html": html_body,
                 "text": text_body,
             }
-            response = resend.Emails.send(params)
+            options: resend.Emails.SendOptions = {}
+            if idempotency_key:
+                options["idempotency_key"] = idempotency_key
+            response = resend.Emails.send(params, options)
             logger.info(
                 "Email sent to %s (Resend id: %s)",
                 email_address,
                 response.get("id"),
             )
-            return True
+            return response.get("id") or ""
         except Exception as exc:  # noqa: BLE001
             logger.error(
                 "Failed to send email to %s: %s", email_address, exc
             )
-            return False
+            return None
 
     # ------------------------------------------------------------------
     # Private helpers

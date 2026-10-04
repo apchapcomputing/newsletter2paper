@@ -4,17 +4,17 @@ GitHub issue for each group in brackets. Parent: #17.
 
 ## 0. Land PR #5 (prerequisite)
 
-- [ ] Rebase `feature/scheduler-hardening` onto `main` (CI's async test failures are fixed by `asyncio_mode = auto` on `main`)
-- [ ] Move `data/migrations/2026_10_01_scheduler_hardening.sql` to `newsletter2paper/supabase/migrations/` (with `data/migrations` symlink per repo convention)
-- [ ] Remove `run_attempts`, `last_sent_period`, `pending_pdf_url`, `pending_period` from that migration (replaced by `issue_deliveries`, §1)
-- [ ] Use `request.app.state.scheduler` in send-now instead of constructing `SchedulerService()` per request
+- [x] Rebase `feature/scheduler-hardening` onto `main` (CI's async test failures are fixed by `asyncio_mode = auto` on `main`)
+- [x] Move `data/migrations/2026_10_01_scheduler_hardening.sql` to `newsletter2paper/supabase/migrations/` (with `data/migrations` symlink per repo convention)
+- [x] Remove `run_attempts`, `last_sent_period`, `pending_pdf_url`, `pending_period` (replaced by `issue_deliveries`, §1). Done as a `DROP COLUMN IF EXISTS` in `20261005000000_issue_deliveries.sql` instead, so PR #5's code keeps working until this lands
+- [x] Use `request.app.state.scheduler` in send-now instead of constructing `SchedulerService()` per request
 - [ ] Merge PR #5
 
 ## 1. Delivery records and schema
 
-- [ ] Migration: `issue_deliveries` table, partial unique index `(issue_id, period_key) WHERE trigger='scheduled'`, history index, RLS select-for-owner
+- [x] Migration: `issue_deliveries` table, partial unique index `(issue_id, period_key) WHERE trigger='scheduled'`, history index, RLS select-for-owner
 - [ ] Migration: `issues.claim_token`, `target_email_verified_at`, `unsubscribe_token`; `email_verifications` table
-- [ ] Migration: `reset_schedule_on_cadence_change` trigger (replaces PR #5 auto_send-only trigger)
+- [x] Migration: `reset_schedule_on_cadence_change` trigger (replaces PR #5 auto_send-only trigger)
 - [ ] Migration: `reset_verification_on_email_change` trigger; backfill verified for account-email recipients
 - [ ] Migration: `REVOKE UPDATE` on scheduler-owned and verification columns from `anon`, `authenticated`
 - [ ] pgTAP tests for triggers, unique index, column privileges, delivery RLS
@@ -28,10 +28,10 @@ GitHub issue for each group in brackets. Parent: #17.
 
 ## 3. Crash safety and idempotency [#21]
 
-- [ ] Claim sets `claim_token`; all issue writes conditional on it; fenced-out worker logs and stops
-- [ ] Delivery `sending` committed before Resend call; recovery resends with same idempotency key
-- [ ] Startup assertion: `SCHEDULER_LOCK_TIMEOUT_MINUTES` > worst-case run duration
-- [ ] Integration tests: concurrent claim, stale takeover, fenced write is a no-op, crash after `sending` → one email
+- [x] Claim sets `claim_token`; all issue writes conditional on it; fenced-out worker logs and stops
+- [x] Delivery `sending` committed before Resend call; recovery resends with same idempotency key
+- [x] Startup assertion: `SCHEDULER_LOCK_TIMEOUT_MINUTES` > worst-case run duration
+- [x] Integration tests: concurrent claim, stale takeover, fenced write is a no-op, crash after `sending` → one email
 - [ ] Manual: `docker compose down` mid-run in staging → exactly one email
 
 ## 4. Email result and error classification [#22]
@@ -67,7 +67,7 @@ GitHub issue for each group in brackets. Parent: #17.
 
 - [ ] `Depends(require_issue_owner)` verifying the Supabase JWT; apply to send-now, verify, deliveries
 - [ ] Next.js proxy routes forward `Authorization: Bearer <access_token>`
-- [ ] Remove `POST /pdf/trigger-scheduled/{id}`
+- [x] Remove `POST /pdf/trigger-scheduled/{id}`
 - [ ] Tests: 401 without token, 403 for non-owner
 
 ## 9. UI

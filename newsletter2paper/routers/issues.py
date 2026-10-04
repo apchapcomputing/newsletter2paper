@@ -259,22 +259,22 @@ def send_issue_now(
         raise HTTPException(status_code=503, detail="Scheduler is not running")
 
     try:
-        previous_status = svc.claim_for_send_now(str(issue_id))
+        claim = svc.claim_for_send_now(str(issue_id))
     except SendNowCooldown as e:
         raise HTTPException(
             status_code=429,
             detail=f"This issue was sent recently; try again in {max(1, round(e.retry_after / 60))} min",
             headers={"Retry-After": str(e.retry_after)},
         )
-    if previous_status is None:
+    if claim is None:
         raise HTTPException(status_code=409, detail="Issue is already being processed")
 
     def _run():
         try:
-            asyncio.run(svc.send_now(str(issue_id), previous_status))
+            asyncio.run(svc.send_now(claim))
         except Exception as e:
             logging.exception(f"send-now failed for {issue_id}: {e}")
-            svc._record_failure_by_id(str(issue_id), f"unexpected error: {e}", force=True, previous_status=previous_status)
+            svc.release_after_error(claim, f"unexpected error: {e}", force=True)
 
     background_tasks.add_task(_run)
     return {"success": True, "message": "Sending started"}
