@@ -81,6 +81,8 @@ async def fetch_articles_for_issue(
         
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to fetch articles: {str(e)}")
 
@@ -138,6 +140,8 @@ async def get_issue_articles_summary(
             }
         }
         
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to get issue summary: {str(e)}")
 

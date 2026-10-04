@@ -1,10 +1,25 @@
 package clean
 
 import (
+	"regexp"
 	"strings"
 
 	"github.com/PuerkitoBio/goquery"
 )
+
+// maxControlTextRunes bounds how much text a media control (play button, timestamp) can hold.
+const maxControlTextRunes = 40
+
+var mediaLabelRe = regexp.MustCompile(`(?i)\b(play|pause|audio|video|media)\b`)
+
+func containsMediaSymbol(text string) bool {
+	for _, sym := range []string{"⏸", "▶", "⏯", "⏭", "⏮", "⏹", "🔊", "🔇"} {
+		if strings.Contains(text, sym) {
+			return true
+		}
+	}
+	return false
+}
 
 // Stats tracks the number of elements removed/modified during cleaning.
 type Stats struct {
@@ -174,33 +189,22 @@ func CleanHTML(htmlContent string, verbose bool) (string, Stats, error) {
 		})
 	}
 
-	// Remove buttons and elements containing media control symbols (play, pause, etc.)
+	// Remove small controls that show media symbols (play, pause, volume...) or are labelled as
+	// media controls. Only leaf-like elements qualify: a wrapper that holds article prose must
+	// survive even if the prose happens to mention "▶" or the word "play".
 	doc.Find("button, div, span").Each(func(i int, s *goquery.Selection) {
+		if s.Find("p, h1, h2, h3, h4, h5, h6, li, blockquote, pre, table").Length() > 0 {
+			return
+		}
 		text := s.Text()
-		// Check for common media control symbols
-		if strings.Contains(text, "⏸") || // pause symbol
-			strings.Contains(text, "▶") || // play symbol
-			strings.Contains(text, "⏯") || // play/pause symbol
-			strings.Contains(text, "⏭") || // next track
-			strings.Contains(text, "⏮") || // previous track
-			strings.Contains(text, "⏹") || // stop symbol
-			strings.Contains(text, "🔊") || // volume symbol
-			strings.Contains(text, "🔇") { // mute symbol
+		if len([]rune(text)) <= maxControlTextRunes && containsMediaSymbol(text) {
 			s.Remove()
 			stats.ImageIcons++
+			return
 		}
-
-		// Also check aria-label attributes for media controls
-		if ariaLabel, exists := s.Attr("aria-label"); exists {
-			lowerLabel := strings.ToLower(ariaLabel)
-			if strings.Contains(lowerLabel, "play") ||
-				strings.Contains(lowerLabel, "pause") ||
-				strings.Contains(lowerLabel, "audio") ||
-				strings.Contains(lowerLabel, "video") ||
-				strings.Contains(lowerLabel, "media") {
-				s.Remove()
-				stats.ImageIcons++
-			}
+		if ariaLabel, exists := s.Attr("aria-label"); exists && mediaLabelRe.MatchString(ariaLabel) {
+			s.Remove()
+			stats.ImageIcons++
 		}
 	})
 

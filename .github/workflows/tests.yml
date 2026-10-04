@@ -37,7 +37,7 @@ jobs:
               - '.github/workflows/tests.yml'
 
   backend:
-    name: Backend (pytest unit)
+    name: Backend (pytest)
     needs: changes
     if: needs.changes.outputs.backend == 'true'
     runs-on: ubuntu-latest
@@ -54,8 +54,8 @@ jobs:
           cache-dependency-path: newsletter2paper/requirements.txt
       - name: Install dependencies
         run: pip install -r requirements.txt
-      - name: Unit tests
-        run: pytest tests/unit
+      - name: Tests
+        run: pytest
 
   frontend:
     name: Frontend (lint + vitest)
@@ -75,8 +75,7 @@ jobs:
           cache-dependency-path: ui/package-lock.json
       - run: npm ci
       - run: npm run lint
-      # No vitest files exist yet; don't fail until tests are added.
-      - run: npm test -- --passWithNoTests
+      - run: npm test
 
   pdf-maker:
     name: PDF maker (go vet + test)

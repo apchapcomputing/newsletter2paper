@@ -1,32 +1,11 @@
-import pytest
+"""Test-wide setup.
 
-@pytest.fixture(scope='session')
-def db_connection():
-    # Setup database connection
-    connection = create_db_connection()
-    yield connection
-    # Teardown database connection
-    connection.close()
+Several services build a Supabase client when constructed. Point them at an
+unroutable local address so no test can reach a real project by accident; tests
+that need data must inject fakes.
+"""
+import os
 
-@pytest.fixture
-def sample_article():
-    return {
-        'title': 'Sample Article',
-        'content': 'This is a sample article for testing.',
-        'author': 'Author Name'
-    }
-
-@pytest.fixture
-def sample_publication():
-    return {
-        'name': 'Sample Publication',
-        'issue_number': 1,
-        'year': 2023
-    }
-
-@pytest.fixture
-def mock_api_response():
-    return {
-        'status': 'success',
-        'data': []
-    }
+os.environ["SUPABASE_URL"] = "http://127.0.0.1:9"
+os.environ["SUPABASE_KEY"] = "test-key"
+os.environ.setdefault("SUPABASE_DATABASE_URL", "sqlite://")

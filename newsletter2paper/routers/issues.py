@@ -119,6 +119,8 @@ async def create_issue(
             "message": "Issue created successfully"
         }
         
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to create issue: {str(e)}")
 
@@ -153,10 +155,11 @@ async def update_issue(
             update_data['auto_send'] = request.auto_send
         if request.article_window_days is not None:
             update_data['article_window_days'] = request.article_window_days
-        # Always write custom dates when explicitly provided (even as None to clear them)
-        if 'custom_start_date' not in update_data:  # don't overwrite if already set by frequency change
+        # Write custom dates only when the caller sent the field (an explicit null clears it);
+        # a frequency change away from 'custom' has already cleared them above.
+        if 'custom_start_date' in request.model_fields_set and 'custom_start_date' not in update_data:
             update_data['custom_start_date'] = request.custom_start_date.isoformat() if request.custom_start_date else None
-        if 'custom_end_date' not in update_data:
+        if 'custom_end_date' in request.model_fields_set and 'custom_end_date' not in update_data:
             update_data['custom_end_date'] = request.custom_end_date.isoformat() if request.custom_end_date else None
         
         # Update the issue in the database
@@ -174,6 +177,8 @@ async def update_issue(
             "message": "Issue updated successfully"
         }
         
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to update issue: {str(e)}")
 
@@ -199,6 +204,8 @@ async def get_issue(
             "issue": result.data[0]
         }
         
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to get issue: {str(e)}")
 
@@ -265,6 +272,8 @@ async def add_publications_to_issue(
             "publication_count": len(publications_to_add)
         }
         
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to add publications to issue: {str(e)}")
 
