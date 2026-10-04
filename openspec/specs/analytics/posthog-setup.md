@@ -21,6 +21,43 @@ Create a survey under Surveys, set to Popover:
 
 **Reading it:** if 40% or more answer "Very disappointed", that's the usual product/market-fit benchmark (Sean Ellis). Treat it as a rule of thumb and only trust it after about 40 responses.
 
+## Fake doors (feature flags)
+
+Each fake door is hidden until you create its flag, with a release condition of 100% of users. A JSON payload can override the copy, for example `{"label": "Automatic delivery: $4/month. Reserve founder pricing"}`.
+
+| Flag | Where it shows | What it tests |
+|---|---|---|
+| `fake-door-upgrade-auto-send` | under the auto-send switch (signed-in users) | willingness to pay for automatic delivery, before the Stripe work |
+| `fake-door-send-to-ereader` | after a PDF is generated | a "send to Kindle/reMarkable" pivot |
+| `fake-door-mail-printed-copy` | after a PDF is generated | a printed-and-mailed product |
+| `fake-door-single-article` | after a PDF is generated | adding single articles (the planned paid feature) |
+
+Compare `early_access_requested` per feature against the people who saw it (`pdf_generated` for the post-PDF doors). Switch a door off once you have your answer. A door that's always visible teaches users to ignore it.
+
+## Session replay
+
+Turn on session replay in project settings, with "Mask all inputs" on. Recording starts only for visitors who accepted the banner. Useful playlists:
+- sessions with `pdf_generate_failed`
+- sessions with `publication_added` but no `pdf_generated`
+- first sessions of people who later did `signup_completed`
+
+Watch about ten a week. The free tier allows 5,000 recordings a month.
+
+## Cohorts for outreach
+
+| Cohort | Definition |
+|---|---|
+| Power users | `pdf_generated` at least 3 times in 30 days, or `auto_send_enabled` and `delivery_sent` in the last 30 days |
+| Tried once | `pdf_generated` exactly once, and nothing in the 14 days since |
+| Unread editions | `delivery_sent` at least 3 times in 30 days and no `edition_opened` with `likely_scanner = false` |
+| Wants a feature | `early_access_requested`, broken down by `feature` |
+
+A signed-in person's distinct id is their Supabase user id. Look up the email in Supabase (`auth.users`) and invite them to a 15-minute call. Guests can't be contacted, except through the survey's "Can we talk?" answer.
+
+## Billing guardrail
+
+In Billing, set a $0 limit on every product until there's revenue. Free tier, per month: 1M events, 5k recordings, 1M flag requests, 1.5k survey responses.
+
 ## Dashboard: "Is it valuable?"
 
 Create each insight below and add it to one dashboard. **"Printers"** means people with `pdf_generated` or `delivery_sent`.

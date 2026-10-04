@@ -106,6 +106,21 @@ directly.
 
 ---
 
+### Requirement: Fake Doors
+
+The system SHALL render a fake-door button only while its PostHog flag (`fake-door-<feature>`, underscores as dashes)
+is on, SHALL record `fake_door_clicked` and `early_access_requested`, and SHALL NOT collect an email address in the
+dialog (signed-in users are reachable through their account; guests are asked to sign in).
+
+---
+
+### Requirement: Session Replay Needs Consent
+
+The system SHALL record sessions only for visitors who accepted the consent banner, with all inputs masked, and SHALL
+stop recording when the visitor declines.
+
+---
+
 ## Event Catalogue
 
 Names follow `object_action`, snake_case. Never send emails, article text, feed URLs or issue titles.
@@ -123,6 +138,8 @@ Names follow `object_action`, snake_case. Never send emails, article text, feed 
 | `signup_completed` / `signed_in` | `useAuth.trackCompletedSignIn`, once per sign-in (the auth callback adds `?signed_in=1`). An account created less than 10 minutes ago counts as a signup. | `method` |
 | `auto_send_enabled` / `auto_send_disabled` | `useNewsletterConfig.updateAutoSend` | `frequency` |
 | `send_now_clicked` | `ConfigureNewspaper` | |
+| `fake_door_clicked` | `FakeDoor` (only rendered while its flag is on) | `feature`, `is_guest` |
+| `early_access_requested` | `FakeDoor` dialog | `feature`, `is_guest` |
 | `delivery_sent` | scheduler `_succeed` | `issue_id`, `delivery_id`, `trigger`, `frequency`, `attempts` |
 | `delivery_failed` | scheduler `_fail` | the above, plus `error_kind`, `error_category`, `final` |
 | `delivery_skipped` | scheduler `_skip` | the above, plus `reason`: `no_articles` |

@@ -11,14 +11,20 @@ vi.mock('posthog-js', () => ({
         get_explicit_consent_status: vi.fn(() => 'pending'),
         opt_in_capturing: vi.fn(),
         opt_out_capturing: vi.fn(),
+        startSessionRecording: vi.fn(),
+        stopSessionRecording: vi.fn(),
+        isFeatureEnabled: vi.fn(() => true),
+        getFeatureFlagPayload: vi.fn(() => ({ label: 'x' })),
+        onFeatureFlags: vi.fn(() => () => { }),
     },
 }))
 
 import posthog from 'posthog-js'
-import { initAnalytics, track, identify, reset, captureError, consent, BLOCKED_PROPS } from '@/lib/analytics'
+import { initAnalytics, track, identify, reset, captureError, consent, flagEnabled, flagPayload, onFlags, BLOCKED_PROPS } from '@/lib/analytics'
 
 const calls = () => [posthog.init, posthog.capture, posthog.identify, posthog.reset,
-    posthog.captureException, posthog.opt_in_capturing, posthog.opt_out_capturing]
+    posthog.captureException, posthog.opt_in_capturing, posthog.opt_out_capturing,
+    posthog.startSessionRecording, posthog.stopSessionRecording, posthog.isFeatureEnabled, posthog.onFeatureFlags]
 
 describe('analytics without a PostHog key', () => {
     beforeEach(() => vi.stubEnv('NEXT_PUBLIC_POSTHOG_KEY', ''))
@@ -31,6 +37,9 @@ describe('analytics without a PostHog key', () => {
         captureError(new Error('boom'))
         consent.accept()
         consent.decline()
+        expect(flagEnabled('fake-door-x')).toBe(false)
+        expect(flagPayload('fake-door-x')).toBeNull()
+        expect(typeof onFlags(() => { })).toBe('function')
         for (const fn of calls()) expect(fn).not.toHaveBeenCalled()
     })
 
@@ -53,7 +62,6 @@ describe('analytics with a PostHog key', () => {
             api_host: '/ingest',
             cookieless_mode: 'on_reject',
             capture_exceptions: true,
-            disable_session_recording: true,
             person_profiles: 'identified_only',
             tracing_headers: [window.location.host],
         })
@@ -94,11 +102,33 @@ describe('analytics with a PostHog key', () => {
         expect(posthog.reset).toHaveBeenCalled()
     })
 
-    it('maps consent choices to opt in and opt out', () => {
+    it('maps consent choices to opt in and opt out, with replay only after accepting', () => {
         expect(consent.status()).toBe('pending')
         consent.accept()
         expect(posthog.opt_in_capturing).toHaveBeenCalled()
+        expect(posthog.startSessionRecording).toHaveBeenCalled()
         consent.decline()
+        expect(posthog.stopSessionRecording).toHaveBeenCalled()
         expect(posthog.opt_out_capturing).toHaveBeenCalled()
+    })
+
+    it('starts replay at load only for a visitor who already accepted', () => {
+        initAnalytics()
+        const { loaded, session_recording, disable_session_recording } = posthog.init.mock.calls[0][1]
+        expect(disable_session_recording).toBe(true)
+        expect(session_recording).toEqual({ maskAllInputs: true })
+        const ph = { get_explicit_consent_status: () => 'pending', startSessionRecording: vi.fn() }
+        loaded(ph)
+        expect(ph.startSessionRecording).not.toHaveBeenCalled()
+        ph.get_explicit_consent_status = () => 'granted'
+        loaded(ph)
+        expect(ph.startSessionRecording).toHaveBeenCalled()
+    })
+
+    it('reads feature flags', () => {
+        expect(flagEnabled('fake-door-x')).toBe(true)
+        expect(flagPayload('fake-door-x')).toEqual({ label: 'x' })
+        onFlags(() => { })
+        expect(posthog.onFeatureFlags).toHaveBeenCalled()
     })
 })
