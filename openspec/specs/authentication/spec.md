@@ -97,13 +97,32 @@ The system SHALL automatically create a user profile record when a new Supabase 
 
 ### Requirement: Row Level Security
 
-The system SHALL enforce that users can only access their own issues, profiles, and issue_publications.
+The system SHALL enforce Row Level Security on every table in the `public` schema. Browser clients (anon key or an authenticated JWT) can only access their own data; the backend and scheduler use the service role, which bypasses RLS.
+
+- `publications` and `articles` are readable by everyone and writable only by the service role.
+- `users` is not accessible to clients.
+- `issues` are accessible to their owner (linked through `user_issues`, or matching `target_email`).
+- `user_issues` rows are accessible only to the user they belong to, and a user can only link themselves to an issue they can already access.
+- `issue_publications` follow access to the parent issue.
+- Guest issues (`status = 'guest'`) are accessible only to the browser holding the issue's `guest_token`, sent in the `x-guest-token` header.
 
 #### Scenario: User cannot read another user's issues
 
 - GIVEN two authenticated users each with their own issues
-- WHEN user A queries `GET /issues/{id}` for an issue owned by user B
-- THEN a 403 or 404 response is returned and user A's session does not reveal user B's data
+- WHEN user A queries the `issues` table for an issue owned by user B
+- THEN no row is returned and user A's session does not reveal user B's data
+
+#### Scenario: User cannot attach themselves to another user's issue
+
+- GIVEN an issue owned by user B
+- WHEN user A inserts a `user_issues` row linking A to that issue
+- THEN the insert is rejected by RLS
+
+#### Scenario: Guest issue is private to its creator
+
+- GIVEN a guest issue created with `guest_token = T`
+- WHEN a request without `x-guest-token: T` queries or updates it
+- THEN no row is visible or modified
 
 ---
 

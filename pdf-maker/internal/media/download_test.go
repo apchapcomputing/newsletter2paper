@@ -11,6 +11,50 @@ import (
 )
 
 var (
+	jpeg = []byte{0xFF, 0xD8, 0xFF, 0xE0, 0, 0x10, 'J', 'F', 'I', 'F', 0, 1}
+	avif = []byte{0, 0, 0, 0x1c, 'f', 't', 'y', 'p', 'a', 'v', 'i', 'f'}
+)
+
+func write(t *testing.T, path string, b []byte) {
+	t.Helper()
+	if err := os.WriteFile(path, b, 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestFixImageExtensionAndCacheLookup(t *testing.T) {
+	dir := t.TempDir()
+	orig := filepath.Join(dir, "abc.png")
+	write(t, orig, jpeg)
+
+	fixed, err := FixImageExtension(orig)
+	if err != nil || fixed != filepath.Join(dir, "abc.jpg") {
+		t.Fatalf("got %q, %v", fixed, err)
+	}
+	// Next run looks up the URL-derived .png name; it must still hit the cache.
+	if got := findCachedImage(dir, "abc", orig); got != fixed {
+		t.Errorf("cache miss after rename: got %q want %q", got, fixed)
+	}
+	if got := findCachedImage(dir, "zzz", filepath.Join(dir, "zzz.png")); got != "" {
+		t.Errorf("unexpected hit %q", got)
+	}
+}
+
+func TestValidateImageFile(t *testing.T) {
+	dir := t.TempDir()
+	good, html, av := filepath.Join(dir, "a"), filepath.Join(dir, "b"), filepath.Join(dir, "c")
+	write(t, good, jpeg)
+	write(t, html, []byte("<html>nope</html>"))
+	write(t, av, avif)
+	if err := validateImageFile(good); err != nil {
+		t.Errorf("jpeg rejected: %v", err)
+	}
+	if validateImageFile(html) == nil || validateImageFile(av) == nil {
+		t.Error("html/avif should be rejected")
+	}
+}
+
+var (
 	pngBytes  = []byte("\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR")
 	jpegBytes = []byte{0xFF, 0xD8, 0xFF, 0xE0, 0, 0x10, 'J', 'F', 'I', 'F'}
 )
@@ -170,22 +214,22 @@ func TestGetImageExtension(t *testing.T) {
 	}
 }
 
-func TestValidateImageFile(t *testing.T) {
+func TestValidateImageFile_Formats(t *testing.T) {
 	cases := map[string]struct {
 		data  []byte
 		valid bool
 	}{
-		"png":          {pngBytes, true},
-		"jpeg":         {jpegBytes, true},
-		"gif":          {[]byte("GIF89a......"), true},
-		"webp":         {[]byte("RIFF\x00\x00\x00\x00WEBPVP8 "), true},
-		"avif":         {[]byte("\x00\x00\x00\x1cftypavif"), true},
-		"bmp":          {[]byte("BM\x00\x00\x00\x00"), true},
-		"html page":    {[]byte("<!DOCTYPE html><html>"), false},
-		"json error":   {[]byte(`{"error":"denied"}`), false},
-		"too small":    {[]byte("ab"), false},
-		"empty":        {nil, false},
-		"riff but wav": {[]byte("RIFF\x00\x00\x00\x00WAVEfmt "), false},
+		"png":                        {pngBytes, true},
+		"jpeg":                       {jpegBytes, true},
+		"gif":                        {[]byte("GIF89a......"), true},
+		"webp":                       {[]byte("RIFF\x00\x00\x00\x00WEBPVP8 "), true},
+		"avif (Typst cannot decode)": {[]byte("\x00\x00\x00\x1cftypavif"), false},
+		"bmp (Typst cannot decode)":  {[]byte("BM\x00\x00\x00\x00"), false},
+		"html page":                  {[]byte("<!DOCTYPE html><html>"), false},
+		"json error":                 {[]byte(`{"error":"denied"}`), false},
+		"too small":                  {[]byte("ab"), false},
+		"empty":                      {nil, false},
+		"riff but wav":               {[]byte("RIFF\x00\x00\x00\x00WAVEfmt "), false},
 	}
 	for name, tc := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -200,21 +244,5 @@ func TestValidateImageFile(t *testing.T) {
 	}
 	if err := validateImageFile(filepath.Join(t.TempDir(), "missing")); err == nil {
 		t.Error("missing file must be invalid")
-	}
-}
-
-func TestFixImagePathsToAbsolute(t *testing.T) {
-	html := `<p>t</p><img src="images/a.png"><img src="./images/b.png"><img src="https://e.com/c.png"><img src="elsewhere/d.png">`
-
-	out, err := FixImagePathsToAbsolute(html, "images")
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	abs, _ := filepath.Abs("images")
-	for _, want := range []string{"file://" + abs + "/a.png", "file://" + abs + "/b.png", `src="https://e.com/c.png"`, `src="elsewhere/d.png"`} {
-		if !strings.Contains(out, want) {
-			t.Errorf("missing %q in:\n%s", want, out)
-		}
 	}
 }

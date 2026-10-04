@@ -509,7 +509,7 @@ export const NewsletterConfigProvider = ({ children }) => {
             // Generate or get a guest session ID
             let guestSessionId = localStorage.getItem('guestSessionId');
             if (!guestSessionId) {
-                guestSessionId = `guest_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+                guestSessionId = `guest_${crypto.randomUUID()}`;
                 localStorage.setItem('guestSessionId', guestSessionId);
             }
 
@@ -518,6 +518,7 @@ export const NewsletterConfigProvider = ({ children }) => {
                 format: issueData.format || 'newspaper',
                 frequency: 'once',
                 status: 'guest',
+                guest_token: guestSessionId, // RLS: only requests sending this token (x-guest-token) can access the row
                 remove_images: issueData.remove_images || false,
                 custom_start_date: issueData.custom_start_date || null,
                 custom_end_date: issueData.custom_end_date || null
