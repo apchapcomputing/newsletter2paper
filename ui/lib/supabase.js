@@ -1,4 +1,5 @@
 import { createBrowserClient } from '@supabase/ssr'
+import { createGuestTokenFetch } from './guestTokenFetch'
 
 export function createClient() {
     // Provide fallback values for build time when env vars might not be available
@@ -20,6 +21,7 @@ export function createClient() {
         supabaseUrl,
         supabaseAnonKey,
         {
+            global: { fetch: createGuestTokenFetch() },
             auth: {
                 redirectTo: `${siteUrl}/auth/callback`,
                 autoRefreshToken: true,

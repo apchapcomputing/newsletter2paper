@@ -13,7 +13,7 @@ COPY . .
 # Build the PDF generator binary
 RUN CGO_ENABLED=0 GOOS=linux go build -o /build/makepdf ./cmd/makepdf
 
-# Download Typst static binary (single self-contained executable, no X11/xvfb needed)
+# Download Typst static binary (single self-contained executable)
 FROM debian:bookworm-slim AS typst-downloader
 RUN apt-get update && apt-get install -y curl tar xz-utils ca-certificates && rm -rf /var/lib/apt/lists/*
 ARG TYPST_VERSION=v0.14.2
@@ -31,7 +31,7 @@ RUN mkdir -p /typst-data/packages/preview/droplet/${DROPLET_VERSION} && \
 # Runtime stage with Typst
 FROM debian:bookworm-slim
 
-# Install fonts and TLS certs (no X11, no wkhtmltopdf, no xvfb)
+# Install fonts and TLS certs
 RUN apt-get update && apt-get install -y \
     fonts-dejavu-core \
     fonts-liberation \
@@ -49,9 +49,6 @@ COPY --from=typst-packages /typst-data /usr/local/share/typst
 
 # Tell Typst where to find pre-bundled packages
 ENV TYPST_DATA_DIR=/usr/local/share/typst
-
-# Copy styles directory (kept for essay layout which still uses wkhtmltopdf via local install)
-COPY styles /app/styles
 
 # Create output directories and shared directory
 RUN mkdir -p /app/newspapers /app/articles /shared

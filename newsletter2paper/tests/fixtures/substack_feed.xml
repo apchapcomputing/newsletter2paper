@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:content="http://purl.org/rss/1.0/modules/content/" xmlns:atom="http://www.w3.org/2005/Atom" version="2.0">
+  <channel>
+    <title><![CDATA[Example Letter]]></title>
+    <link>https://example.substack.com</link>
+    <description><![CDATA[A Substack-shaped feed used as a test fixture.]]></description>
+    <item>
+      <title><![CDATA[Third post: newest]]></title>
+      <description><![CDATA[Short blurb for the newest post.]]></description>
+      <link>https://example.substack.com/p/third-post</link>
+      <guid isPermaLink="false">103</guid>
+      <dc:creator><![CDATA[Ada Writer]]></dc:creator>
+      <pubDate>Thu, 07 Aug 2025 14:41:57 GMT</pubDate>
+      <content:encoded><![CDATA[<p>Full body of the newest post.</p>]]></content:encoded>
+    </item>
+    <item>
+      <title><![CDATA[Second post]]></title>
+      <description><![CDATA[Short blurb for the second post.]]></description>
+      <link>https://example.substack.com/p/second-post</link>
+      <guid isPermaLink="false">102</guid>
+      <dc:creator><![CDATA[Ada Writer]]></dc:creator>
+      <pubDate>Mon, 04 Aug 2025 09:00:00 GMT</pubDate>
+      <content:encoded><![CDATA[<p>Full body of the second post.</p>]]></content:encoded>
+    </item>
+    <item>
+      <title><![CDATA[First post: oldest]]></title>
+      <description><![CDATA[Short blurb for the oldest post.]]></description>
+      <link>https://example.substack.com/p/first-post</link>
+      <guid isPermaLink="false">101</guid>
+      <dc:creator><![CDATA[Ada Writer]]></dc:creator>
+      <pubDate>Fri, 01 Aug 2025 08:30:00 GMT</pubDate>
+      <content:encoded><![CDATA[<p>Full body of the oldest post.</p>]]></content:encoded>
+    </item>
+  </channel>
+</rss>

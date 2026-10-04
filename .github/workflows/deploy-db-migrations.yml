@@ -1,0 +1,56 @@
+name: Deploy DB Migrations
+
+# Applies pending migrations to the production Supabase project after a merge to main.
+# PRs are tested separately by test-db-migrations.yml against a throwaway database.
+#
+# Runs in the `production-db` GitHub Environment. Configure that environment with:
+#   - required reviewers (so each deploy waits for a manual approval)
+#   - secrets: SUPABASE_ACCESS_TOKEN, SUPABASE_DB_PASSWORD, SUPABASE_PROJECT_REF
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'newsletter2paper/supabase/migrations/**'
+      - '.github/workflows/deploy-db-migrations.yml'
+  workflow_dispatch:
+
+# One deploy at a time; never cancel one that is mid-flight.
+concurrency:
+  group: deploy-db-migrations
+  cancel-in-progress: false
+
+jobs:
+  deploy-migrations:
+    name: Apply migrations to production
+    runs-on: ubuntu-latest
+    environment: production-db
+
+    defaults:
+      run:
+        working-directory: newsletter2paper
+
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+      SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install Supabase CLI
+        run: npm install
+
+      - name: Link production project
+        run: npx supabase link --project-ref "$SUPABASE_PROJECT_REF"
+
+      - name: Show pending migrations (dry run)
+        run: npx supabase db push --dry-run
+
+      - name: Apply migrations
+        run: npx supabase db push

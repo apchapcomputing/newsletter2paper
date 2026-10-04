@@ -1,0 +1,1 @@
+../../newsletter2paper/supabase/migrations/20261003000000_enable_rls.sql

@@ -1,241 +1,122 @@
-"""Unit tests for RSS feed extraction functionality."""
-
-import pytest
-
-# Skip this module until async tests are properly configured with pytest-asyncio
-pytest.skip("Tests need refactoring for async/await with pytest-asyncio", allow_module_level=True)
+"""RSSService.get_articles against a realistic Substack-shaped feed."""
 
 import unittest
-from unittest.mock import patch, MagicMock, AsyncMock
-import os
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
-import asyncio
-import sys
+from unittest.mock import AsyncMock, MagicMock, patch
 
-# Add parent directory to path
-sys.path.insert(0, str(Path(__file__).parent.parent))
+import requests
 
 from services.rss_service import RSSService
-from services.database_service import DatabaseService
+
+FEED_URL = "https://example.substack.com/feed"
+PUBLICATION_ID = "08945b32-305a-467e-8117-b4390a47d981"
+SAMPLE_XML = (Path(__file__).parent / "fixtures" / "substack_feed.xml").read_text(encoding="utf-8")
 
 
 class MockResponse:
-    """Mock response object for requests."""
     def __init__(self, text, status_code=200):
         self.text = text
         self.status_code = status_code
-        self.headers = {'content-type': 'application/xml'}
+        self.headers = {"content-type": "application/xml"}
 
     def raise_for_status(self):
-        if self.status_code != 200:
-            raise Exception(f"HTTP Status: {self.status_code}")
+        if self.status_code >= 400:
+            raise requests.HTTPError(f"HTTP {self.status_code}")
 
 
-class TestFeedExtraction(unittest.TestCase):
-    """Test cases for RSS feed extraction."""
-
-    @classmethod
-    def setUpClass(cls):
-        """Set up test fixtures before running tests."""
-        # Read the sample XML file
-        data_dir = Path(__file__).parent.parent.parent / 'data'
-        xml_path = data_dir / 'rss/publication_feed_kyla.xml'
-        with open(xml_path, 'r', encoding='utf-8') as f:
-            cls.sample_xml = f.read()
-
+class TestFeedExtraction(unittest.IsolatedAsyncioTestCase):
     def setUp(self):
-        """Set up test fixtures before each test."""
+        # The feed cache is class-level (shared by per-request instances); isolate each test.
+        RSSService._rss_cache.clear()
+        self.addCleanup(RSSService._rss_cache.clear)
         self.rss_service = RSSService()
-        self.feed_url = "https://kyla.substack.com/feed"
-        
-        # Mock the database service
-        self.mock_db = MagicMock()
-        mock_publication = {
-            'id': '08945b32-305a-467e-8117-b4390a47d981',
-            'title': "Kyla's Newsletter",
-            'url': 'https://kyla.substack.com',
-            'feed_url': self.feed_url,
-            'publisher': 'Kyla Scanlon'
-        }
-        
-        # Create async mock for database methods
-        self.mock_db.get_publication_by_url = AsyncMock(return_value=mock_publication)
-        self.mock_db.query_articles_table = AsyncMock(return_value=None)
-        self.rss_service.db = self.mock_db
+        self.rss_service.db = MagicMock()
+        self.rss_service.db.get_publication_by_url = AsyncMock(return_value={"id": PUBLICATION_ID})
 
-    def asyncSetUp(self):
-        """Set up async test fixtures."""
-        self.loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(self.loop)
+    @patch("requests.get")
+    async def test_item_fields_are_mapped(self, mock_get):
+        mock_get.return_value = MockResponse(SAMPLE_XML)
 
-    def asyncTearDown(self):
-        """Clean up async test fixtures."""
-        self.loop.close()
+        articles, total = await self.rss_service.get_articles(FEED_URL)
 
-    def async_test(func):
-        """Decorator for async test methods."""
-        def wrapper(*args, **kwargs):
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            try:
-                return loop.run_until_complete(func(*args, **kwargs))
-            finally:
-                loop.close()
-        return wrapper
+        self.assertEqual(total, 3)
+        newest = articles[0]
+        self.assertEqual(newest.title, "Third post: newest")
+        self.assertEqual(newest.author, "Ada Writer")
+        self.assertEqual(newest.content_url, "https://example.substack.com/p/third-post")
+        self.assertEqual(newest.subtitle, "Short blurb for the newest post.")
+        self.assertEqual(newest.date_published, datetime(2025, 8, 7, 14, 41, 57, tzinfo=timezone.utc))
 
-    @patch('requests.get')
-    @async_test
-    async def test_get_articles(self, mock_get):
-        """Test extracting articles from a feed."""
-        # Configure the mock
-        mock_get.return_value = MockResponse(self.sample_xml)
+    @patch("requests.get")
+    async def test_articles_are_linked_to_the_publication_registered_for_the_feed(self, mock_get):
+        mock_get.return_value = MockResponse(SAMPLE_XML)
 
-        # Get articles with default pagination
-        articles, total = await self.rss_service.get_articles(self.feed_url)
+        articles, _ = await self.rss_service.get_articles(FEED_URL)
 
-        # Basic assertions
-        self.assertIsNotNone(articles)
-        self.assertIsInstance(articles, list)
-        self.assertTrue(len(articles) > 0)
-        self.assertIsInstance(total, int)
-        self.assertTrue(total >= len(articles))
+        self.rss_service.db.get_publication_by_url.assert_awaited_once_with(FEED_URL)
+        self.assertEqual({str(a.publication_id) for a in articles}, {PUBLICATION_ID})
 
-        # Check the first article
-        first_article = articles[0]
-        self.assertEqual(
-            first_article.title,
-            "How AI, Healthcare, and Labubu Became the American Economy"
-        )
-        self.assertEqual(first_article.author, "kyla scanlon")
-        self.assertEqual(
-            first_article.content_url,
-            "https://kyla.substack.com/p/how-ai-healthcare-and-labubu-became"
-        )
-        # Check publication date (August 7, 2025)
-        expected_date = datetime(2025, 8, 7, 14, 41, 57)
-        self.assertEqual(
-            first_article.date_published.replace(tzinfo=None),
-            expected_date
-        )
-        
-        # Check subtitle/description extraction
-        self.assertIsNotNone(first_article.subtitle)
-        self.assertLessEqual(len(first_article.subtitle), 255)
-        
-        # Check publication linking
-        self.assertEqual(
-            str(first_article.publication_id),
-            '08945b32-305a-467e-8117-b4390a47d981'
-        )
-        
-    @patch('requests.get')
-    @async_test
-    async def test_pagination(self, mock_get):
-        """Test pagination of articles."""
-        # Configure the mock
-        mock_get.return_value = MockResponse(self.sample_xml)
-        
-        # Test different pagination scenarios
-        test_cases = [
-            {"skip": 0, "limit": 5},
-            {"skip": 5, "limit": 5},
-            {"skip": 0, "limit": 100},
-            {"skip": 100, "limit": 10},  # Should return empty list if skip > total
-        ]
-        
-        for case in test_cases:
-            with self.subTest(case=case):
-                articles, total = await self.rss_service.get_articles(
-                    self.feed_url,
-                    skip=case["skip"],
-                    limit=case["limit"]
-                )
-                
-                # Verify pagination constraints
-                self.assertLessEqual(len(articles), case["limit"])
-                if articles:
-                    self.assertGreaterEqual(total, len(articles))
+    @patch("requests.get")
+    async def test_articles_stay_unlinked_when_feed_is_not_a_known_publication(self, mock_get):
+        mock_get.return_value = MockResponse(SAMPLE_XML)
+        self.rss_service.db.get_publication_by_url = AsyncMock(return_value=None)
 
-    @async_test
-    async def test_live_feed_fetch(self):
-        """Test that we can fetch real XML content from the live RSS feed."""
-        try:
-            import requests
-            response = requests.get(
-                self.feed_url,
-                headers={
-                    'User-Agent': ('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) '
-                                'AppleWebKit/537.36 (KHTML, like Gecko) '
-                                'Chrome/91.0.4472.124 Safari/537.36')
-                },
-                timeout=30
-            )
-            response.raise_for_status()
-            
-            # Check that we got an XML response
-            content_type = response.headers.get('content-type', '').lower()
-            self.assertTrue(
-                any(ct in content_type for ct in ['xml', 'rss', 'atom']),
-                f"Expected XML content type, got: {content_type}"
-            )
-            
-            # Check that the content is valid XML
-            import xml.etree.ElementTree as ET
-            root = ET.fromstring(response.text)
-            
-            # Verify basic RSS/Atom structure
-            channel = root.find('.//channel')
-            items = root.findall('.//item') or root.findall('.//{http://www.w3.org/2005/Atom}entry')
-            
-            self.assertTrue(
-                len(items) > 0,
-                "Expected at least one article in the feed"
-            )
-            
-        except requests.RequestException as e:
-            self.skipTest(f"Skipping live feed test - could not reach {self.feed_url}: {str(e)}")
-        except ET.ParseError as e:
-            self.fail(f"Received invalid XML from feed: {str(e)}")
+        articles, _ = await self.rss_service.get_articles(FEED_URL)
 
-    @patch('requests.get')
-    @async_test
-    async def test_error_handling(self, mock_get):
-        """Test handling of request errors."""
-        # Configure mock to raise an exception
+        self.assertTrue(all(a.publication_id is None for a in articles))
+
+    @patch("requests.get")
+    async def test_pagination_returns_a_window_but_reports_the_full_total(self, mock_get):
+        mock_get.return_value = MockResponse(SAMPLE_XML)
+
+        page, total = await self.rss_service.get_articles(FEED_URL, skip=1, limit=1)
+
+        self.assertEqual(total, 3)
+        self.assertEqual([a.title for a in page], ["Second post"])
+
+    @patch("requests.get")
+    async def test_skipping_past_the_end_yields_an_empty_page(self, mock_get):
+        mock_get.return_value = MockResponse(SAMPLE_XML)
+
+        page, total = await self.rss_service.get_articles(FEED_URL, skip=10, limit=5)
+
+        self.assertEqual((page, total), ([], 3))
+
+    @patch("requests.get")
+    async def test_http_error_propagates_to_the_caller(self, mock_get):
         mock_get.return_value = MockResponse("", status_code=404)
 
-        # Verify that the error is propagated
-        with self.assertRaises(Exception):
-            await self.rss_service.get_articles(self.feed_url, skip=0, limit=10)
+        with self.assertRaises(requests.RequestException):
+            await self.rss_service.get_articles(FEED_URL)
 
-    @patch('requests.get')
-    @async_test
-    async def test_required_fields(self, mock_get):
-        """Test that all required fields are present in parsed articles."""
-        # Configure the mock
-        mock_get.return_value = MockResponse(self.sample_xml)
+    @patch("requests.get")
+    async def test_repeat_fetches_within_cache_window_hit_the_network_once(self, mock_get):
+        mock_get.return_value = MockResponse(SAMPLE_XML)
 
-        # Get articles
-        articles, _ = await self.rss_service.get_articles(self.feed_url)
+        await self.rss_service.get_articles(FEED_URL)
+        later_request = RSSService()  # a different instance, as each request gets its own
+        later_request.db = self.rss_service.db
+        await later_request.get_articles(FEED_URL)
 
-        # Check each article has required fields
-        for article in articles:
-            self.assertIsNotNone(article.id)
-            self.assertIsNotNone(article.title)
-            self.assertIsNotNone(article.date_published)
-            self.assertIsNotNone(article.author)
-            self.assertIsNotNone(article.content_url)
-            
-            # Check field length constraints
-            self.assertTrue(len(article.title) <= 255)
-            self.assertTrue(len(article.author) <= 255)
-            self.assertTrue(len(article.content_url) <= 512)
-            if article.subtitle:
-                self.assertTrue(len(article.subtitle) <= 255)
-            if article.storage_url:
-                self.assertTrue(len(article.storage_url) <= 512)
+        self.assertEqual(mock_get.call_count, 1)
+
+    @patch("requests.get")
+    async def test_overlong_fields_are_truncated_to_model_limits(self, mock_get):
+        long = "x" * 600
+        feed = f"""<?xml version="1.0"?><rss version="2.0"><channel><title>t</title><item>
+            <title>{long}</title><description>{long}</description><author>{long}</author>
+            <link>https://example.com/{long}</link><pubDate>Thu, 07 Aug 2025 14:41:57 GMT</pubDate>
+        </item></channel></rss>"""
+        mock_get.return_value = MockResponse(feed)
+
+        (article,), _ = await self.rss_service.get_articles(FEED_URL)
+
+        self.assertEqual(len(article.title), 255)
+        self.assertEqual(len(article.subtitle), 255)
+        self.assertEqual(len(article.author), 255)
+        self.assertEqual(len(article.content_url), 512)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     unittest.main()
