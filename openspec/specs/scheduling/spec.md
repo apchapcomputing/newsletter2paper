@@ -124,6 +124,12 @@ The system SHALL expose `POST /issues/{issue_id}/send-now` to generate and email
 - WHEN the client sends `POST /issues/{issue_id}/send-now`
 - THEN the API returns 202, work continues in the background, and `next_run_at`, `last_sent_period` and retry state are unchanged (only `last_run_at` / `last_run_error` are updated)
 
+#### Scenario: Send now takes over a stale lock
+
+- GIVEN an issue stuck in `processing` with `locked_at` older than `SCHEDULER_LOCK_TIMEOUT_MINUTES`
+- WHEN the client sends `POST /issues/{issue_id}/send-now`
+- THEN the send proceeds, and afterwards `schedule_status` is `idle` (not `processing`), so the scheduler picks the issue up again
+
 #### Scenario: Rejected send now
 
 - GIVEN the issue does not exist (404), has no `target_email` (400), or is already `processing` (409)

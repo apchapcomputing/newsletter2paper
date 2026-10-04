@@ -210,8 +210,8 @@ class SchedulerService:
         return issue_ids
 
     def claim_for_send_now(self, issue_id: str) -> Optional[str]:
-        """Atomically lock one issue for a manual send. Returns its previous schedule_status,
-        or None if it is already being processed."""
+        """Atomically lock one issue for a manual send. Returns the schedule_status to restore
+        afterwards, or None if it is already being processed."""
         with self.engine.begin() as conn:
             row = conn.execute(
                 text(
@@ -226,7 +226,11 @@ class SchedulerService:
                 ),
                 {"id": str(issue_id), "lock_timeout": LOCK_TIMEOUT_MINUTES},
             ).fetchone()
-        return row[0] if row else None
+        if not row:
+            return None
+        # A stale 'processing' lock belongs to a crashed run; restoring it would leave the row
+        # stuck again, so hand it back to the poll as 'idle' (next_run_at is untouched).
+        return 'idle' if row[0] == 'processing' else row[0]
 
     # ------------------------------------------------------------------
     # Processing

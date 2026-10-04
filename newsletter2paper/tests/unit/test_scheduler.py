@@ -219,3 +219,23 @@ class TestFinalizeFailure:
         s._finalize_failure(issue(), 'pdf: x', dt(2026, 10, 1), True, 'failed')
         p = self.params(s)
         assert p == {'id': 'i1', 'status': 'failed', 'err': 'pdf: x'}
+
+
+class TestClaimForSendNow:
+    def make(self, row):
+        s = SchedulerService.__new__(SchedulerService)
+        s.engine = MagicMock()
+        conn = s.engine.begin.return_value.__enter__.return_value
+        conn.execute.return_value.fetchone.return_value = row
+        return s
+
+    @pytest.mark.parametrize('prev', ['idle', 'failed'])
+    def test_returns_previous_status(self, prev):
+        assert self.make((prev,)).claim_for_send_now('i1') == prev
+
+    def test_reclaimed_stale_lock_restores_idle(self):
+        # Restoring 'processing' would leave the row stuck after the manual send.
+        assert self.make(('processing',)).claim_for_send_now('i1') == 'idle'
+
+    def test_already_processing_returns_none(self):
+        assert self.make(None).claim_for_send_now('i1') is None
