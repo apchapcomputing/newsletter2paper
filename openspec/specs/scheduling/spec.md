@@ -130,7 +130,7 @@ The system SHALL make every write after a claim conditional on the claim's `clai
 
 ### Requirement: Rescheduling on Cadence Change
 
-The system SHALL clear `next_run_at` and `last_run_error` (and reset `failed` to `idle`) whenever `auto_send`, `frequency`, `schedule_timezone`, `schedule_time_local`, `schedule_weekday` or `schedule_day_of_month` changes, and SHALL mark the issue's open `pending` or `failed` scheduled delivery `abandoned` with error `config: schedule changed`. A delivery that is already `sending` is left alone.
+The system SHALL clear `next_run_at` and `last_run_error` (and reset `failed` to `idle`) whenever `auto_send`, `frequency`, `schedule_timezone`, `schedule_time_local`, `schedule_weekday` or `schedule_day_of_month` changes, and SHALL mark the issue's open `pending` or `failed` scheduled delivery `abandoned` with error `config: schedule changed`. A delivery that is already `sending` is left alone. Known gap: that in-flight run then sets `next_run_at` from the cadence it loaded at the start, so the new cadence applies from the slot after (until slots are anchored to `scheduled_for`, tasks §2 of `scheduled-delivery-production`).
 
 #### Scenario: Newly enabled issue waits for the first cadence
 
