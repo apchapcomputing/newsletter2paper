@@ -1,0 +1,1 @@
+../../newsletter2paper/supabase/migrations/20261005000000_issue_deliveries.sql
