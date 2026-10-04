@@ -213,6 +213,24 @@ class TestScheduledRun:
         d = svc.store.finished[0][2]
         assert d['status'] == 'failed' and d['attempts'] == 1 and 'idempotency_key' not in d
 
+    async def test_timeout_then_retry_sends_the_same_key_twice(self, svc):
+        # Run 1: Resend accepts the email but the response times out.
+        svc.email.return_value = SendResult.failed('transient', 'email: could not reach Resend (ReadTimeout)',
+                                                   outcome_unknown=True)
+        await svc._process_issue(CLAIM)
+        _, _, _, _, stored_key = next(e for e in svc.store.log if e[0] == 'mark_sending')
+        _, _, failed = svc.store.finished[0]
+        assert failed['attempts'] == 1 and 'idempotency_key' not in failed  # stored key left in place
+
+        # Run 2: the retry resumes the delivery as the database now has it.
+        svc.store = FakeStore(existing=delivery(status='failed', pdf_url='http://pdf',
+                                                attempts=failed['attempts'], idempotency_key=stored_key))
+        svc.email.return_value = SendResult.sent('msg-1')
+        await svc._process_issue(CLAIM)
+        sent_keys = [e[4] for e in svc.store.log if e[0] == 'mark_sending']
+        assert stored_key == 'delivery-d1-0' and sent_keys == ['delivery-d1-0']  # not delivery-d1-1
+        assert svc.store.finished[0][2]['status'] == 'sent'
+
     async def test_retry_after_unknown_outcome_reuses_the_stored_key(self, svc):
         svc.store.existing = delivery(status='failed', pdf_url='http://old', attempts=1,
                                       idempotency_key='delivery-d1-0')
