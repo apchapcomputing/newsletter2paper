@@ -253,8 +253,8 @@ class SchedulerService:
                 self._advance(claim, issue, now)
                 return {'success': True, 'error': None}
 
-        # Already 'sending' means a previous run may have reached Resend: retry with the same
-        # attempt number, hence the same idempotency key, so Resend drops the duplicate.
+        # Already 'sending' means a previous run may have reached Resend: its stored idempotency
+        # key is reused, so Resend drops the duplicate.
         in_flight = delivery['status'] == 'sending'
         try:
             target_email = (issue.get('target_email') or '').strip()
@@ -279,13 +279,14 @@ class SchedulerService:
                     return {'success': False, 'error': err}
                 pdf_url = result['pdf_url']
 
-            self.store.mark_sending(claim, delivery['id'], pdf_url, target_email)
+            # A stored key belongs to a send whose outcome is unknown; otherwise start a new one.
+            idempotency_key = delivery.get('idempotency_key') or f"delivery-{delivery['id']}-{delivery['attempts']}"
+            self.store.mark_sending(claim, delivery['id'], pdf_url, target_email, idempotency_key)
             in_flight = True
-            idempotency_key = f"delivery-{delivery['id']}-{delivery['attempts']}"
             sent = self._send_email(issue, target_email, pdf_url, idempotency_key)
             if not sent.ok:
-                self._fail(claim, issue, delivery, sent.error, now, force,
-                           error_kind=sent.error_kind, retry_after=sent.retry_after)
+                self._fail(claim, issue, delivery, sent.error, now, force, error_kind=sent.error_kind,
+                           retry_after=sent.retry_after, keep_key=sent.outcome_unknown)
                 return {'success': False, 'error': sent.error}
 
             self._succeed(claim, issue, delivery, pdf_url, sent.message_id, now, force)
@@ -294,8 +295,8 @@ class SchedulerService:
             raise
         except Exception as e:
             logger.exception(f"Issue {claim.issue_id}: unexpected error in delivery {delivery['id']}")
-            # Don't change the idempotency key once the email may have been accepted.
-            self._fail(claim, issue, delivery, f"unexpected error: {e}", now, force, count_attempt=not in_flight)
+            # Once the email may have been accepted, the retry must reuse its idempotency key.
+            self._fail(claim, issue, delivery, f"unexpected error: {e}", now, force, keep_key=in_flight)
             return {'success': False, 'error': str(e)}
 
     def _load_issue(self, issue_id: str) -> Optional[dict]:
@@ -341,7 +342,7 @@ class SchedulerService:
             )
         except Exception as e:
             logger.exception(f"Failed to send scheduled email for issue {issue['id']}")
-            return SendResult.failed(TRANSIENT, f"email: unexpected error ({e})")
+            return SendResult.failed(TRANSIENT, f"email: unexpected error ({e})", outcome_unknown=True)
 
     # ------------------------------------------------------------------
     # State transitions (every write goes through the fenced store)
@@ -376,19 +377,25 @@ class SchedulerService:
         issue_fields = {'schedule_status': claim.previous_status} if force else self._next_slot(issue, now)
         self.store.finish(claim, issue_fields, delivery['id'], {'status': 'skipped'}, cadence=self._cadence(issue))
 
-    def _fail(self, claim, issue, delivery, error, now, force, count_attempt=True,
-              error_kind=TRANSIENT, retry_after=None) -> None:
+    def _fail(self, claim, issue, delivery, error, now, force, error_kind=TRANSIENT, retry_after=None,
+              keep_key=False) -> None:
         """Record a failed attempt. Transient failures retry with backoff (no sooner than the
         provider's Retry-After); permanent ones (bad recipient, rejected message, missing config)
-        abandon the edition at once, since retrying cannot help."""
+        abandon the edition at once, since retrying cannot help.
+
+        keep_key: the send's outcome is unknown (Resend may have accepted it), so the retry keeps
+        the stored idempotency key. Otherwise the key is cleared and the next attempt gets a new one.
+        """
         logger.warning(f"Issue {claim.issue_id} failed ({error_kind}): {error}")
-        attempts = delivery['attempts'] + (1 if count_attempt else 0)
+        attempts = delivery['attempts'] + 1
         cadence = self._cadence(issue)
+        key_fields = {} if keep_key else {'idempotency_key': None}
         if force:
             # Manual sends are not retried.
             self.store.finish(
                 claim, {'schedule_status': claim.previous_status, 'last_run_error': error},
-                delivery['id'], {'status': 'failed', 'attempts': attempts, 'error': error, 'error_kind': error_kind},
+                delivery['id'], {'status': 'failed', 'attempts': attempts, 'error': error, 'error_kind': error_kind,
+                                 **key_fields},
                 cadence=cadence,
             )
             return
@@ -410,7 +417,7 @@ class SchedulerService:
         self.store.finish(
             claim, {'schedule_status': 'failed', 'next_run_at': retry_at, 'last_run_error': error},
             delivery['id'], {'status': 'failed', 'attempts': attempts, 'error': error, 'error_kind': error_kind,
-                             'next_attempt_at': retry_at},
+                             'next_attempt_at': retry_at, **key_fields},
             cadence=cadence,
         )
 

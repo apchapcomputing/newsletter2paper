@@ -84,11 +84,18 @@ def test_403_invalid_api_key_is_a_config_error(service):
 
 
 @respx.mock
-def test_timeout_is_transient(service):
+def test_timeout_is_transient_with_unknown_outcome(service):
     respx.post(RESEND_EMAILS).mock(side_effect=httpx.ReadTimeout("timed out"))
     result = send(service)
     assert result.error_kind == "transient" and result.error.startswith("email: could not reach Resend")
     assert "ReadTimeout" in result.error
+    assert result.outcome_unknown  # Resend may have accepted it; the retry must reuse the key
+
+
+@respx.mock
+def test_error_responses_have_a_known_outcome(service):
+    respx.post(RESEND_EMAILS).mock(return_value=resend_error(500, "application_error", "boom"))
+    assert not send(service).outcome_unknown
 
 
 @respx.mock

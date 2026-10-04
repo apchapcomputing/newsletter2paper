@@ -21,7 +21,7 @@ CADENCE_COLUMNS = {
     'auto_send': 'boolean', 'frequency': 'text', 'schedule_timezone': 'text',
     'schedule_time_local': 'text', 'schedule_weekday': 'integer', 'schedule_day_of_month': 'integer',
 }
-_DELIVERY_COLUMNS = {'status', 'attempts', 'next_attempt_at', 'error', 'error_kind', 'pdf_url', 'recipient',
+_DELIVERY_COLUMNS = {'status', 'attempts', 'next_attempt_at', 'error', 'error_kind', 'idempotency_key', 'pdf_url', 'recipient',
                      'resend_message_id', 'sent_at'}
 
 
@@ -189,17 +189,18 @@ class DeliveryStore:
                 {"issue_id": claim.issue_id},
             ).mappings().one())
 
-    def mark_sending(self, claim: Claim, delivery_id, pdf_url: str, recipient: str) -> None:
-        """Commit that the email is about to be sent. A run that finds this status after a crash
-        resends with the same idempotency key instead of risking a second email."""
+    def mark_sending(self, claim: Claim, delivery_id, pdf_url: str, recipient: str, idempotency_key: str) -> None:
+        """Commit that the email is about to be sent, with the idempotency key it will use. A run
+        that finds this status after a crash resends with the same key instead of risking a
+        second email."""
         with self.engine.begin() as conn:
             self._check_claim(conn, claim)
             conn.execute(
                 text(
                     "UPDATE public.issue_deliveries SET status = 'sending', pdf_url = :pdf_url, "
-                    "recipient = :recipient, updated_at = now() WHERE id = :id"
+                    "recipient = :recipient, idempotency_key = :key, updated_at = now() WHERE id = :id"
                 ),
-                {"id": delivery_id, "pdf_url": pdf_url, "recipient": recipient},
+                {"id": delivery_id, "pdf_url": pdf_url, "recipient": recipient, "key": idempotency_key},
             )
 
     def finish(self, claim: Claim, issue: dict, delivery_id=None, delivery: Optional[dict] = None,

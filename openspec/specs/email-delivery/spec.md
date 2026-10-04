@@ -68,14 +68,29 @@ The scheduler retries `transient` failures with backoff and abandons the edition
 
 ### Requirement: Idempotent Sends
 
-The system SHALL send every scheduled and manual delivery email with the Resend `Idempotency-Key`
-`delivery-{id}-{attempts}`. The key SHALL be reused unchanged when a send whose outcome is unknown is retried.
+The system SHALL send every scheduled and manual delivery email with a Resend `Idempotency-Key`, stored on
+the delivery (`issue_deliveries.idempotency_key`) when it is marked `sending`. A new key
+(`delivery-{id}-{attempts}`) SHALL be used only after Resend answered with an error. When the outcome is
+unknown (timeout, network error, unexpected exception or crash after `sending`), the retry SHALL reuse the
+stored key. `attempts` counts every failure either way, so retries stay bounded.
 
 #### Scenario: Duplicate submission
 
 - GIVEN a delivery email was accepted by Resend but the outcome was not recorded
 - WHEN the same delivery is sent again with the same key within 24 hours
 - THEN Resend does not deliver a second email
+
+#### Scenario: Timeout after Resend accepted the email
+
+- GIVEN a send timed out (`outcome_unknown`) although Resend had accepted the email
+- WHEN the failure is recorded and the delivery is retried
+- THEN `attempts` is incremented but the stored key is kept, so the retry is deduplicated by Resend
+
+#### Scenario: Resend answered with an error
+
+- GIVEN a send failed with an HTTP error response (for example 503)
+- WHEN the delivery is retried
+- THEN the stored key is cleared and the retry uses `delivery-{id}-{attempts}` with the new attempt number
 
 ---
 

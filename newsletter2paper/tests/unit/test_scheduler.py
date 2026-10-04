@@ -122,8 +122,8 @@ class FakeStore:
         self._call('manual')
         return delivery(id='m1', trigger='manual')
 
-    def mark_sending(self, claim, delivery_id, pdf_url, recipient):
-        self._call('mark_sending', delivery_id, pdf_url, recipient)
+    def mark_sending(self, claim, delivery_id, pdf_url, recipient, idempotency_key):
+        self._call('mark_sending', delivery_id, pdf_url, recipient, idempotency_key)
 
     def finish(self, claim, issue_fields, delivery_id=None, delivery_fields=None, cadence=None):
         self._call('finish')
@@ -186,8 +186,9 @@ class TestScheduledRun:
         assert delivery_id is None and issue_fields['schedule_status'] == 'idle'
 
     async def test_crash_after_sending_resends_with_the_same_key(self, svc):
-        # The previous run committed 'sending' and died; Resend may already have the email.
-        svc.store.existing = delivery(status='sending', pdf_url='http://old', attempts=1)
+        # The previous run committed 'sending' with its key and died; Resend may already have the email.
+        svc.store.existing = delivery(status='sending', pdf_url='http://old', attempts=1,
+                                      idempotency_key='delivery-d1-1')
         await svc._process_issue(CLAIM)
         svc.generate.assert_not_called()
         assert svc.store.log[2] == ('email', 'a@b.co', 'http://old', 'delivery-d1-1')
@@ -197,11 +198,26 @@ class TestScheduledRun:
         svc.email.return_value = TRANSIENT_FAILURE
         res = await svc._process_issue(CLAIM)
         assert not res['success']
-        assert ('mark_sending', 'd1', 'http://pdf', 'a@b.co') in svc.store.log  # PDF stored for the retry
+        assert ('mark_sending', 'd1', 'http://pdf', 'a@b.co', 'delivery-d1-0') in svc.store.log  # PDF stored for the retry
         issue_fields, _, d = svc.store.finished[0]
         assert d['status'] == 'failed' and d['attempts'] == 1 and d['error'].startswith('email:')
+        assert d['idempotency_key'] is None  # Resend answered with an error: the next attempt gets a new key
         assert issue_fields['schedule_status'] == 'failed'
         assert issue_fields['next_run_at'] == d['next_attempt_at']
+
+    async def test_timeout_keeps_the_key_for_the_retry(self, svc):
+        # No response: Resend may have accepted the email, so the retry must reuse the key.
+        svc.email.return_value = SendResult.failed('transient', 'email: could not reach Resend (timeout)',
+                                                   outcome_unknown=True)
+        await svc._process_issue(CLAIM)
+        d = svc.store.finished[0][2]
+        assert d['status'] == 'failed' and d['attempts'] == 1 and 'idempotency_key' not in d
+
+    async def test_retry_after_unknown_outcome_reuses_the_stored_key(self, svc):
+        svc.store.existing = delivery(status='failed', pdf_url='http://old', attempts=1,
+                                      idempotency_key='delivery-d1-0')
+        await svc._process_issue(CLAIM)
+        assert svc.store.log[2][3] == 'delivery-d1-0'
 
     async def test_retry_reuses_pdf_with_a_new_key(self, svc):
         svc.store.existing = delivery(status='failed', pdf_url='http://old', attempts=1)
@@ -290,7 +306,13 @@ class TestScheduledRun:
         res = await svc._process_issue(CLAIM)
         assert not res['success']
         _, _, d = svc.store.finished[0]
-        assert d['status'] == 'failed' and d['attempts'] == 0  # next run reuses delivery-d1-0
+        # The attempt counts (retries stay bounded) but the stored delivery-d1-0 key is kept.
+        assert d['status'] == 'failed' and d['attempts'] == 1 and 'idempotency_key' not in d
+
+    async def test_unexpected_error_before_sending_clears_the_key(self, svc):
+        svc.generate.side_effect = RuntimeError('render crashed')
+        await svc._process_issue(CLAIM)
+        assert svc.store.finished[0][2]['idempotency_key'] is None
 
     async def test_one_shot_success_turns_auto_send_off(self, svc):
         svc._issue = issue(frequency='once')

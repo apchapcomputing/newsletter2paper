@@ -117,7 +117,7 @@ The system SHALL record each edition in `issue_deliveries` (`trigger` `scheduled
 
 ### Requirement: Claim Fencing
 
-The system SHALL make every write after a claim conditional on the claim's `claim_token`, and SHALL commit a delivery as `sending` before calling Resend with `Idempotency-Key: delivery-{id}-{attempts}`.
+The system SHALL make every write after a claim conditional on the claim's `claim_token`, and SHALL commit a delivery as `sending` before calling Resend, storing the `Idempotency-Key` it uses (see Idempotent Sends in the email-delivery spec).
 
 #### Scenario: Taken-over worker cannot overwrite state
 
@@ -130,13 +130,13 @@ The system SHALL make every write after a claim conditional on the claim's `clai
 
 - GIVEN a delivery was committed as `sending` and the process died before it was marked `sent`
 - WHEN the stale lock is reclaimed
-- THEN the same delivery is resumed with its stored PDF and unchanged `attempts`, so the email is resent with the same idempotency key and Resend delivers it once
+- THEN the same delivery is resumed with its stored PDF and stored idempotency key, so Resend delivers the email once
 
 #### Scenario: Unexpected error after sending keeps the key
 
 - GIVEN an unexpected exception after the delivery was marked `sending`
 - WHEN the failure is recorded
-- THEN `attempts` is not incremented, so the retry reuses the idempotency key
+- THEN `attempts` is incremented (retries stay bounded) but the stored idempotency key is kept, so the retry reuses it
 
 ---
 

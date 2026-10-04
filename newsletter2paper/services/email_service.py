@@ -22,20 +22,25 @@ class SendResult:
 
     `error` is user-readable and prefixed `email:` (the provider refused or failed) or `config:`
     (our setup is wrong). `retry_after` is Resend's Retry-After in seconds, when it sent one.
+    `outcome_unknown` means no response arrived (timeout, network error), so Resend may have
+    accepted the email: a retry must reuse the same idempotency key.
     """
     ok: bool
     message_id: Optional[str] = None
     error_kind: Optional[str] = None
     error: Optional[str] = None
     retry_after: Optional[int] = None
+    outcome_unknown: bool = False
 
     @classmethod
     def sent(cls, message_id: Optional[str]) -> "SendResult":
         return cls(ok=True, message_id=message_id)
 
     @classmethod
-    def failed(cls, error_kind: str, error: str, retry_after: Optional[int] = None) -> "SendResult":
-        return cls(ok=False, error_kind=error_kind, error=error, retry_after=retry_after)
+    def failed(cls, error_kind: str, error: str, retry_after: Optional[int] = None,
+               outcome_unknown: bool = False) -> "SendResult":
+        return cls(ok=False, error_kind=error_kind, error=error, retry_after=retry_after,
+                   outcome_unknown=outcome_unknown)
 
 
 def classify_resend_error(exc: Exception) -> SendResult:
@@ -46,7 +51,8 @@ def classify_resend_error(exc: Exception) -> SendResult:
     4xx, e.g. an invalid address or an unverified sending domain.
     """
     if not isinstance(exc, resend.exceptions.ResendError):
-        return SendResult.failed(TRANSIENT, f"email: unexpected error sending via Resend ({exc})")
+        return SendResult.failed(TRANSIENT, f"email: unexpected error sending via Resend ({exc})",
+                                 outcome_unknown=True)
     try:
         code = int(exc.code)
     except (TypeError, ValueError):
@@ -57,7 +63,7 @@ def classify_resend_error(exc: Exception) -> SendResult:
                                  retry_after=_retry_after(exc.headers))
     if code >= 500:
         if exc.error_type == 'HttpClientError':
-            return SendResult.failed(TRANSIENT, f"email: could not reach Resend ({message})")
+            return SendResult.failed(TRANSIENT, f"email: could not reach Resend ({message})", outcome_unknown=True)
         return SendResult.failed(TRANSIENT, f"email: Resend is unavailable ({code}: {message})")
     if code == 409 and exc.error_type == 'concurrent_idempotent_requests':
         return SendResult.failed(TRANSIENT, "email: Resend is still processing an identical request")
