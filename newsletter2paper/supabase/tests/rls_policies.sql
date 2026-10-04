@@ -27,9 +27,9 @@ BEGIN
 END $$;
 
 -- Fixtures (as superuser, bypassing RLS)
-INSERT INTO users(id,email,username,password,first_name,last_name) VALUES
-  ('aaaaaaaa-0000-0000-0000-00000000000a','a@rls.test','rls_a','x','A','A'),
-  ('bbbbbbbb-0000-0000-0000-00000000000b','b@rls.test','rls_b','x','B','B');
+INSERT INTO auth.users(id,email) VALUES
+  ('aaaaaaaa-0000-0000-0000-00000000000a','a@rls.test'),
+  ('bbbbbbbb-0000-0000-0000-00000000000b','b@rls.test');
 INSERT INTO issues(id,format,frequency,title,target_email,status,guest_token) VALUES
   ('11111111-0000-0000-0000-00000000000a','essay','weekly','A issue','a@rls.test','draft',NULL),
   ('22222222-0000-0000-0000-00000000000b','essay','weekly','B issue','b@rls.test','draft',NULL),
@@ -81,9 +81,14 @@ BEGIN
   RESET ROLE;
   PERFORM pg_temp.expect('A cannot create issue for another email', n, 0);
 
+  -- Identity lives in auth.users; the app roles must not be able to read other people's emails.
   PERFORM pg_temp.ctx('authenticated', a, 'a@rls.test');
-  SELECT count(*) INTO n FROM users;                         RESET ROLE;
-  PERFORM pg_temp.expect('A cannot read users', n, 0);
+  BEGIN
+    PERFORM 1 FROM auth.users LIMIT 1;
+    n := 1;
+  EXCEPTION WHEN insufficient_privilege THEN n := 0; END;
+  RESET ROLE;
+  PERFORM pg_temp.expect('A cannot read auth.users', n, 0);
 
   -- Guests: scoped to their own token
   PERFORM pg_temp.ctx('anon');
