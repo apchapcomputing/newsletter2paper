@@ -50,6 +50,7 @@ export default function ConfigureNewspaper() {
 
     const { session } = useAuth()
     const [sendNowState, setSendNowState] = useState({ status: 'idle', message: '' })
+    const hasRecipient = Boolean(targetEmail && targetEmail.trim())
 
     const handleSendNow = async () => {
         setSendNowState({ status: 'sending', message: '' })
@@ -303,11 +304,18 @@ export default function ConfigureNewspaper() {
                                 <Switch
                                     checked={autoSend}
                                     onChange={(e) => updateAutoSend(e.target.checked)}
+                                    // Automatic delivery needs a recipient; turning it off is always allowed.
+                                    disabled={!autoSend && !hasRecipient}
                                     color="primary"
                                 />
                             }
                             label="Enable automatic delivery"
                         />
+                        {!autoSend && !hasRecipient && (
+                            <Typography variant="body2" sx={{ color: 'text.secondary' }}>
+                                Add a delivery email below to enable automatic delivery.
+                            </Typography>
+                        )}
                     </Box>
                 )}
 
@@ -374,8 +382,8 @@ export default function ConfigureNewspaper() {
                     </Box>
                 )}
 
-                {/* Email delivery (only when authenticated). When automatic delivery is OFF show field disabled/greyed so users know automation isn't used. */}
-                {isAuthenticated && autoSend && (
+                {/* Email delivery (only when authenticated). Shown before automatic delivery is enabled, since enabling it needs an address. */}
+                {isAuthenticated && (
                     <Box>
                         <Typography variant="body1" sx={{ mb: 1, fontWeight: 500 }}>
                             EMAIL DELIVERY
@@ -395,7 +403,7 @@ export default function ConfigureNewspaper() {
                             onBlur={handleEmailBlur}
                             placeholder="e.g., you@example.com"
                             helperText={
-                                !targetEmail ? 'Enter an email to enable automatic delivery' : ''
+                                !hasRecipient ? 'Enter an email to enable automatic delivery' : ''
                             }
                             sx={{
                                 '& .MuiOutlinedInput-root': {

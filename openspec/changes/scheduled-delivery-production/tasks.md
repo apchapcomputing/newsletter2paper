@@ -36,12 +36,12 @@ GitHub issue for each group in brackets. Parent: #17.
 
 ## 4. Email result and error classification [#22]
 
-- [ ] `EmailService.send` returns `SendResult(ok, message_id, error_kind, error)`; on-demand `routers/pdf.py` uses it
-- [ ] Classification: 429/5xx/timeout transient (honour `Retry-After`); other 4xx and missing config permanent
-- [ ] Escape all interpolated HTML; Resend `Idempotency-Key` header
-- [ ] Missing or unverified recipient is a permanent `config:` failure, not a success
-- [ ] `respx` contract tests for every classification row; rendered-body snapshots
-- [ ] Add `openspec/specs/email-delivery/spec.md` on archive (delta in this change)
+- [x] `EmailService.send` returns `SendResult(ok, message_id, error_kind, error)`; on-demand `routers/pdf.py` uses it
+- [x] Classification: 429/5xx/timeout transient (honour `Retry-After`); other 4xx and missing config permanent
+- [x] Escape all interpolated HTML; Resend `Idempotency-Key` header
+- [x] Missing or unverified recipient is a permanent `config:` failure, not a success (missing/blank done; "unverified" waits for §7, which adds `target_email_verified_at`)
+- [x] `respx` contract tests for every classification row; rendered-body snapshots
+- [x] Add `openspec/specs/email-delivery/spec.md` on archive (delta in this change)
 
 ## 5. Retries, give-up, and owner notification [#23]
 
