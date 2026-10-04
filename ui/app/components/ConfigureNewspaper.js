@@ -1,5 +1,6 @@
 'use client'
 
+import { useState } from 'react'
 import { Box, Button, Typography, TextField, Switch, FormControlLabel } from '@mui/material'
 import { useNewsletterConfig } from '../../contexts/useNewsletterConfig'
 import { useAuth } from '../../contexts/useAuth'
@@ -46,6 +47,27 @@ export default function ConfigureNewspaper() {
         updateArticleWindow,
         updateAutoSend
     } = useNewsletterConfig()
+
+    const { session } = useAuth()
+    const [sendNowState, setSendNowState] = useState({ status: 'idle', message: '' })
+
+    const handleSendNow = async () => {
+        setSendNowState({ status: 'sending', message: '' })
+        try {
+            const res = await fetch(`/api/issues/${currentIssueId}/send-now`, {
+                method: 'POST',
+                headers: session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {},
+            })
+            const data = await res.json().catch(() => ({}))
+            if (!res.ok) {
+                setSendNowState({ status: 'error', message: data.error || 'Could not start sending' })
+                return
+            }
+            setSendNowState({ status: 'sent', message: `Sending started. It will arrive at ${targetEmail} shortly.` })
+        } catch (err) {
+            setSendNowState({ status: 'error', message: 'Could not reach the server' })
+        }
+    }
 
     // Persist the email change to the DB so it's available when PDF generation fires
     const handleEmailBlur = async () => {
@@ -329,8 +351,26 @@ export default function ConfigureNewspaper() {
                         </Box>
 
                         <Typography variant="caption" sx={{ display: 'block', mt: 1, color: 'text.secondary' }}>
-                            Next scheduled: {computeNextScheduled(frequency).toLocaleString()}
+                            First scheduled delivery: {computeNextScheduled(frequency).toLocaleString()}
                         </Typography>
+
+                        <Button
+                            variant="outlined"
+                            onClick={handleSendNow}
+                            disabled={!currentIssueId || !targetEmail || sendNowState.status === 'sending'}
+                            sx={{ mt: 1.5, textTransform: 'none' }}
+                        >
+                            {sendNowState.status === 'sending' ? 'Sending…' : 'Send now'}
+                        </Button>
+                        {sendNowState.message && (
+                            <Typography
+                                variant="caption"
+                                role={sendNowState.status === 'error' ? 'alert' : 'status'}
+                                sx={{ display: 'block', mt: 0.5, color: sendNowState.status === 'error' ? 'error.main' : 'text.secondary' }}
+                            >
+                                {sendNowState.message}
+                            </Typography>
+                        )}
                     </Box>
                 )}
 

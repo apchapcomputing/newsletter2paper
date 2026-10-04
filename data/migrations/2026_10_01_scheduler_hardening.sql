@@ -1,0 +1,1 @@
+../../newsletter2paper/supabase/migrations/20261001000000_scheduler_hardening.sql

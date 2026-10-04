@@ -142,3 +142,31 @@ describe('POST /api/pdf/generate/[issueId]', () => {
         expect((await res.json()).success).toBe(false)
     })
 })
+
+describe('POST /api/issues/[issueId]/send-now', () => {
+    const call = async (headers = {}) => {
+        const { POST } = await import('@/app/api/issues/[issueId]/send-now/route.js')
+        return POST(req('http://app/api/issues/abc/send-now', { method: 'POST', headers }), { params: Promise.resolve({ issueId: 'abc' }) })
+    }
+
+    it('rejects callers without a session before reaching the backend', async () => {
+        const res = await call()
+        expect(res.status).toBe(401)
+        expect(fetchMock).not.toHaveBeenCalled()
+    })
+
+    it('forwards the caller’s bearer token to the backend', async () => {
+        fetchMock.mockResolvedValue(upstream({ success: true }, { status: 202 }))
+        const res = await call({ Authorization: 'Bearer tok' })
+        expect(fetchMock.mock.calls[0][0]).toBe('http://backend.test/issues/abc/send-now')
+        expect(fetchMock.mock.calls[0][1].headers).toEqual({ Authorization: 'Bearer tok' })
+        expect(res.status).toBe(202)
+    })
+
+    it('passes through the backend’s cooldown error', async () => {
+        fetchMock.mockResolvedValue(upstream({ detail: 'This issue was sent recently; try again in 5 min' }, { ok: false, status: 429 }))
+        const res = await call({ Authorization: 'Bearer tok' })
+        expect(res.status).toBe(429)
+        expect((await res.json()).error).toMatch(/sent recently/)
+    })
+})
