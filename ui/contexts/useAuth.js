@@ -3,6 +3,7 @@
 import { createContext, useContext, useEffect, useState } from 'react'
 import { createClient } from '../lib/supabase'
 import logger from '../utils/logger'
+import { identify, reset } from '../lib/analytics'
 
 const AuthContext = createContext({
     user: null,
@@ -36,6 +37,7 @@ export function AuthProvider({ children }) {
             } else {
                 setSession(session)
                 setUser(session?.user ?? null)
+                identify(session?.user?.id)
             }
             setLoading(false)
         }
@@ -52,11 +54,13 @@ export function AuthProvider({ children }) {
 
             // Handle sign in event
             if (event === 'SIGNED_IN') {
+                identify(session?.user?.id)
                 logger.log('User signed in:', session?.user?.email)
             }
 
             // Handle sign out event
             if (event === 'SIGNED_OUT') {
+                reset() // also covers sign-out from another tab or an expired session
                 logger.log('User signed out')
             }
         })

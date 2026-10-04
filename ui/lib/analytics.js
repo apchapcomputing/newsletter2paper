@@ -1,0 +1,90 @@
+// The only module that talks to PostHog. Every function is a no-op when
+// NEXT_PUBLIC_POSTHOG_KEY is unset (local dev, vitest), so callers never check.
+//
+// Event names are object_action in snake_case (pdf_generated, issue_created).
+// Never send emails, article text, feed URLs or issue titles: BLOCKED_PROPS are
+// dropped before anything leaves the browser.
+import posthog from 'posthog-js'
+
+export const BLOCKED_PROPS = ['email', 'target_email', 'url', 'feed_url', 'title', 'query', 'html']
+const EVENT_NAME = /^[a-z]+(_[a-z]+)+$/
+const isDevelopment = process.env.NODE_ENV === 'development'
+
+function enabled() {
+    return typeof window !== 'undefined' && Boolean(process.env.NEXT_PUBLIC_POSTHOG_KEY)
+}
+
+function warn(...args) {
+    if (isDevelopment) console.warn('[analytics]', ...args)
+}
+
+function clean(props = {}) {
+    const out = {}
+    for (const [key, value] of Object.entries(props)) {
+        if (BLOCKED_PROPS.includes(key)) {
+            warn(`dropped blocked property "${key}"`)
+            continue
+        }
+        out[key] = value
+    }
+    return out
+}
+
+// Called once from instrumentation-client.js, before the app hydrates.
+export function initAnalytics() {
+    if (!enabled()) return false
+    posthog.init(process.env.NEXT_PUBLIC_POSTHOG_KEY, {
+        api_host: '/ingest', // reverse proxy in next.config.mjs, so ad blockers drop fewer events
+        ui_host: 'https://eu.posthog.com',
+        defaults: '2026-08-30', // includes capture_pageview: 'history_change' for App Router navigations
+        // No cookies or storage until the visitor accepts the banner; before that (and after
+        // a decline) events are sent in cookieless mode.
+        cookieless_mode: 'on_reject',
+        person_profiles: 'identified_only',
+        capture_exceptions: true,
+        disable_session_recording: true,
+        // Same-origin /api/* calls carry X-POSTHOG-DISTINCT-ID / X-POSTHOG-SESSION-ID so
+        // backend errors can be linked to the visitor.
+        tracing_headers: [window.location.host],
+    })
+    return true
+}
+
+export function track(event, props) {
+    if (!EVENT_NAME.test(event)) {
+        warn(`event "${event}" is not object_action snake_case; not sent`)
+        return
+    }
+    if (!enabled()) return
+    posthog.capture(event, clean(props))
+}
+
+// User id only; the Supabase id is the person's distinct id.
+export function identify(userId) {
+    if (!enabled() || !userId) return
+    if (posthog.get_distinct_id() === String(userId)) return // session recovery re-fires SIGNED_IN
+    posthog.identify(String(userId))
+}
+
+export function reset() {
+    if (!enabled()) return
+    posthog.reset()
+}
+
+export function captureError(error, props) {
+    if (!enabled()) return
+    posthog.captureException(error, clean(props))
+}
+
+export const consent = {
+    // 'pending' | 'granted' | 'denied', or null when analytics is off (no banner needed).
+    status() {
+        return enabled() ? posthog.get_explicit_consent_status() : null
+    },
+    accept() {
+        if (enabled()) posthog.opt_in_capturing()
+    },
+    decline() {
+        if (enabled()) posthog.opt_out_capturing()
+    },
+}
