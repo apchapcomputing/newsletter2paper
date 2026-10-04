@@ -55,6 +55,7 @@ The system SHALL allow full use of core functionality without authentication.
 - GIVEN a guest user configures an issue
 - WHEN the page is reloaded in the same browser
 - THEN the previously configured issue (title, publications, format, frequency) is restored from `localStorage`
+- AND the selected publications are not cleared merely because no user is signed in
 
 ---
 
@@ -136,3 +137,11 @@ The system SHALL allow authenticated users to sign out, invalidating their curre
 - WHEN the sign-out action is processed
 - THEN the Supabase session is invalidated
 - AND the user is returned to the unauthenticated (guest) state
+- AND the selected publications are cleared
+
+#### Scenario: Guest selection survives without sign-in
+
+- GIVEN a visitor who has never signed in has selected publications
+- WHEN the app loads or reloads
+- THEN the selection is kept, because `localStorage` is the guest's only copy
+- AND it is cleared only on a transition from signed-in to signed-out

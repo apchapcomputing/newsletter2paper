@@ -43,6 +43,24 @@ The system SHALL allow partially updating an issue's title, format, frequency, a
 - WHEN the client sends `PUT /issues/{id}` with `frequency: "weekly"`
 - THEN `custom_start_date` and `custom_end_date` are cleared from the database
 
+#### Scenario: Custom dates preserved when not sent
+
+- GIVEN an issue with `frequency: "custom"` and stored custom dates
+- WHEN the client sends `PUT /issues/{id}` without `custom_start_date` or `custom_end_date` (for example, only a new title)
+- THEN the stored custom dates are unchanged
+
+#### Scenario: Explicit null clears a custom date
+
+- GIVEN an issue with stored custom dates
+- WHEN the client sends `PUT /issues/{id}` with `custom_start_date: null`
+- THEN `custom_start_date` is cleared and `custom_end_date` is unchanged
+
+#### Scenario: Updating a nonexistent issue
+
+- GIVEN no issue exists with the given ID
+- WHEN the client sends `PUT /issues/{id}`
+- THEN a 404 response is returned (not 500)
+
 #### Scenario: Updating title only
 
 - GIVEN an existing issue
