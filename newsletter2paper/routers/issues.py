@@ -1,4 +1,6 @@
-from fastapi import APIRouter, HTTPException, Depends
+import asyncio
+import logging
+from fastapi import APIRouter, BackgroundTasks, HTTPException, Depends, Request
 from uuid import UUID
 from typing import List, Optional
 from datetime import datetime, timezone
@@ -208,6 +210,46 @@ async def get_issue(
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to get issue: {str(e)}")
+
+@router.post("/{issue_id}/send-now", status_code=202, response_model=dict)
+def send_issue_now(
+    issue_id: UUID,
+    request: Request,
+    background_tasks: BackgroundTasks,
+    db_service: DatabaseService = Depends(get_db_service)
+):
+    """
+    Generate the PDF and email it to the issue's target_email right now, without
+    changing the automatic delivery schedule. Runs in the background; poll the issue's
+    `schedule_status` / `last_run_at` / `last_run_error` for the outcome.
+
+    Sync on purpose: the DB claim, PDF subprocess and email calls are blocking, so the
+    endpoint and its background task run in the threadpool instead of the event loop.
+    """
+    result = db_service.client.table('issues').select('id, target_email')\
+        .eq('id', str(issue_id)).execute()
+    if not result.data:
+        raise HTTPException(status_code=404, detail="Issue not found")
+    if not result.data[0].get('target_email'):
+        raise HTTPException(status_code=400, detail="Issue has no target_email to send to")
+
+    svc = getattr(request.app.state, 'scheduler', None)
+    if svc is None:
+        raise HTTPException(status_code=503, detail="Scheduler is not running")
+
+    previous_status = svc.claim_for_send_now(str(issue_id))
+    if previous_status is None:
+        raise HTTPException(status_code=409, detail="Issue is already being processed")
+
+    def _run():
+        try:
+            asyncio.run(svc.send_now(str(issue_id), previous_status))
+        except Exception as e:
+            logging.exception(f"send-now failed for {issue_id}: {e}")
+            svc._record_failure_by_id(str(issue_id), f"unexpected error: {e}", force=True, previous_status=previous_status)
+
+    background_tasks.add_task(_run)
+    return {"success": True, "message": "Sending started"}
 
 @router.post("/{issue_id}/publications", response_model=dict)
 async def add_publications_to_issue(
