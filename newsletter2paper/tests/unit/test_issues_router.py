@@ -142,3 +142,55 @@ class TestAddPublications:
 
         rows = db.calls_for("issue_publications", "insert")[0][2]
         assert rows[0]["remove_images"] is False
+
+
+class TestSendNow:
+    class FakeScheduler:
+        def __init__(self, claim='idle', fail=False):
+            self.claim, self.fail, self.sent, self.failures = claim, fail, [], []
+
+        def claim_for_send_now(self, issue_id):
+            return self.claim
+
+        async def send_now(self, issue_id, previous_status):
+            if self.fail:
+                raise RuntimeError("boom")
+            self.sent.append((issue_id, previous_status))
+
+        def _record_failure_by_id(self, issue_id, error, **kw):
+            self.failures.append((issue_id, error, kw))
+
+    def post(self, db, scheduler):
+        c = client_for(db)
+        if scheduler is not None:
+            c.app.state.scheduler = scheduler
+        return c.post(f"/issues/{ISSUE_ID}/send-now")
+
+    def db(self, email="a@b.co"):
+        return FakeSupabase({("issues", "select"): [{"id": str(ISSUE_ID), "target_email": email}]})
+
+    def test_accepted_runs_send_in_background(self):
+        sched = self.FakeScheduler(claim='failed')
+        resp = self.post(self.db(), sched)
+        assert resp.status_code == 202
+        assert sched.sent == [(str(ISSUE_ID), 'failed')]
+
+    def test_unknown_issue_is_404(self):
+        assert self.post(FakeSupabase(), self.FakeScheduler()).status_code == 404
+
+    def test_no_target_email_is_400(self):
+        assert self.post(self.db(email=None), self.FakeScheduler()).status_code == 400
+
+    def test_already_processing_is_409(self):
+        sched = self.FakeScheduler(claim=None)
+        assert self.post(self.db(), sched).status_code == 409
+        assert sched.sent == []
+
+    def test_scheduler_not_running_is_503(self):
+        assert self.post(self.db(), None).status_code == 503
+
+    def test_background_failure_is_recorded(self):
+        sched = self.FakeScheduler(fail=True)
+        assert self.post(self.db(), sched).status_code == 202
+        (issue_id, error, kw), = sched.failures
+        assert issue_id == str(ISSUE_ID) and "boom" in error and kw["force"] is True
