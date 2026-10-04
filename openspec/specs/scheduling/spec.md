@@ -26,13 +26,13 @@ for due issues every 60 seconds and claims and processes up to 5 per tick, one a
 
 - GIVEN `SCHEDULER_LOCK_TIMEOUT_MINUTES` is not longer than the worst-case run (`SCHEDULER_RSS_BUDGET_SECONDS`, default 300, + the 120s render timeout + 60s for email)
 - WHEN the scheduler is constructed
-- THEN it refuses to start (logged, non-fatal for the API)
+- THEN it refuses to start (see "Scheduler startup failure is non-fatal but visible")
 
-#### Scenario: Scheduler startup failure is non-fatal
+#### Scenario: Scheduler startup failure is non-fatal but visible
 
-- GIVEN `SUPABASE_DATABASE_URL` is missing or invalid
+- GIVEN `SUPABASE_DATABASE_URL` is missing or invalid, or the lock timeout check fails
 - WHEN the application starts
-- THEN the failure is logged and the API continues to serve requests without a scheduler
+- THEN the API continues to serve requests without a scheduler, the failure is logged at CRITICAL, and `GET /health` returns `"status": "degraded"` with `"scheduler": "disabled: <reason>"` (so the deploy health check fails)
 
 #### Scenario: pgbouncer query parameter is tolerated
 
@@ -130,7 +130,13 @@ The system SHALL make every write after a claim conditional on the claim's `clai
 
 ### Requirement: Rescheduling on Cadence Change
 
-The system SHALL clear `next_run_at` and `last_run_error` (and reset `failed` to `idle`) whenever `auto_send`, `frequency`, `schedule_timezone`, `schedule_time_local`, `schedule_weekday` or `schedule_day_of_month` changes, and SHALL mark the issue's open `pending` or `failed` scheduled delivery `abandoned` with error `config: schedule changed`. A delivery that is already `sending` is left alone. Known gap: that in-flight run then sets `next_run_at` from the cadence it loaded at the start, so the new cadence applies from the slot after (until slots are anchored to `scheduled_for`, tasks §2 of `scheduled-delivery-production`).
+The system SHALL clear `next_run_at` and `last_run_error` (and reset `failed` to `idle`) whenever `auto_send`, `frequency`, `schedule_timezone`, `schedule_time_local`, `schedule_weekday` or `schedule_day_of_month` changes, and SHALL mark the issue's open `pending` or `failed` scheduled delivery `abandoned` with error `config: schedule changed`. A delivery that is already `sending` is left alone.
+
+#### Scenario: Run in progress when the cadence changes
+
+- GIVEN a run that loaded the issue's cadence and is still working when the owner changes it
+- WHEN the run records its outcome
+- THEN the delivery gets its real outcome (`sent` stays `sent`), but `next_run_at` stays NULL, `auto_send` is not changed, the issue is released as `idle`, and a `failed` outcome does not reopen an edition the trigger abandoned; the next poll schedules from the new cadence
 
 #### Scenario: Newly enabled issue waits for the first cadence
 

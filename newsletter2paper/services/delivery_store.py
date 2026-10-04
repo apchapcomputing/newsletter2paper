@@ -15,6 +15,12 @@ from sqlalchemy import text
 CLOSED_STATUSES = {'sent', 'skipped', 'abandoned'}
 
 _ISSUE_COLUMNS = {'schedule_status', 'next_run_at', 'last_run_at', 'last_run_error', 'auto_send'}
+# Columns the cadence trigger watches. A run's next_run_at / auto_send are only valid for the
+# cadence it loaded; see DeliveryStore.finish.
+CADENCE_COLUMNS = {
+    'auto_send': 'boolean', 'frequency': 'text', 'schedule_timezone': 'text',
+    'schedule_time_local': 'text', 'schedule_weekday': 'integer', 'schedule_day_of_month': 'integer',
+}
 _DELIVERY_COLUMNS = {'status', 'attempts', 'next_attempt_at', 'error', 'pdf_url', 'recipient',
                      'resend_message_id', 'sent_at'}
 
@@ -196,28 +202,56 @@ class DeliveryStore:
                 {"id": delivery_id, "pdf_url": pdf_url, "recipient": recipient},
             )
 
-    def finish(self, claim: Claim, issue: dict, delivery_id=None, delivery: Optional[dict] = None) -> None:
+    def finish(self, claim: Claim, issue: dict, delivery_id=None, delivery: Optional[dict] = None,
+               cadence: Optional[dict] = None) -> None:
         """Write the run's outcome to the issue and (optionally) its delivery in one transaction.
 
         The issue update is conditional on the claim token; if another worker has taken over,
         nothing is written and ClaimLost is raised. The issue is updated first because changing
         auto_send fires the cadence trigger, which would otherwise reopen-and-abandon the delivery.
+
+        `cadence` is the issue's cadence as the run loaded it. If the owner changed it mid-run,
+        the trigger has already cleared next_run_at and abandoned the open edition; the run then
+        leaves next_run_at NULL, keeps auto_send, releases the issue as 'idle' and does not revive
+        the abandoned edition as 'failed', so the next poll schedules from the new cadence.
         """
         _check_columns(issue, _ISSUE_COLUMNS)
         _check_columns(delivery or {}, _DELIVERY_COLUMNS)
+        _check_columns(cadence or {}, set(CADENCE_COLUMNS))
+        params = {**issue, "_id": claim.issue_id, "_token": claim.token}
+        exprs = {}
+        if cadence:
+            unchanged = ' AND '.join(
+                f"{col}::text IS NOT DISTINCT FROM CAST(CAST(:_c_{col} AS {typ}) AS text)"
+                for col, typ in CADENCE_COLUMNS.items() if col in cadence
+            )
+            params.update({f"_c_{col}": val for col, val in cadence.items()})
+            exprs = {
+                'next_run_at': f"CASE WHEN {unchanged} THEN CAST(:next_run_at AS timestamptz) END",
+                'auto_send': f"CASE WHEN {unchanged} THEN CAST(:auto_send AS boolean) ELSE auto_send END",
+                'schedule_status': f"CASE WHEN {unchanged} THEN CAST(:schedule_status AS text) ELSE 'idle' END",
+            }
+        delivery_exprs = {
+            # Only the cadence trigger abandons an edition mid-run; a retry must not reopen it.
+            'status': "CASE WHEN status = 'abandoned' AND CAST(:status AS text) = 'failed' THEN status ELSE :status END",
+            'next_attempt_at': "CASE WHEN status = 'abandoned' THEN NULL ELSE CAST(:next_attempt_at AS timestamptz) END",
+        }
         with self.engine.begin() as conn:
             result = conn.execute(
                 text(
-                    f"UPDATE public.issues SET {_assignments(issue)}updated_at = now() "
+                    f"UPDATE public.issues SET {_assignments(issue, exprs)}updated_at = now() "
                     "WHERE id = :_id AND claim_token = CAST(:_token AS uuid)"
                 ),
-                {**issue, "_id": claim.issue_id, "_token": claim.token},
+                params,
             )
             if result.rowcount == 0:
                 raise ClaimLost(claim.issue_id)
             if delivery_id is not None and delivery:
                 conn.execute(
-                    text(f"UPDATE public.issue_deliveries SET {_assignments(delivery)}updated_at = now() WHERE id = :_id"),
+                    text(
+                        f"UPDATE public.issue_deliveries SET {_assignments(delivery, delivery_exprs)}"
+                        "updated_at = now() WHERE id = :_id"
+                    ),
                     {**delivery, "_id": delivery_id},
                 )
 
@@ -238,5 +272,9 @@ def _check_columns(fields: dict, allowed: set) -> None:
         raise ValueError(f"unexpected columns: {sorted(unknown)}")
 
 
-def _assignments(fields: dict) -> str:
-    return ''.join(f"{col} = :{col}, " for col in fields)
+def _assignments(fields: dict, exprs: Optional[dict] = None) -> str:
+    """SET list for `fields`, using exprs[col] instead of the plain bind where one is given.
+
+    Expressions on the right-hand side see the row as it was before this UPDATE."""
+    exprs = exprs or {}
+    return ''.join(f"{col} = {exprs.get(col, ':' + col)}, " for col in fields)

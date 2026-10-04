@@ -122,9 +122,10 @@ class FakeStore:
     def mark_sending(self, claim, delivery_id, pdf_url, recipient):
         self._call('mark_sending', delivery_id, pdf_url, recipient)
 
-    def finish(self, claim, issue_fields, delivery_id=None, delivery_fields=None):
+    def finish(self, claim, issue_fields, delivery_id=None, delivery_fields=None, cadence=None):
         self._call('finish')
         self.finished.append((issue_fields, delivery_id, delivery_fields))
+        self.cadence = cadence
 
 
 @pytest.fixture
@@ -245,6 +246,12 @@ class TestScheduledRun:
         await svc._process_issue(CLAIM)
         issue_fields = svc.store.finished[0][0]
         assert issue_fields['auto_send'] is False and issue_fields['next_run_at'] is None
+
+    async def test_final_write_carries_the_cadence_it_was_computed_from(self, svc):
+        svc._issue = issue(auto_send=True, schedule_weekday=4)
+        await svc._process_issue(CLAIM)
+        assert svc.store.cadence == {'auto_send': True, 'frequency': 'weekly', 'schedule_timezone': 'UTC',
+                                     'schedule_weekday': 4}
 
     async def test_missing_issue(self, svc):
         svc._issue = None
@@ -386,6 +393,27 @@ class TestStoreFinish:
         with pytest.raises(ClaimLost):
             store.finish(CLAIM, {'schedule_status': 'idle'}, 'd1', {'status': 'sent'})
         assert conn.execute.call_count == 1
+
+    def test_cadence_guard_wraps_schedule_fields(self):
+        store, conn = store_with()
+        store.finish(CLAIM, {'schedule_status': 'failed', 'next_run_at': None, 'last_run_error': 'x'},
+                     cadence={'frequency': 'weekly', 'schedule_weekday': 4})
+        sql, params = conn.execute.call_args[0]
+        sql = str(sql)
+        assert "next_run_at = CASE WHEN frequency::text IS NOT DISTINCT FROM" in sql
+        assert "schedule_status = CASE WHEN" in sql and "ELSE 'idle' END" in sql
+        assert "last_run_error = :last_run_error" in sql  # unguarded fields stay plain
+        assert params['_c_frequency'] == 'weekly' and params['_c_schedule_weekday'] == 4
+
+    def test_without_cadence_fields_are_plain(self):
+        store, conn = store_with()
+        store.finish(CLAIM, {'schedule_status': 'idle'})
+        assert 'CASE' not in str(conn.execute.call_args[0][0])
+
+    def test_failed_outcome_does_not_reopen_an_abandoned_edition(self):
+        store, conn = store_with()
+        store.finish(CLAIM, {'schedule_status': 'failed'}, 'd1', {'status': 'failed'})
+        assert "WHEN status = 'abandoned' AND CAST(:status AS text) = 'failed' THEN status" in str(conn.execute.call_args[0][0])
 
     def test_rejects_unknown_columns(self):
         store, _ = store_with()

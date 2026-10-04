@@ -19,7 +19,7 @@ if DB_URL:
     from sqlalchemy import create_engine, text
     from sqlalchemy.exc import IntegrityError
 
-from services.delivery_store import Claim, ClaimLost, DeliveryStore
+from services.delivery_store import CADENCE_COLUMNS, Claim, ClaimLost, DeliveryStore
 
 LOCK_TIMEOUT = 15
 
@@ -52,6 +52,11 @@ def make_issue(engine, **over):
 def row(engine, sql, **params):
     with engine.begin() as conn:
         return conn.execute(text(sql), params).mappings().fetchone()
+
+
+def loaded_cadence(engine, issue_id):
+    """The cadence as a run would have loaded it at its start."""
+    return dict(row(engine, f"SELECT {', '.join(CADENCE_COLUMNS)} FROM public.issues WHERE id = :id", id=issue_id))
 
 
 def slot():
@@ -106,11 +111,13 @@ class TestFencing:
 
     def test_current_worker_writes_issue_and_delivery_together(self, engine, store):
         issue_id = make_issue(engine)
+        cadence = loaded_cadence(engine, issue_id)
         claim = store.claim_next_due(LOCK_TIMEOUT)
         delivery = store.open_scheduled_delivery(claim, slot(), '2026-W40')
         store.finish(claim, {'schedule_status': 'idle', 'next_run_at': slot() + timedelta(days=7)},
-                     delivery['id'], {'status': 'sent', 'sent_at': datetime.now(timezone.utc)})
-        assert row(engine, "SELECT schedule_status FROM public.issues WHERE id = :id", id=issue_id)['schedule_status'] == 'idle'
+                     delivery['id'], {'status': 'sent', 'sent_at': datetime.now(timezone.utc)}, cadence=cadence)
+        r = row(engine, "SELECT schedule_status, next_run_at FROM public.issues WHERE id = :id", id=issue_id)
+        assert r['schedule_status'] == 'idle' and r['next_run_at'] == slot() + timedelta(days=7)
         assert row(engine, "SELECT status FROM public.issue_deliveries WHERE id = :id", id=delivery['id'])['status'] == 'sent'
 
 
@@ -176,6 +183,51 @@ class TestCadenceTrigger:
         with engine.begin() as conn:
             conn.execute(text("UPDATE public.issues SET auto_send = false WHERE id = :id"), {"id": issue_id})
         assert row(engine, "SELECT status FROM public.issue_deliveries WHERE id = :id", id=delivery['id'])['status'] == 'sending'
+
+    def test_in_flight_send_finishing_after_a_cadence_change_defers_to_the_new_cadence(self, engine, store):
+        issue_id = make_issue(engine)
+        cadence = loaded_cadence(engine, issue_id)
+        claim = store.claim_next_due(LOCK_TIMEOUT)
+        delivery = store.open_scheduled_delivery(claim, slot(), '2026-W40')
+        store.mark_sending(claim, delivery['id'], 'http://pdf', 'a@b.co')
+        with engine.begin() as conn:  # owner switches to daily while the email is going out
+            conn.execute(text("UPDATE public.issues SET frequency = 'daily' WHERE id = :id"), {"id": issue_id})
+
+        # The run computed next_run_at from the weekly cadence it loaded.
+        store.finish(claim, {'schedule_status': 'idle', 'next_run_at': slot() + timedelta(days=7)},
+                     delivery['id'], {'status': 'sent'}, cadence=cadence)
+
+        r = row(engine, "SELECT schedule_status, next_run_at FROM public.issues WHERE id = :id", id=issue_id)
+        assert r['next_run_at'] is None and r['schedule_status'] == 'idle'  # next poll uses the daily cadence
+        assert row(engine, "SELECT status FROM public.issue_deliveries WHERE id = :id", id=delivery['id'])['status'] == 'sent'
+
+    def test_failure_after_a_cadence_change_does_not_strand_the_issue(self, engine, store):
+        issue_id = make_issue(engine)
+        cadence = loaded_cadence(engine, issue_id)
+        claim = store.claim_next_due(LOCK_TIMEOUT)
+        delivery = store.open_scheduled_delivery(claim, slot(), '2026-W40')
+        with engine.begin() as conn:  # trigger abandons the pending edition
+            conn.execute(text("UPDATE public.issues SET schedule_weekday = 2 WHERE id = :id"), {"id": issue_id})
+
+        retry_at = datetime.now(timezone.utc) + timedelta(hours=1)
+        store.finish(claim, {'schedule_status': 'failed', 'next_run_at': retry_at, 'last_run_error': 'pdf: x'},
+                     delivery['id'], {'status': 'failed', 'attempts': 1, 'next_attempt_at': retry_at}, cadence=cadence)
+
+        # 'failed' with no next_run_at would never be claimed or re-initialised.
+        r = row(engine, "SELECT schedule_status, next_run_at FROM public.issues WHERE id = :id", id=issue_id)
+        assert r['schedule_status'] == 'idle' and r['next_run_at'] is None
+        d = row(engine, "SELECT status, next_attempt_at FROM public.issue_deliveries WHERE id = :id", id=delivery['id'])
+        assert d['status'] == 'abandoned' and d['next_attempt_at'] is None
+
+    def test_one_shot_completion_is_kept_when_cadence_unchanged(self, engine, store):
+        issue_id = make_issue(engine, frequency='once')
+        cadence = loaded_cadence(engine, issue_id)
+        claim = store.claim_next_due(LOCK_TIMEOUT)
+        delivery = store.open_scheduled_delivery(claim, slot(), 'once-x')
+        store.finish(claim, {'schedule_status': 'idle', 'next_run_at': None, 'auto_send': False},
+                     delivery['id'], {'status': 'sent'}, cadence=cadence)
+        assert row(engine, "SELECT auto_send FROM public.issues WHERE id = :id", id=issue_id)['auto_send'] is False
+        assert row(engine, "SELECT status FROM public.issue_deliveries WHERE id = :id", id=delivery['id'])['status'] == 'sent'
 
     def test_unrelated_update_keeps_the_schedule(self, engine, store):
         due = datetime.now(timezone.utc) + timedelta(days=1)

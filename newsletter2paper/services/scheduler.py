@@ -14,7 +14,7 @@ from urllib.parse import urlparse, parse_qsl, urlencode, urlunparse
 
 from services.go_pdf_service import GoPDFService
 from services.database_service import DatabaseService
-from services.delivery_store import CLOSED_STATUSES, Claim, ClaimLost, DeliveryStore, SendNowCooldown  # noqa: F401
+from services.delivery_store import CADENCE_COLUMNS, CLOSED_STATUSES, Claim, ClaimLost, DeliveryStore, SendNowCooldown  # noqa: F401
 
 logger = logging.getLogger(__name__)
 
@@ -342,6 +342,11 @@ class SchedulerService:
     # State transitions (every write goes through the fenced store)
     # ------------------------------------------------------------------
 
+    @staticmethod
+    def _cadence(issue: dict) -> dict:
+        """The cadence this run loaded, so the final write can tell if the owner changed it since."""
+        return {col: issue.get(col) for col in CADENCE_COLUMNS if col in issue}
+
     def _next_slot(self, issue: dict, now: datetime) -> dict:
         """Issue fields that release it to its next slot; one-shot frequencies turn auto_send off."""
         next_at = compute_next_run(issue.get('frequency', 'weekly'), now, issue.get('schedule_timezone'))
@@ -351,7 +356,7 @@ class SchedulerService:
         return fields
 
     def _advance(self, claim: Claim, issue: dict, now: datetime) -> None:
-        self.store.finish(claim, self._next_slot(issue, now))
+        self.store.finish(claim, self._next_slot(issue, now), cadence=self._cadence(issue))
 
     def _succeed(self, claim, issue, delivery, pdf_url, message_id, now, force) -> None:
         issue_fields = {'schedule_status': claim.previous_status} if force else self._next_slot(issue, now)
@@ -359,12 +364,12 @@ class SchedulerService:
         self.store.finish(claim, issue_fields, delivery['id'], {
             'status': 'sent', 'sent_at': now, 'pdf_url': pdf_url, 'resend_message_id': message_id,
             'error': None, 'next_attempt_at': None,
-        })
+        }, cadence=self._cadence(issue))
         logger.info(f"Issue {claim.issue_id} delivered ({'manual' if force else 'scheduled'}, delivery {delivery['id']})")
 
     def _skip(self, claim, issue, delivery, now, force) -> None:
         issue_fields = {'schedule_status': claim.previous_status} if force else self._next_slot(issue, now)
-        self.store.finish(claim, issue_fields, delivery['id'], {'status': 'skipped'})
+        self.store.finish(claim, issue_fields, delivery['id'], {'status': 'skipped'}, cadence=self._cadence(issue))
 
     def _fail(self, claim, issue, delivery, error, now, force, count_attempt=True) -> None:
         logger.warning(f"Issue {claim.issue_id} failed: {error}")
@@ -374,6 +379,7 @@ class SchedulerService:
             self.store.finish(
                 claim, {'schedule_status': claim.previous_status, 'last_run_error': error},
                 delivery['id'], {'status': 'failed', 'attempts': attempts, 'error': error},
+                cadence=self._cadence(issue),
             )
             return
         if attempts >= MAX_RUN_ATTEMPTS:
@@ -386,12 +392,13 @@ class SchedulerService:
             issue_fields['last_run_error'] = error
             self.store.finish(claim, issue_fields, delivery['id'], {
                 'status': 'abandoned', 'attempts': attempts, 'error': error, 'next_attempt_at': None,
-            })
+            }, cadence=self._cadence(issue))
             return
         retry_at = now + retry_delay(attempts)
         self.store.finish(
             claim, {'schedule_status': 'failed', 'next_run_at': retry_at, 'last_run_error': error},
             delivery['id'], {'status': 'failed', 'attempts': attempts, 'error': error, 'next_attempt_at': retry_at},
+            cadence=self._cadence(issue),
         )
 
     def release_after_error(self, claim: Claim, error: str, force: bool = False) -> None:

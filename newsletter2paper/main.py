@@ -14,13 +14,19 @@ if missing_vars:
 async def lifespan(app: FastAPI):
     """App lifespan: start and stop background services like the scheduler."""
     try:
+        app.state.scheduler = None
+        app.state.scheduler_error = None
         try:
             from services.scheduler import SchedulerService
             app.state.scheduler = SchedulerService()
             app.state.scheduler.start()
         except Exception as e:
+            # Non-fatal so the API keeps serving, but scheduled delivery is off: say so loudly
+            # here and in /health (which fails the deploy's health check).
             import logging
-            logging.exception(f"Failed to start scheduler during lifespan startup: {e}")
+            app.state.scheduler = None
+            app.state.scheduler_error = str(e)
+            logging.critical(f"Scheduler NOT running; scheduled delivery is disabled: {e}", exc_info=True)
 
         yield
 
@@ -67,10 +73,13 @@ async def root():
 async def health_check():
     """
     Health check endpoint for monitoring and deployment verification.
-    Returns the service status and version.
+    Returns the service status and version. Status is "degraded" when the scheduler failed
+    to start, so a misconfiguration can't silently stop scheduled delivery.
     """
+    scheduler_error = getattr(app.state, 'scheduler_error', None)
     return {
-        "status": "healthy",
+        "status": "degraded" if scheduler_error else "healthy",
         "service": "newsletter2paper-api",
-        "version": "1.0.0"
+        "version": "1.0.0",
+        "scheduler": f"disabled: {scheduler_error}" if scheduler_error else "running",
     }
