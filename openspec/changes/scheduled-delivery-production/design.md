@@ -69,7 +69,7 @@ Lives in `services/scheduling.py` as pure functions with no I/O, merged from the
   - monthly: on `schedule_day_of_month`, clamped to the month's last day;
   - `once` / `custom`: None.
   - Built from local wall-clock values and then localised, so DST does not shift the time. A slot that doesn't exist on spring-forward day moves forward to the first valid minute. On fall-back day the first occurrence of an ambiguous time is used (`fold=0`).
-- `period_key(issue, scheduled_for)`: computed from the **slot**, never from processing time. Daily `YYYY-MM-DD`, weekly ISO `YYYY-Www`, monthly `YYYY-MM`, all in `schedule_timezone`.
+- `period_key(issue, scheduled_for)`: computed from the **slot**, never from processing time. Daily `YYYY-MM-DD`, weekly ISO `YYYY-Www`, monthly `YYYY-MM`, all in `schedule_timezone`. One-shot (`once` / `custom`) deliveries use `once:<scheduled_for UTC ISO>`. Re-enabling sets a new slot, so it never collides with an earlier send. Retries don't change `scheduled_for`, so the key stays stable across retries. A constant key would block every re-enabled send, which was a review finding on PR #5.
 - Next slot after a delivery finishes, whatever the outcome: `slot_after(issue, max(scheduled_for, now - 1 period))`, then advanced until it is in the future. Missed slots are never replayed, so after downtime at most one catch-up edition is sent.
 - Enabling, or any cadence change: `next_run_at = slot_after(issue, now)`. Nothing is sent immediately; Send now covers that.
 - When `auto_send` is enabled with `schedule_weekday` / `schedule_day_of_month` NULL, the API fills them from the current local date and saves them, so the slot stays fixed.

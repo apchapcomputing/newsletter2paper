@@ -178,7 +178,19 @@ The system SHALL compute delivery slots from the issue's `schedule_time_local` (
 
 ### Requirement: Period Key
 
-The system SHALL derive `period_key` from the delivery's `scheduled_for` slot in `schedule_timezone`: daily `YYYY-MM-DD`, weekly ISO `YYYY-Www`, monthly `YYYY-MM`.
+The system SHALL derive `period_key` from the delivery's `scheduled_for` slot in `schedule_timezone`: daily `YYYY-MM-DD`, weekly ISO `YYYY-Www`, monthly `YYYY-MM`. One-shot frequencies (`once`, `custom`) SHALL use `once:<scheduled_for in UTC ISO 8601>`.
+
+#### Scenario: Re-enabled one-shot issue sends again
+
+- GIVEN a `once` issue whose earlier scheduled delivery was `sent` and whose `auto_send` was then turned off
+- WHEN the owner turns `auto_send` back on and the new slot comes due
+- THEN a new delivery with a different `period_key` is created and sent
+
+#### Scenario: One-shot retry keeps its key
+
+- GIVEN a `once` delivery that failed transiently
+- WHEN it is retried
+- THEN the retry uses the same delivery and `period_key`, so the unique index still prevents a second send
 
 #### Scenario: Retry processed after midnight keeps its period
 
