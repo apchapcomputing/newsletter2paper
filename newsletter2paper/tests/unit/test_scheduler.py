@@ -8,6 +8,7 @@ os.environ.setdefault('SUPABASE_DATABASE_URL', 'sqlite://')
 
 from services import scheduler as sch
 from services.delivery_store import Claim, ClaimLost, DeliveryStore
+from services.email_service import SendResult
 from services.scheduler import (
     LOCK_TIMEOUT_MINUTES, SEND_NOW_COOLDOWN_MINUTES, SchedulerService, SendNowCooldown,
     check_lock_timeout, compute_next_run, period_key, retry_delay,
@@ -82,6 +83,8 @@ def test_lock_timeout_must_exceed_worst_case_run():
 
 
 CLAIM = Claim('i1', 'tok-1')
+TRANSIENT_FAILURE = SendResult.failed('transient', 'email: Resend is unavailable (503: down)')
+PERMANENT_FAILURE = SendResult.failed('permanent', 'email: Resend rejected the message (422: Invalid `to` field.)')
 SLOT = '2026-10-02T09:00:00+00:00'
 
 
@@ -135,7 +138,7 @@ def svc(monkeypatch):
     s.batch_size = 5
     s._issue = issue()
     s.generate = MagicMock(return_value={'success': True, 'pdf_url': 'http://pdf'})
-    s.email = MagicMock(return_value='msg-1')
+    s.email = MagicMock(return_value=SendResult.sent('msg-1'))
 
     async def gen(_issue):
         return s.generate(_issue)
@@ -191,7 +194,7 @@ class TestScheduledRun:
         assert svc.store.finished[0][2]['status'] == 'sent'
 
     async def test_email_failure_schedules_retry_and_keeps_pdf(self, svc):
-        svc.email.return_value = None
+        svc.email.return_value = TRANSIENT_FAILURE
         res = await svc._process_issue(CLAIM)
         assert not res['success']
         assert ('mark_sending', 'd1', 'http://pdf', 'a@b.co') in svc.store.log  # PDF stored for the retry
@@ -208,7 +211,7 @@ class TestScheduledRun:
 
     async def test_gives_up_after_max_attempts_but_keeps_schedule(self, svc):
         svc.store.existing = delivery(status='failed', pdf_url='http://old', attempts=sch.MAX_RUN_ATTEMPTS - 1)
-        svc.email.return_value = None
+        svc.email.return_value = TRANSIENT_FAILURE
         await svc._process_issue(CLAIM)
         issue_fields, _, d = svc.store.finished[0]
         assert d['status'] == 'abandoned' and 'gave up' in d['error']
@@ -228,11 +231,59 @@ class TestScheduledRun:
         assert steps(svc) == ['open', 'finish']
         assert svc.store.finished[0][2] == {'status': 'skipped'}
 
-    async def test_no_target_email_records_sent_without_emailing(self, svc):
-        svc._issue = issue(target_email=None)
-        await svc._process_issue(CLAIM)
+    @pytest.mark.parametrize('email', [None, '', '   '])
+    async def test_no_recipient_is_a_permanent_config_failure_before_rendering(self, svc, email):
+        svc._issue = issue(target_email=email)
+        res = await svc._process_issue(CLAIM)
+        assert res == {'success': False, 'error': 'config: no recipient email address is set'}
+        svc.generate.assert_not_called()
         assert steps(svc) == ['open', 'finish']
-        assert svc.store.finished[0][2]['status'] == 'sent'
+        issue_fields, _, d = svc.store.finished[0]
+        assert d['status'] == 'abandoned' and d['error_kind'] == 'permanent'
+        assert issue_fields['last_run_error'] == 'config: no recipient email address is set'
+        assert issue_fields['schedule_status'] == 'idle' and issue_fields['next_run_at'] is not None
+
+    async def test_permanent_send_failure_abandons_without_retrying(self, svc):
+        svc.email.return_value = PERMANENT_FAILURE
+        res = await svc._process_issue(CLAIM)
+        assert res['error'] == PERMANENT_FAILURE.error
+        issue_fields, _, d = svc.store.finished[0]
+        assert d == {'status': 'abandoned', 'attempts': 1, 'error': PERMANENT_FAILURE.error,
+                     'error_kind': 'permanent', 'next_attempt_at': None}
+        assert issue_fields['schedule_status'] == 'idle' and issue_fields['last_run_error'] == PERMANENT_FAILURE.error
+        assert 'gave up' not in issue_fields['last_run_error']
+
+    async def test_transient_failure_records_cause_and_kind(self, svc):
+        svc.email.return_value = TRANSIENT_FAILURE
+        await svc._process_issue(CLAIM)
+        issue_fields, _, d = svc.store.finished[0]
+        assert d['status'] == 'failed' and d['error_kind'] == 'transient' and d['error'] == TRANSIENT_FAILURE.error
+        assert issue_fields['last_run_error'] == TRANSIENT_FAILURE.error
+
+    async def test_retry_waits_at_least_retry_after(self, svc):
+        svc.email.return_value = SendResult.failed('transient', 'email: Resend rate limit reached (x)', retry_after=7200)
+        before = datetime.now(timezone.utc)
+        await svc._process_issue(CLAIM)
+        retry_at = svc.store.finished[0][2]['next_attempt_at']
+        assert retry_at >= before + timedelta(seconds=7200)  # longer than the 1h first backoff
+
+    async def test_short_retry_after_keeps_the_normal_backoff(self, svc):
+        svc.email.return_value = SendResult.failed('transient', 'email: Resend rate limit reached (x)', retry_after=120)
+        before = datetime.now(timezone.utc)
+        await svc._process_issue(CLAIM)
+        assert svc.store.finished[0][2]['next_attempt_at'] >= before + timedelta(hours=1)
+
+    async def test_permanent_failure_on_one_shot_turns_it_off(self, svc):
+        svc._issue = issue(frequency='once')
+        svc.email.return_value = PERMANENT_FAILURE
+        await svc._process_issue(CLAIM)
+        issue_fields = svc.store.finished[0][0]
+        assert issue_fields['auto_send'] is False and issue_fields['next_run_at'] is None
+
+    async def test_success_clears_error_kind(self, svc):
+        await svc._process_issue(CLAIM)
+        d = svc.store.finished[0][2]
+        assert d['error_kind'] is None and d['resend_message_id'] == 'msg-1'
 
     async def test_unexpected_error_after_sending_keeps_the_key(self, svc):
         svc.email.side_effect = RuntimeError('socket closed')
@@ -290,11 +341,12 @@ class TestManualSend:
         assert issue_fields['schedule_status'] == 'failed' and 'next_run_at' not in issue_fields
 
     async def test_failure_is_not_retried(self, svc):
-        svc.email.return_value = None
+        svc.email.return_value = TRANSIENT_FAILURE
         await svc.send_now(Claim('i1', 'tok', previous_status='idle'))
         issue_fields, _, d = svc.store.finished[0]
         assert d['status'] == 'failed' and 'next_attempt_at' not in d
-        assert issue_fields == {'schedule_status': 'idle', 'last_run_error': 'email: delivery failed'}
+        assert issue_fields == {'schedule_status': 'idle', 'last_run_error': TRANSIENT_FAILURE.error}
+        assert d['error_kind'] == 'transient'
 
 
 class TestPolling:

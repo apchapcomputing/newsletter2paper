@@ -21,7 +21,7 @@ CADENCE_COLUMNS = {
     'auto_send': 'boolean', 'frequency': 'text', 'schedule_timezone': 'text',
     'schedule_time_local': 'text', 'schedule_weekday': 'integer', 'schedule_day_of_month': 'integer',
 }
-_DELIVERY_COLUMNS = {'status', 'attempts', 'next_attempt_at', 'error', 'pdf_url', 'recipient',
+_DELIVERY_COLUMNS = {'status', 'attempts', 'next_attempt_at', 'error', 'error_kind', 'pdf_url', 'recipient',
                      'resend_message_id', 'sent_at'}
 
 

@@ -14,6 +14,7 @@ from urllib.parse import urlparse, parse_qsl, urlencode, urlunparse
 
 from services.go_pdf_service import GoPDFService
 from services.database_service import DatabaseService
+from services.email_service import PERMANENT, TRANSIENT, SendResult
 from services.delivery_store import CADENCE_COLUMNS, CLOSED_STATUSES, Claim, ClaimLost, DeliveryStore, SendNowCooldown  # noqa: F401
 
 logger = logging.getLogger(__name__)
@@ -256,6 +257,13 @@ class SchedulerService:
         # attempt number, hence the same idempotency key, so Resend drops the duplicate.
         in_flight = delivery['status'] == 'sending'
         try:
+            target_email = (issue.get('target_email') or '').strip()
+            if not target_email:
+                # Rendering a PDF nobody receives is not a delivery.
+                error = "config: no recipient email address is set"
+                self._fail(claim, issue, delivery, error, now, force, error_kind=PERMANENT)
+                return {'success': False, 'error': error}
+
             pdf_url = delivery.get('pdf_url')
             if pdf_url:
                 logger.info(f"Issue {claim.issue_id}: reusing PDF from delivery {delivery['id']}, retrying email only")
@@ -271,18 +279,16 @@ class SchedulerService:
                     return {'success': False, 'error': err}
                 pdf_url = result['pdf_url']
 
-            message_id = None
-            target_email = issue.get('target_email')
-            if target_email:
-                self.store.mark_sending(claim, delivery['id'], pdf_url, target_email)
-                in_flight = True
-                idempotency_key = f"delivery-{delivery['id']}-{delivery['attempts']}"
-                message_id = self._send_email(issue, target_email, pdf_url, idempotency_key)
-                if message_id is None:
-                    self._fail(claim, issue, delivery, "email: delivery failed", now, force)
-                    return {'success': False, 'error': 'email delivery failed'}
+            self.store.mark_sending(claim, delivery['id'], pdf_url, target_email)
+            in_flight = True
+            idempotency_key = f"delivery-{delivery['id']}-{delivery['attempts']}"
+            sent = self._send_email(issue, target_email, pdf_url, idempotency_key)
+            if not sent.ok:
+                self._fail(claim, issue, delivery, sent.error, now, force,
+                           error_kind=sent.error_kind, retry_after=sent.retry_after)
+                return {'success': False, 'error': sent.error}
 
-            self._succeed(claim, issue, delivery, pdf_url, message_id, now, force)
+            self._succeed(claim, issue, delivery, pdf_url, sent.message_id, now, force)
             return {'success': True, 'error': None}
         except ClaimLost:
             raise
@@ -323,20 +329,19 @@ class SchedulerService:
             verbose=False,
         )
 
-    def _send_email(self, issue: dict, target_email: str, pdf_url: str, idempotency_key: str) -> Optional[str]:
-        """Returns the Resend message id, or None if the send failed."""
+    def _send_email(self, issue: dict, target_email: str, pdf_url: str, idempotency_key: str) -> SendResult:
         try:
             from services.email_service import EmailService
-            return EmailService().send_pdf_message(
+            return EmailService().send(
                 email_address=target_email,
                 pdf_url=pdf_url,
                 subject=f"Your scheduled PDF: {issue.get('title')}",
                 issue_title=issue.get('title'),
                 idempotency_key=idempotency_key,
             )
-        except Exception:
+        except Exception as e:
             logger.exception(f"Failed to send scheduled email for issue {issue['id']}")
-            return None
+            return SendResult.failed(TRANSIENT, f"email: unexpected error ({e})")
 
     # ------------------------------------------------------------------
     # State transitions (every write goes through the fenced store)
@@ -363,7 +368,7 @@ class SchedulerService:
         issue_fields.update(last_run_at=now, last_run_error=None)
         self.store.finish(claim, issue_fields, delivery['id'], {
             'status': 'sent', 'sent_at': now, 'pdf_url': pdf_url, 'resend_message_id': message_id,
-            'error': None, 'next_attempt_at': None,
+            'error': None, 'error_kind': None, 'next_attempt_at': None,
         }, cadence=self._cadence(issue))
         logger.info(f"Issue {claim.issue_id} delivered ({'manual' if force else 'scheduled'}, delivery {delivery['id']})")
 
@@ -371,34 +376,42 @@ class SchedulerService:
         issue_fields = {'schedule_status': claim.previous_status} if force else self._next_slot(issue, now)
         self.store.finish(claim, issue_fields, delivery['id'], {'status': 'skipped'}, cadence=self._cadence(issue))
 
-    def _fail(self, claim, issue, delivery, error, now, force, count_attempt=True) -> None:
-        logger.warning(f"Issue {claim.issue_id} failed: {error}")
+    def _fail(self, claim, issue, delivery, error, now, force, count_attempt=True,
+              error_kind=TRANSIENT, retry_after=None) -> None:
+        """Record a failed attempt. Transient failures retry with backoff (no sooner than the
+        provider's Retry-After); permanent ones (bad recipient, rejected message, missing config)
+        abandon the edition at once, since retrying cannot help."""
+        logger.warning(f"Issue {claim.issue_id} failed ({error_kind}): {error}")
         attempts = delivery['attempts'] + (1 if count_attempt else 0)
+        cadence = self._cadence(issue)
         if force:
             # Manual sends are not retried.
             self.store.finish(
                 claim, {'schedule_status': claim.previous_status, 'last_run_error': error},
-                delivery['id'], {'status': 'failed', 'attempts': attempts, 'error': error},
-                cadence=self._cadence(issue),
+                delivery['id'], {'status': 'failed', 'attempts': attempts, 'error': error, 'error_kind': error_kind},
+                cadence=cadence,
             )
             return
-        if attempts >= MAX_RUN_ATTEMPTS:
+        if error_kind == PERMANENT or attempts >= MAX_RUN_ATTEMPTS:
             # Give up on this edition but keep the schedule alive.
-            error = f"{error} (gave up after {MAX_RUN_ATTEMPTS} attempts)"
             issue_fields = self._next_slot(issue, now)
-            if issue_fields.get('auto_send') is False:
-                # One-shot issue: try again tomorrow rather than silently turning it off.
-                issue_fields = {'schedule_status': 'idle', 'next_run_at': now + MAX_BACKOFF}
+            if error_kind != PERMANENT:
+                error = f"{error} (gave up after {MAX_RUN_ATTEMPTS} attempts)"
+                if issue_fields.get('auto_send') is False:
+                    # One-shot issue: try again tomorrow rather than silently turning it off.
+                    issue_fields = {'schedule_status': 'idle', 'next_run_at': now + MAX_BACKOFF}
             issue_fields['last_run_error'] = error
             self.store.finish(claim, issue_fields, delivery['id'], {
-                'status': 'abandoned', 'attempts': attempts, 'error': error, 'next_attempt_at': None,
-            }, cadence=self._cadence(issue))
+                'status': 'abandoned', 'attempts': attempts, 'error': error, 'error_kind': error_kind,
+                'next_attempt_at': None,
+            }, cadence=cadence)
             return
-        retry_at = now + retry_delay(attempts)
+        retry_at = now + max(retry_delay(attempts), timedelta(seconds=retry_after or 0))
         self.store.finish(
             claim, {'schedule_status': 'failed', 'next_run_at': retry_at, 'last_run_error': error},
-            delivery['id'], {'status': 'failed', 'attempts': attempts, 'error': error, 'next_attempt_at': retry_at},
-            cadence=self._cadence(issue),
+            delivery['id'], {'status': 'failed', 'attempts': attempts, 'error': error, 'error_kind': error_kind,
+                             'next_attempt_at': retry_at},
+            cadence=cadence,
         )
 
     def release_after_error(self, claim: Claim, error: str, force: bool = False) -> None:

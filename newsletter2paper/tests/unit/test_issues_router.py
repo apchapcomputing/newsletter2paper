@@ -93,6 +93,42 @@ class TestUpdate:
         assert self.put(FakeSupabase(), {"article_window_days": 0}).status_code == 422
 
 
+class TestAutoSendNeedsRecipient:
+    def test_create_with_auto_send_and_no_email_is_rejected(self):
+        resp = client_for(FakeSupabase()).post("/issues/", json={"format": "essay", "auto_send": True})
+        assert resp.status_code == 422 and "target_email" in resp.text
+
+    def test_create_with_auto_send_and_email_is_accepted(self):
+        db = FakeSupabase({("issues", "insert"): [{"id": str(ISSUE_ID)}]})
+        resp = client_for(db).post("/issues/", json={"format": "essay", "auto_send": True, "target_email": "a@b.co"})
+        assert resp.status_code == 200
+
+    def put(self, stored, body):
+        db = FakeSupabase({("issues", "select"): [stored], ("issues", "update"): [{"id": str(ISSUE_ID)}]})
+        return db, client_for(db).put(f"/issues/{ISSUE_ID}", json=body)
+
+    def test_enabling_without_a_stored_email_is_rejected(self):
+        db, resp = self.put({"auto_send": False, "target_email": None}, {"auto_send": True})
+        assert resp.status_code == 422 and resp.json()["detail"] == issues._NO_RECIPIENT
+        assert db.calls_for("issues", "update") == []
+
+    def test_enabling_with_a_stored_email_is_accepted(self):
+        _, resp = self.put({"auto_send": False, "target_email": "a@b.co"}, {"auto_send": True})
+        assert resp.status_code == 200
+
+    def test_enabling_and_setting_the_email_together_is_accepted(self):
+        _, resp = self.put({"auto_send": False, "target_email": None}, {"auto_send": True, "target_email": "a@b.co"})
+        assert resp.status_code == 200
+
+    def test_clearing_the_email_while_enabled_is_rejected(self):
+        _, resp = self.put({"auto_send": True, "target_email": "a@b.co"}, {"target_email": "  "})
+        assert resp.status_code == 422
+
+    def test_disabling_never_needs_an_email(self):
+        db, resp = self.put({"auto_send": True, "target_email": None}, {"auto_send": False})
+        assert resp.status_code == 200 and db.calls_for("issues", "select") == []
+
+
 class TestGetAndDelete:
     def test_get_unknown_issue_is_404(self):
         assert client_for(FakeSupabase()).get(f"/issues/{ISSUE_ID}").status_code == 404

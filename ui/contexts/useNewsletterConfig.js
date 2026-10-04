@@ -292,6 +292,10 @@ export const NewsletterConfigProvider = ({ children }) => {
 
     const updateAutoSend = async (value) => {
         const boolVal = !!value;
+        const recipient = (targetEmail || '').trim();
+        // Automatic delivery needs a recipient (the API rejects it otherwise, and the scheduler
+        // would fail every run with a config error).
+        if (boolVal && !recipient) return;
         setAutoSend(boolVal);
 
         // Persist auto_send to Supabase when user is authenticated.
@@ -299,7 +303,8 @@ export const NewsletterConfigProvider = ({ children }) => {
             if (user && session && currentIssueId) {
                 const { error } = await supabase
                     .from('issues')
-                    .update({ auto_send: boolVal })
+                    // Save the address with the flag so the stored row is never enabled without one.
+                    .update(boolVal ? { auto_send: true, target_email: recipient } : { auto_send: false })
                     .eq('id', currentIssueId);
 
                 if (error) {

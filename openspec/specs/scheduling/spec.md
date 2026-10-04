@@ -45,7 +45,7 @@ for due issues every 60 seconds and claims and processes up to 5 per tick, one a
 ### Requirement: Scheduled Run Processing
 
 The system SHALL, for each due issue, fetch articles from the last `article_window_days` days (default 7),
-generate a PDF using the issue's `format` and `remove_images`, and email it to `target_email` if set.
+generate a PDF using the issue's `format` and `remove_images`, and email it to `target_email`.
 
 #### Scenario: Successful run
 
@@ -59,11 +59,23 @@ generate a PDF using the issue's `format` and `remove_images`, and email it to `
 - WHEN it is processed
 - THEN no PDF is generated, `schedule_status` returns to `idle`, and `next_run_at` is advanced
 
+#### Scenario: No recipient
+
+- GIVEN a due issue whose `target_email` is missing or blank
+- WHEN it is processed
+- THEN no PDF is generated, the delivery is `abandoned` with `error_kind='permanent'` and error `config: no recipient email address is set`, and the issue advances to its next slot with that error in `last_run_error`
+
 #### Scenario: Failed run is retried with backoff
 
-- GIVEN PDF generation or email delivery fails for a due issue
+- GIVEN PDF generation fails, or the email send fails with a `transient` error (see the email-delivery spec)
 - WHEN the failure is recorded
-- THEN the delivery is `failed` with `attempts` incremented and `next_attempt_at` set 1h, 2h, 4h... (capped at 24h) ahead; the issue is `schedule_status='failed'` with `next_run_at` equal to that time and `last_run_error` holding the message (prefixed `pdf:` or `email:`); the poll resumes the same delivery once due
+- THEN the delivery is `failed` with `attempts` incremented, `error_kind='transient'` and `next_attempt_at` set 1h, 2h, 4h... (capped at 24h) ahead, or later if Resend's `Retry-After` is longer; the issue is `schedule_status='failed'` with `next_run_at` equal to that time and `last_run_error` holding the specific cause (prefixed `pdf:` or `email:`); the poll resumes the same delivery once due
+
+#### Scenario: Permanent failure is not retried
+
+- GIVEN the email send fails with a `permanent` error (for example an invalid recipient or a missing `RESEND_API_KEY`)
+- WHEN the failure is recorded
+- THEN the delivery is `abandoned` immediately with `error_kind='permanent'`, the issue advances to its next slot (a one-shot issue turns `auto_send` off), and `last_run_error` holds the cause
 
 #### Scenario: Retries are exhausted
 

@@ -9,3 +9,8 @@ import os
 os.environ["SUPABASE_URL"] = "http://127.0.0.1:9"
 os.environ["SUPABASE_KEY"] = "test-key"
 os.environ.setdefault("SUPABASE_DATABASE_URL", "sqlite://")
+
+# Same for Resend: no test may send real email. Contract tests mock the API with respx.
+import resend  # noqa: E402
+
+resend.api_url = "http://127.0.0.1:9"
