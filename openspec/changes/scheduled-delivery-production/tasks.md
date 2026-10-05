@@ -5,7 +5,7 @@ GitHub issue for each group in brackets. Parent: #17.
 ## 0. Land PR #5 (prerequisite)
 
 - [x] Rebase `feature/scheduler-hardening` onto `main` (CI's async test failures are fixed by `asyncio_mode = auto` on `main`)
-- [x] Move `data/migrations/2026_10_01_scheduler_hardening.sql` to `newsletter2paper/supabase/migrations/` (with `data/migrations` symlink per repo convention)
+- [x] Move `data/migrations/2026_10_04_scheduler_hardening.sql` to `newsletter2paper/supabase/migrations/` (with `data/migrations` symlink per repo convention)
 - [x] Remove `run_attempts`, `last_sent_period`, `pending_pdf_url`, `pending_period` (replaced by `issue_deliveries`, §1). Done as a `DROP COLUMN IF EXISTS` in `20261005000000_issue_deliveries.sql` instead, so PR #5's code keeps working until this lands
 - [x] Use `request.app.state.scheduler` in send-now instead of constructing `SchedulerService()` per request
 - [ ] Merge PR #5
