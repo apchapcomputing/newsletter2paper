@@ -5,10 +5,14 @@
 // Never send emails, article text, feed URLs or issue titles: BLOCKED_PROPS are
 // dropped before anything leaves the browser.
 import posthog from 'posthog-js'
+import { scrubEvent } from './analyticsPrivacy'
 
 export const BLOCKED_PROPS = ['email', 'target_email', 'url', 'feed_url', 'title', 'query', 'html']
 const EVENT_NAME = /^[a-z]+(_[a-z]+)+$/
 const isDevelopment = process.env.NODE_ENV === 'development'
+
+// Signed-in user waiting for consent: identify() only links the person after the visitor accepts.
+let pendingUserId = null
 
 function enabled() {
     return typeof window !== 'undefined' && Boolean(process.env.NEXT_PUBLIC_POSTHOG_KEY)
@@ -46,6 +50,9 @@ export function initAnalytics() {
         // Same-origin /api/* calls carry X-POSTHOG-DISTINCT-ID / X-POSTHOG-SESSION-ID so
         // backend errors can be linked to the visitor.
         tracing_headers: [window.location.host],
+        // clean() filters property keys; this scrubs emails and URLs out of values, including
+        // exception messages.
+        before_send: scrubEvent,
     })
     return true
 }
@@ -59,14 +66,18 @@ export function track(event, props) {
     posthog.capture(event, clean(props))
 }
 
-// User id only; the Supabase id is the person's distinct id.
+// User id only; the Supabase id is the person's distinct id. Without consent the visitor stays
+// anonymous (cookieless): the id is held here and linked if they accept later.
 export function identify(userId) {
     if (!enabled() || !userId) return
-    if (posthog.get_distinct_id() === String(userId)) return // session recovery re-fires SIGNED_IN
-    posthog.identify(String(userId))
+    pendingUserId = String(userId)
+    if (posthog.get_explicit_consent_status() !== 'granted') return
+    if (posthog.get_distinct_id() === pendingUserId) return // session recovery re-fires SIGNED_IN
+    posthog.identify(pendingUserId)
 }
 
 export function reset() {
+    pendingUserId = null
     if (!enabled()) return
     posthog.reset()
 }
@@ -82,7 +93,9 @@ export const consent = {
         return enabled() ? posthog.get_explicit_consent_status() : null
     },
     accept() {
-        if (enabled()) posthog.opt_in_capturing()
+        if (!enabled()) return
+        posthog.opt_in_capturing()
+        if (pendingUserId) identify(pendingUserId)
     },
     decline() {
         if (enabled()) posthog.opt_out_capturing()
