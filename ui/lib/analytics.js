@@ -46,7 +46,13 @@ export function initAnalytics() {
         cookieless_mode: 'on_reject',
         person_profiles: 'identified_only',
         capture_exceptions: true,
+        // Replay only for visitors who accepted the banner (started below and in consent.accept),
+        // with every input masked. It also has to be enabled in the PostHog project settings.
         disable_session_recording: true,
+        session_recording: { maskAllInputs: true },
+        loaded: (ph) => {
+            if (ph.get_explicit_consent_status() === 'granted') ph.startSessionRecording()
+        },
         // Same-origin /api/* calls carry X-POSTHOG-DISTINCT-ID / X-POSTHOG-SESSION-ID so
         // backend errors can be linked to the visitor.
         tracing_headers: [window.location.host],
@@ -96,8 +102,25 @@ export const consent = {
         if (!enabled()) return
         posthog.opt_in_capturing()
         if (pendingUserId) identify(pendingUserId)
+        posthog.startSessionRecording()
     },
     decline() {
-        if (enabled()) posthog.opt_out_capturing()
+        if (!enabled()) return
+        posthog.stopSessionRecording()
+        posthog.opt_out_capturing()
     },
+}
+
+// Feature flags, used to switch fake doors on and off from PostHog without a deploy.
+export function flagEnabled(flag) {
+    return enabled() && Boolean(posthog.isFeatureEnabled(flag))
+}
+
+export function flagPayload(flag) {
+    return enabled() ? (posthog.getFeatureFlagPayload(flag) ?? null) : null
+}
+
+// Calls back when flags load or change; returns an unsubscribe function.
+export function onFlags(callback) {
+    return enabled() ? posthog.onFeatureFlags(callback) : () => { }
 }

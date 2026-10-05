@@ -5,6 +5,7 @@ import { Box, Button, Typography, TextField, Switch, FormControlLabel } from '@m
 import { useNewsletterConfig } from '../../contexts/useNewsletterConfig'
 import { useAuth } from '../../contexts/useAuth'
 import { track } from '../../lib/analytics'
+import FakeDoor from './FakeDoor'
 
 const FORMAT_OPTIONS = [
     { value: 'essay', label: 'Essay' },
@@ -318,6 +319,12 @@ export default function ConfigureNewspaper() {
                                 Add a delivery email below to enable automatic delivery.
                             </Typography>
                         )}
+                        <FakeDoor
+                            feature="upgrade_auto_send"
+                            label="Automatic delivery will be a paid feature. Reserve founder pricing"
+                            description="Automatic delivery is free while we're in beta and will become part of a paid plan. Want founder pricing when it launches?"
+                            sx={{ px: 0 }}
+                        />
                     </Box>
                 )}
 
