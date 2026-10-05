@@ -393,25 +393,33 @@ class SchedulerService:
 
     def _notify_owner(self, delivery_id) -> None:
         """Tell the issue's owner that an edition was abandoned. Whoever flips owner_notified_at
-        sends; if the send fails the flag is cleared so a later tick retries (the Resend idempotency
-        key makes a duplicate harmless). Never raises: a notice must not break a run."""
-        claimed = False
+        sends. Only a *transient* send failure clears the flag so a later tick retries (the sweep
+        waits out a cooldown, and the Resend idempotency key makes a duplicate harmless). A
+        permanent failure (bad owner address, missing Resend config) or an unexpected error keeps
+        the flag: retrying cannot help and would repeat every tick. Never raises: a notice must
+        not break a run."""
         try:
             notice = self.store.claim_owner_notice(delivery_id)
             if notice is None:
                 return
-            claimed = True
-            result = self._send_owner_notice(notice)
-            if result.ok:
-                return
-            logger.warning(f"Owner notice for delivery {delivery_id} not sent: {result.error}")
         except Exception:
-            logger.exception(f"Owner notice for delivery {delivery_id} failed")
-        if claimed:
-            try:
-                self.store.release_owner_notice(delivery_id)
-            except Exception:
-                logger.exception(f"Could not release the owner-notice flag for delivery {delivery_id}")
+            logger.exception(f"Owner notice for delivery {delivery_id} could not be claimed")
+            return
+        try:
+            result = self._send_owner_notice(notice)
+        except Exception:
+            logger.exception(f"Owner notice for delivery {delivery_id} failed unexpectedly; not retrying")
+            return
+        if result.ok:
+            return
+        if result.error_kind != TRANSIENT:
+            logger.error(f"Owner notice for delivery {delivery_id} cannot be sent, not retrying: {result.error}")
+            return
+        logger.warning(f"Owner notice for delivery {delivery_id} not sent, will retry: {result.error}")
+        try:
+            self.store.release_owner_notice(delivery_id)
+        except Exception:
+            logger.exception(f"Could not release the owner-notice flag for delivery {delivery_id}")
 
     def _send_owner_notice(self, notice: dict) -> SendResult:
         from services.email_service import EmailService

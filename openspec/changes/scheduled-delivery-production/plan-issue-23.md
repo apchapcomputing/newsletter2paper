@@ -49,8 +49,7 @@ then derives `scheduled_for` from that shifted `next_run_at`, so the edition's s
   `auto_send` on, advances to next slot, sets `last_run_error`, marks the delivery `abandoned`.
 - `DeliveryStore.claim_owner_notice(delivery_id)`: `UPDATE ... SET owner_notified_at = now() WHERE id = :id AND owner_notified_at IS NULL RETURNING ...`
   (returns issue title, period, error, owner id). Whoever gets the row sends; everyone else does nothing.
-- Send with Resend `Idempotency-Key: owner-notice-{delivery_id}`. If the send raises/fails, reset `owner_notified_at = NULL` so the
-  next poll retries; the idempotency key makes a duplicate harmless inside Resend's 24h window.
+- Send with Resend `Idempotency-Key: owner-notice-{delivery_id}`. If the send fails *transiently*, reset `owner_notified_at = NULL` (and bump `updated_at`, a 10-minute retry cooldown) so a later poll retries; permanent failures and unexpected errors keep the flag (review fix); the idempotency key makes a duplicate harmless inside Resend's 24h window.
 - Crash recovery: each poll also sweeps `abandoned` deliveries with `owner_notified_at IS NULL` (bounded, e.g. last 7 days), so a
   crash between "abandoned" and "email" still ends in exactly one notice.
 - Owner address: `auth.users.email` via the existing direct Postgres connection, joined through `user_issues` (production has no

@@ -666,15 +666,31 @@ class TestOwnerNotice:
             await svc._process_issue(CLAIM)
         assert 'notice_email' not in steps(svc)
 
-    async def test_failed_send_releases_the_flag_so_a_later_tick_retries(self, svc):
+    async def test_transient_send_failure_releases_the_flag_so_a_later_sweep_retries(self, svc):
         svc.owner_notice.return_value = SendResult.failed('transient', 'email: Resend is unavailable')
         await self.abandon(svc)
         assert steps(svc)[-2:] == ['notice_email', 'release_notice']
 
-    async def test_an_exception_while_sending_releases_the_flag_and_does_not_break_the_run(self, svc):
+    @pytest.mark.parametrize('error', [
+        'email: Resend rejected the message (422: invalid `to`)',
+        'config: RESEND_API_KEY is not set',
+        'config: no owner email address',
+    ])
+    async def test_permanent_send_failure_is_not_retried(self, svc, error):
+        # Retrying a bad owner address or missing config would repeat every poll for days.
+        svc.owner_notice.return_value = SendResult.failed('permanent', error)
+        await self.abandon(svc)
+        assert 'notice_email' in steps(svc) and 'release_notice' not in steps(svc)
+
+    async def test_an_unexpected_error_while_sending_is_not_retried_and_does_not_break_the_run(self, svc):
         svc.owner_notice.side_effect = RuntimeError('boom')
         await self.abandon(svc)    # the run itself still completes and is recorded as abandoned
-        assert steps(svc)[-1] == 'release_notice'
+        assert 'release_notice' not in steps(svc)
+
+    async def test_a_failure_to_release_does_not_break_the_run(self, svc):
+        svc.owner_notice.return_value = SendResult.failed('transient', 'email: down')
+        svc.store.release_owner_notice = MagicMock(side_effect=RuntimeError('db down'))
+        await self.abandon(svc)
 
     async def test_a_failing_claim_does_not_break_the_run_and_releases_nothing(self, svc):
         svc.store.claim_owner_notice = MagicMock(side_effect=RuntimeError('db down'))

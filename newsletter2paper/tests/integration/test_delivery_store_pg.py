@@ -366,7 +366,22 @@ class TestOwnerNotice:
         assert row(engine, "SELECT status FROM public.issue_deliveries WHERE id = :id", id=delivery_id)['status'] == 'abandoned'
         assert store.claim_owner_notice(delivery_id) is None
 
-    def test_the_sweep_lists_recent_unnotified_editions_oldest_first_and_skips_old_ones(self, engine, store):
+    def test_a_released_notice_waits_out_the_cooldown_before_the_sweep_offers_it_again(self, engine, store):
+        issue_id = make_issue(engine)
+        make_owner(engine, issue_id)
+        delivery_id = make_delivery(engine, issue_id)
+        with engine.begin() as conn:   # abandoned an hour ago, so the sweep would normally take it
+            conn.execute(text("UPDATE public.issue_deliveries SET updated_at = now() - interval '1 hour' WHERE id = :id"),
+                         {"id": delivery_id})
+        assert delivery_id in [str(i) for i in store.unnotified_abandoned()]
+
+        assert store.claim_owner_notice(delivery_id) is not None
+        store.release_owner_notice(delivery_id)                 # transient failure: flag cleared, cooldown starts
+
+        assert delivery_id not in [str(i) for i in store.unnotified_abandoned()]
+        assert delivery_id in [str(i) for i in store.unnotified_abandoned(cooldown_minutes=0)]
+
+    def test_the_sweep_lists_unnotified_editions_from_the_last_week_and_skips_older_ones(self, engine, store):
         issue_id = make_issue(engine)
         make_owner(engine, issue_id)
         recent = make_delivery(engine, issue_id)
@@ -374,6 +389,8 @@ class TestOwnerNotice:
         with engine.begin() as conn:
             conn.execute(text("UPDATE public.issue_deliveries SET updated_at = now() - interval '30 days' WHERE id = :id"),
                          {"id": stale})
+            conn.execute(text("UPDATE public.issue_deliveries SET updated_at = now() - interval '1 hour' WHERE id = :id"),
+                         {"id": recent})
         listed = [str(i) for i in store.unnotified_abandoned()]
         assert recent in listed and stale not in listed
 

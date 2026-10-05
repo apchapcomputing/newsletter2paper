@@ -94,7 +94,7 @@ The system SHALL email the issue owner's account address once when a scheduled d
 
 - GIVEN a delivery is `abandoned` with `owner_notified_at` NULL (the process died, or the notice email failed)
 - WHEN the scheduler next polls
-- THEN the notice is sent (recent abandoned editions only) and `owner_notified_at` is set; if sending fails the flag is cleared again so a later poll retries
+- THEN the notice is sent (recent abandoned editions only) and `owner_notified_at` is set; if sending fails *transiently* the flag is cleared again so a later poll retries after a cooldown, while a *permanent* failure (invalid owner address, missing configuration) is logged and not retried
 - AND the notice carries a Resend idempotency key, so a repeat inside 24h is not delivered twice
 
 #### Scenario: Abandonment caused by a schedule change does not notify

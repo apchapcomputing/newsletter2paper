@@ -294,25 +294,30 @@ class DeliveryStore:
         return notice if notice.get('owner_email') else None
 
     def release_owner_notice(self, delivery_id) -> None:
-        """Undo claim_owner_notice after a failed send so a later tick retries it."""
+        """Undo claim_owner_notice after a transient send failure so a later sweep retries it.
+        Bumps updated_at, which starts the sweep's retry cooldown."""
         with self.engine.begin() as conn:
             conn.execute(
-                text("UPDATE public.issue_deliveries SET owner_notified_at = NULL WHERE id = :id"),
+                text("UPDATE public.issue_deliveries SET owner_notified_at = NULL, updated_at = now() WHERE id = :id"),
                 {"id": delivery_id},
             )
 
-    def unnotified_abandoned(self, limit: int = 5, within_days: int = 7) -> list:
-        """Recently abandoned editions whose notice was never sent (a crash, or a failed send)."""
+    def unnotified_abandoned(self, limit: int = 5, within_days: int = 7, cooldown_minutes: int = 10) -> list:
+        """Recently abandoned editions whose notice was never sent (a crash, or a transient send
+        failure). Editions touched within the cooldown are skipped so a failing provider is not
+        retried every poll."""
         with self.engine.begin() as conn:
             rows = conn.execute(
                 text(
                     f"""
                     SELECT d.id FROM public.issue_deliveries d
-                    WHERE {self._NOTIFIABLE} AND d.updated_at > now() - make_interval(days => :days)
+                    WHERE {self._NOTIFIABLE}
+                      AND d.updated_at > now() - make_interval(days => :days)
+                      AND d.updated_at <= now() - make_interval(mins => :cooldown)
                     ORDER BY d.updated_at LIMIT :limit
                     """
                 ),
-                {"limit": limit, "days": within_days},
+                {"limit": limit, "days": within_days, "cooldown": cooldown_minutes},
             ).fetchall()
         return [r[0] for r in rows]
 
