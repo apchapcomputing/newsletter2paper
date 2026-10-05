@@ -51,25 +51,28 @@ class DeliveryStore:
     # Claiming
     # ------------------------------------------------------------------
 
-    def initialize_unscheduled(self, first_run: Callable[[str, Optional[str]], datetime]) -> list:
-        """Give auto_send issues without next_run_at their first run time; returns (id, next_at) pairs."""
+    def initialize_unscheduled(self, first_run: Callable[[dict], datetime]) -> list:
+        """Give auto_send issues without next_run_at their first run time; returns (id, next_at) pairs.
+
+        `first_run` receives the issue's schedule columns (frequency, timezone, local time, weekday,
+        day of month) and returns its first slot."""
         initialised = []
         with self.engine.begin() as conn:
             rows = conn.execute(text(
                 """
-                SELECT id, frequency, schedule_timezone
+                SELECT id, frequency, schedule_timezone, schedule_time_local, schedule_weekday, schedule_day_of_month
                 FROM public.issues
                 WHERE auto_send = true AND next_run_at IS NULL AND schedule_status = 'idle'
                 FOR UPDATE SKIP LOCKED
                 """
-            )).fetchall()
-            for issue_id, frequency, tz_name in rows:
-                next_at = first_run(frequency, tz_name)
+            )).mappings().fetchall()
+            for row in rows:
+                next_at = first_run(dict(row))
                 conn.execute(
                     text("UPDATE public.issues SET next_run_at = :next_at, updated_at = now() WHERE id = :id"),
-                    {"id": issue_id, "next_at": next_at},
+                    {"id": row["id"], "next_at": next_at},
                 )
-                initialised.append((issue_id, next_at))
+                initialised.append((row["id"], next_at))
         return initialised
 
     def claim_next_due(self, lock_timeout_minutes: int) -> Optional[Claim]:
@@ -255,6 +258,63 @@ class DeliveryStore:
                     ),
                     {**delivery, "_id": delivery_id},
                 )
+
+    # ------------------------------------------------------------------
+    # Owner notification
+    # ------------------------------------------------------------------
+
+    # An edition abandoned because the owner changed the schedule is not a failure to report.
+    _NOTIFIABLE = (
+        "d.trigger = 'scheduled' AND d.status = 'abandoned' AND d.owner_notified_at IS NULL "
+        "AND d.error NOT LIKE 'config: schedule changed%'"
+    )
+
+    def claim_owner_notice(self, delivery_id) -> Optional[dict]:
+        """Atomically mark an abandoned edition as notified and return what the notice needs, or
+        None if it was already notified, is not notifiable, or the issue has no owner account.
+        Only the caller that gets a row sends the email."""
+        with self.engine.begin() as conn:
+            row = conn.execute(
+                text(
+                    f"""
+                    UPDATE public.issue_deliveries AS d SET owner_notified_at = now()
+                    FROM public.issues AS i
+                    WHERE d.id = :id AND d.issue_id = i.id AND {self._NOTIFIABLE}
+                    RETURNING d.id, d.period_key, d.error, i.title, i.next_run_at, i.schedule_timezone,
+                      (SELECT u.email FROM public.user_issues ui JOIN auth.users u ON u.id = ui.user_id
+                       WHERE ui.issue_id = i.id ORDER BY ui.created_at LIMIT 1) AS owner_email
+                    """
+                ),
+                {"id": delivery_id},
+            ).mappings().fetchone()
+        if row is None:
+            return None
+        notice = dict(row)
+        # No owner account (an unowned guest issue): nothing to send; the flag stays set.
+        return notice if notice.get('owner_email') else None
+
+    def release_owner_notice(self, delivery_id) -> None:
+        """Undo claim_owner_notice after a failed send so a later tick retries it."""
+        with self.engine.begin() as conn:
+            conn.execute(
+                text("UPDATE public.issue_deliveries SET owner_notified_at = NULL WHERE id = :id"),
+                {"id": delivery_id},
+            )
+
+    def unnotified_abandoned(self, limit: int = 5, within_days: int = 7) -> list:
+        """Recently abandoned editions whose notice was never sent (a crash, or a failed send)."""
+        with self.engine.begin() as conn:
+            rows = conn.execute(
+                text(
+                    f"""
+                    SELECT d.id FROM public.issue_deliveries d
+                    WHERE {self._NOTIFIABLE} AND d.updated_at > now() - make_interval(days => :days)
+                    ORDER BY d.updated_at LIMIT :limit
+                    """
+                ),
+                {"limit": limit, "days": within_days},
+            ).fetchall()
+        return [r[0] for r in rows]
 
     def _check_claim(self, conn, claim: Claim) -> None:
         # FOR UPDATE holds the row until commit, so a takeover cannot slip in between the check

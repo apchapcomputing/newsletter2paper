@@ -3,7 +3,6 @@ import logging
 import asyncio
 from datetime import datetime, timezone, timedelta
 from typing import List, Optional
-from zoneinfo import ZoneInfo
 
 try:
     from apscheduler.schedulers.background import BackgroundScheduler
@@ -15,13 +14,15 @@ from urllib.parse import urlparse, parse_qsl, urlencode, urlunparse
 from services.go_pdf_service import GoPDFService
 from services.database_service import DatabaseService
 from services.email_service import PERMANENT, TRANSIENT, SendResult
+from services.scheduling import (  # noqa: F401
+    MAX_BACKOFF, ONE_SHOT_FREQUENCIES, first_slot, next_slot_after_delivery, period_key, retry_deadline, retry_delay,
+)
 from services.delivery_store import CADENCE_COLUMNS, CLOSED_STATUSES, Claim, ClaimLost, DeliveryStore, SendNowCooldown  # noqa: F401
 
 logger = logging.getLogger(__name__)
 
 LOCK_TIMEOUT_MINUTES = int(os.environ.get('SCHEDULER_LOCK_TIMEOUT_MINUTES', '15'))
 MAX_RUN_ATTEMPTS = int(os.environ.get('SCHEDULER_MAX_ATTEMPTS', '5'))
-MAX_BACKOFF = timedelta(hours=24)
 # Minimum gap between a send-now and the issue's previous claim (locked_at is never cleared,
 # so it doubles as "last run started"); caps PDF/email load per issue.
 SEND_NOW_COOLDOWN_MINUTES = int(os.environ.get('SEND_NOW_COOLDOWN_MINUTES', '10'))
@@ -30,62 +31,6 @@ SEND_NOW_COOLDOWN_MINUTES = int(os.environ.get('SEND_NOW_COOLDOWN_MINUTES', '10'
 # stops the slower worker, but the edition is generated twice).
 RSS_BUDGET_SECONDS = int(os.environ.get('SCHEDULER_RSS_BUDGET_SECONDS', '300'))
 EMAIL_BUDGET_SECONDS = 60
-# Frequencies that send once and then turn auto_send off; they have no recurring period.
-ONE_SHOT_FREQUENCIES = {'once', 'custom'}
-
-
-def _resolve_tz(tz_name: Optional[str]) -> ZoneInfo:
-    try:
-        return ZoneInfo(tz_name or 'UTC')
-    except Exception:
-        logger.warning(f"Unknown schedule_timezone {tz_name!r}; falling back to UTC")
-        return ZoneInfo('UTC')
-
-
-def _add_months(local: datetime, months: int) -> datetime:
-    """Add calendar months to a local datetime, clamping the day to the month end."""
-    month_index = local.month - 1 + months
-    year = local.year + month_index // 12
-    month = month_index % 12 + 1
-    last_day = (datetime(year + (month == 12), month % 12 + 1, 1) - timedelta(days=1)).day
-    return local.replace(year=year, month=month, day=min(local.day, last_day))
-
-
-def compute_next_run(frequency: str, now: datetime, tz_name: Optional[str] = None) -> Optional[datetime]:
-    """Next run after `now` (UTC-aware), keeping the local wall-clock time in `tz_name`.
-
-    Returns None for frequencies that don't repeat ('once', 'custom').
-    """
-    tz = _resolve_tz(tz_name)
-    local = now.astimezone(tz)
-    if frequency == 'daily':
-        nxt = local.replace(tzinfo=None) + timedelta(days=1)
-    elif frequency == 'weekly':
-        nxt = local.replace(tzinfo=None) + timedelta(days=7)
-    elif frequency == 'monthly':
-        nxt = _add_months(local.replace(tzinfo=None), 1)
-    else:
-        return None
-    return nxt.replace(tzinfo=tz).astimezone(timezone.utc)
-
-
-def period_key(frequency: str, scheduled_for: datetime, tz_name: Optional[str] = None) -> str:
-    """Identifier of the delivery period the slot `scheduled_for` belongs to.
-
-    Computed from the slot, never processing time, so a late retry stays in its period.
-    One-shot frequencies key on the slot itself: each enablement is its own edition.
-    """
-    if frequency in ONE_SHOT_FREQUENCIES:
-        return f"once-{scheduled_for.astimezone(timezone.utc).isoformat()}"
-    local = scheduled_for.astimezone(_resolve_tz(tz_name))
-    if frequency == 'daily':
-        return local.strftime('%Y-%m-%d')
-    if frequency == 'weekly':
-        iso = local.isocalendar()
-        return f"{iso[0]}-W{iso[1]:02d}"
-    if frequency == 'monthly':
-        return local.strftime('%Y-%m')
-    return f"once-{scheduled_for.astimezone(timezone.utc).isoformat()}"
 
 
 def check_lock_timeout(lock_timeout_minutes: int, render_timeout_seconds: int) -> None:
@@ -101,11 +46,6 @@ def _parse_ts(value) -> Optional[datetime]:
     if value is None or isinstance(value, datetime):
         return value
     return datetime.fromisoformat(str(value).replace('Z', '+00:00'))
-
-
-def retry_delay(attempts: int) -> timedelta:
-    """Exponential backoff: 1h, 2h, 4h, ... capped at 24h."""
-    return min(timedelta(hours=2 ** max(attempts - 1, 0)), MAX_BACKOFF)
 
 
 class SchedulerService:
@@ -191,6 +131,7 @@ class SchedulerService:
                 except Exception as e:
                     logger.exception(f"Failed processing issue {claim.issue_id}: {e}")
                     self.release_after_error(claim, f"unexpected error: {e}")
+            self._notify_pending_owners()
         except Exception as e:
             logger.exception(f"Scheduler check failed: {e}")
 
@@ -200,9 +141,9 @@ class SchedulerService:
         Enabling auto_send must not send immediately; the user can use "send now" for that.
         Non-repeating frequencies ('once'/'custom') are due right away.
         """
-        def first_run(frequency, tz_name):
+        def first_run(issue):
             now = datetime.now(timezone.utc)
-            return compute_next_run(frequency, now, tz_name) or now
+            return first_slot(issue, now) or now
 
         for issue_id, next_at in self.store.initialize_unscheduled(first_run):
             logger.info(f"Initialised schedule for issue {issue_id}: next_run_at={next_at}")
@@ -250,7 +191,7 @@ class SchedulerService:
             delivery = self.store.open_scheduled_delivery(claim, scheduled_for, key)
             if delivery['status'] in CLOSED_STATUSES:
                 logger.info(f"Issue {claim.issue_id} already handled period {key} ({delivery['status']}); skipping")
-                self._advance(claim, issue, now)
+                self._advance(claim, issue, delivery, now)
                 return {'success': True, 'error': None}
 
         # Already 'sending' means a previous run may have reached Resend: its stored idempotency
@@ -353,19 +294,25 @@ class SchedulerService:
         """The cadence this run loaded, so the final write can tell if the owner changed it since."""
         return {col: issue.get(col) for col in CADENCE_COLUMNS if col in issue}
 
-    def _next_slot(self, issue: dict, now: datetime) -> dict:
-        """Issue fields that release it to its next slot; one-shot frequencies turn auto_send off."""
-        next_at = compute_next_run(issue.get('frequency', 'weekly'), now, issue.get('schedule_timezone'))
+    @staticmethod
+    def _slot(delivery: dict, now: datetime) -> datetime:
+        """The slot this edition serves. A retry runs later but still serves its original slot."""
+        return _parse_ts(delivery.get('scheduled_for')) or now
+
+    def _next_slot(self, issue: dict, delivery: dict, now: datetime) -> dict:
+        """Issue fields that release it to the slot after the edition just served (anchored to that
+        slot, not to `now`); one-shot frequencies turn auto_send off."""
+        next_at = next_slot_after_delivery(issue, self._slot(delivery, now), now)
         fields = {'schedule_status': 'idle', 'next_run_at': next_at}
         if next_at is None:
             fields['auto_send'] = False
         return fields
 
-    def _advance(self, claim: Claim, issue: dict, now: datetime) -> None:
-        self.store.finish(claim, self._next_slot(issue, now), cadence=self._cadence(issue))
+    def _advance(self, claim: Claim, issue: dict, delivery: dict, now: datetime) -> None:
+        self.store.finish(claim, self._next_slot(issue, delivery, now), cadence=self._cadence(issue))
 
     def _succeed(self, claim, issue, delivery, pdf_url, message_id, now, force) -> None:
-        issue_fields = {'schedule_status': claim.previous_status} if force else self._next_slot(issue, now)
+        issue_fields = {'schedule_status': claim.previous_status} if force else self._next_slot(issue, delivery, now)
         issue_fields.update(last_run_at=now, last_run_error=None)
         self.store.finish(claim, issue_fields, delivery['id'], {
             'status': 'sent', 'sent_at': now, 'pdf_url': pdf_url, 'resend_message_id': message_id,
@@ -374,14 +321,14 @@ class SchedulerService:
         logger.info(f"Issue {claim.issue_id} delivered ({'manual' if force else 'scheduled'}, delivery {delivery['id']})")
 
     def _skip(self, claim, issue, delivery, now, force) -> None:
-        issue_fields = {'schedule_status': claim.previous_status} if force else self._next_slot(issue, now)
+        issue_fields = {'schedule_status': claim.previous_status} if force else self._next_slot(issue, delivery, now)
         self.store.finish(claim, issue_fields, delivery['id'], {'status': 'skipped'}, cadence=self._cadence(issue))
 
     def _fail(self, claim, issue, delivery, error, now, force, error_kind=TRANSIENT, retry_after=None,
               keep_key=False) -> None:
         """Record a failed attempt. Transient failures retry with backoff (no sooner than the
-        provider's Retry-After); permanent ones (bad recipient, rejected message, missing config)
-        abandon the edition at once, since retrying cannot help.
+        provider's Retry-After) but never at or after the next slot; permanent ones (bad recipient,
+        rejected message, missing config) abandon the edition at once, since retrying cannot help.
 
         keep_key: the send's outcome is unknown (Resend may have accepted it), so the retry keeps
         the stored idempotency key. Otherwise the key is cleared and the next attempt gets a new one.
@@ -399,26 +346,83 @@ class SchedulerService:
                 cadence=cadence,
             )
             return
-        if error_kind == PERMANENT or attempts >= MAX_RUN_ATTEMPTS:
-            # Give up on this edition but keep the schedule alive.
-            issue_fields = self._next_slot(issue, now)
-            if error_kind != PERMANENT:
-                error = f"{error} (gave up after {MAX_RUN_ATTEMPTS} attempts)"
-                if issue_fields.get('auto_send') is False:
-                    # One-shot issue: try again tomorrow rather than silently turning it off.
-                    issue_fields = {'schedule_status': 'idle', 'next_run_at': now + MAX_BACKOFF}
-            issue_fields['last_run_error'] = error
-            self.store.finish(claim, issue_fields, delivery['id'], {
-                'status': 'abandoned', 'attempts': attempts, 'error': error, 'error_kind': error_kind,
-                'next_attempt_at': None,
-            }, cadence=cadence)
+        if error_kind == PERMANENT:
+            self._abandon(claim, issue, delivery, error, error_kind, attempts, now)
+            return
+        if attempts >= MAX_RUN_ATTEMPTS:
+            self._abandon(claim, issue, delivery, f"{error} (gave up after {MAX_RUN_ATTEMPTS} attempts)",
+                          error_kind, attempts, now, one_shot_retries_tomorrow=True)
             return
         retry_at = now + max(retry_delay(attempts), timedelta(seconds=retry_after or 0))
+        deadline = retry_deadline(issue, self._slot(delivery, now))
+        if deadline is not None and retry_at >= deadline:
+            # A late edition must not collide with the next one: stop retrying and wait for it.
+            self._abandon(claim, issue, delivery, f"{error} (not retried: the next edition is due first)",
+                          error_kind, attempts, now)
+            return
         self.store.finish(
             claim, {'schedule_status': 'failed', 'next_run_at': retry_at, 'last_run_error': error},
             delivery['id'], {'status': 'failed', 'attempts': attempts, 'error': error, 'error_kind': error_kind,
                              'next_attempt_at': retry_at, **key_fields},
             cadence=cadence,
+        )
+
+    def _abandon(self, claim, issue, delivery, error, error_kind, attempts, now,
+                 one_shot_retries_tomorrow=False) -> None:
+        """Give up on this edition but keep the schedule alive: the issue moves to its next slot with
+        the error recorded, and the owner is told once."""
+        issue_fields = self._next_slot(issue, delivery, now)
+        if one_shot_retries_tomorrow and issue_fields.get('auto_send') is False:
+            # One-shot issue: try again tomorrow rather than silently turning it off.
+            issue_fields = {'schedule_status': 'idle', 'next_run_at': now + MAX_BACKOFF}
+        issue_fields['last_run_error'] = error
+        self.store.finish(claim, issue_fields, delivery['id'], {
+            'status': 'abandoned', 'attempts': attempts, 'error': error, 'error_kind': error_kind,
+            'next_attempt_at': None,
+        }, cadence=self._cadence(issue))
+        self._notify_owner(delivery['id'])
+
+    # ------------------------------------------------------------------
+    # Owner notification (at most once per abandoned edition)
+    # ------------------------------------------------------------------
+
+    def _notify_pending_owners(self) -> None:
+        """Send notices that a crash (or a failed send) left behind, a few per tick."""
+        for delivery_id in self.store.unnotified_abandoned(limit=5):
+            self._notify_owner(delivery_id)
+
+    def _notify_owner(self, delivery_id) -> None:
+        """Tell the issue's owner that an edition was abandoned. Whoever flips owner_notified_at
+        sends; if the send fails the flag is cleared so a later tick retries (the Resend idempotency
+        key makes a duplicate harmless). Never raises: a notice must not break a run."""
+        claimed = False
+        try:
+            notice = self.store.claim_owner_notice(delivery_id)
+            if notice is None:
+                return
+            claimed = True
+            result = self._send_owner_notice(notice)
+            if result.ok:
+                return
+            logger.warning(f"Owner notice for delivery {delivery_id} not sent: {result.error}")
+        except Exception:
+            logger.exception(f"Owner notice for delivery {delivery_id} failed")
+        if claimed:
+            try:
+                self.store.release_owner_notice(delivery_id)
+            except Exception:
+                logger.exception(f"Could not release the owner-notice flag for delivery {delivery_id}")
+
+    def _send_owner_notice(self, notice: dict) -> SendResult:
+        from services.email_service import EmailService
+        return EmailService().send_owner_notice(
+            to=notice['owner_email'],
+            issue_title=notice.get('title'),
+            period=notice.get('period_key'),
+            error=notice.get('error'),
+            next_run_at=_parse_ts(notice.get('next_run_at')),
+            timezone_name=notice.get('schedule_timezone'),
+            idempotency_key=f"owner-notice-{notice['id']}",
         )
 
     def release_after_error(self, claim: Claim, error: str, force: bool = False) -> None:

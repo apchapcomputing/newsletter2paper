@@ -96,3 +96,12 @@ NULL weekday the anchor fallback makes the first computed slot equal to today's 
 1. OK to read the owner address from `auth.users.email` via the service connection (design open question 2), rather than storing `owner_email` on `issues`?
 2. Should a give-up on a **one-shot** (`once`/`custom`) issue notify and then turn `auto_send` off, or keep retrying daily as `_fail` does now? Plan: notify, then leave as today (retry tomorrow) - say if you'd rather stop.
 3. Do #23 before #22 (plan assumes yes: `_abandon` takes a `kind`, #22 only supplies `permanent`)?
+
+
+## Outcome (implemented)
+
+Built as planned, with these differences:
+- **No new migration.** The "never notify for a schedule change" rule is a filter on the delivery's `config: schedule changed` error in `DeliveryStore` (`_NOTIFIABLE`), so production only needs the code. A DB test covers it against the real trigger.
+- **Questions resolved:** owner address is read from `auth.users` via `user_issues` (oldest link); a one-shot issue that exhausts its attempts notifies and still retries tomorrow, a one-shot permanent failure notifies and turns `auto_send` off (unchanged from #22); #22 had already landed, so `_abandon` takes the error kind it provides.
+- **Time of day moves to `schedule_time_local`.** Slots were "enable time + interval"; they are now `schedule_time_local` (default 09:00) in `schedule_timezone` (default UTC). An existing issue's next computed slot jumps to that time once. The UI has no time/timezone pickers yet (tasks §9), so until then new issues deliver at 09:00 UTC.
+- **Known gap:** an error before the delivery row exists (`release_after_error`: DB or Supabase client failure while loading the issue) still retries 1h later without anchoring; if that crosses a period boundary the edition is keyed to the later period. It is rare and logged; making the claim create the delivery row would close it.

@@ -1,17 +1,20 @@
 import os
 from datetime import datetime, timezone, timedelta
 from unittest.mock import MagicMock
+from zoneinfo import ZoneInfo
 
 import pytest
+import time_machine
 
 os.environ.setdefault('SUPABASE_DATABASE_URL', 'sqlite://')
 
 from services import scheduler as sch
 from services.delivery_store import Claim, ClaimLost, DeliveryStore
 from services.email_service import SendResult
+from services.scheduling import first_slot, retry_delay  # noqa: F401
 from services.scheduler import (
     LOCK_TIMEOUT_MINUTES, SEND_NOW_COOLDOWN_MINUTES, SchedulerService, SendNowCooldown,
-    check_lock_timeout, compute_next_run, period_key, retry_delay,
+    check_lock_timeout,
 )
 
 UTC = timezone.utc
@@ -19,61 +22,6 @@ UTC = timezone.utc
 
 def dt(*args):
     return datetime(*args, tzinfo=UTC)
-
-
-class TestComputeNextRun:
-    def test_daily_weekly(self):
-        now = dt(2026, 10, 1, 9, 30)
-        assert compute_next_run('daily', now) == dt(2026, 10, 2, 9, 30)
-        assert compute_next_run('weekly', now) == dt(2026, 10, 8, 9, 30)
-
-    def test_monthly_is_calendar_month(self):
-        assert compute_next_run('monthly', dt(2026, 1, 15, 8)) == dt(2026, 2, 15, 8)
-        assert compute_next_run('monthly', dt(2026, 12, 15, 8)) == dt(2027, 1, 15, 8)
-
-    def test_monthly_clamps_to_month_end(self):
-        assert compute_next_run('monthly', dt(2026, 1, 31, 8)) == dt(2026, 2, 28, 8)
-        assert compute_next_run('monthly', dt(2028, 1, 31, 8)) == dt(2028, 2, 29, 8)
-
-    def test_non_repeating_returns_none(self):
-        assert compute_next_run('once', dt(2026, 1, 1)) is None
-        assert compute_next_run('custom', dt(2026, 1, 1)) is None
-
-    def test_timezone_keeps_local_wall_clock_across_dst(self):
-        # US DST starts 2026-03-08. 08:00 New York is 13:00 UTC before, 12:00 UTC after.
-        now = dt(2026, 3, 7, 13, 0)
-        assert compute_next_run('daily', now, 'America/New_York') == dt(2026, 3, 8, 12, 0)
-
-    def test_unknown_timezone_falls_back_to_utc(self):
-        assert compute_next_run('daily', dt(2026, 1, 1, 5), 'Not/AZone') == dt(2026, 1, 2, 5)
-
-
-class TestPeriodKey:
-    def test_keys(self):
-        now = dt(2026, 10, 1, 9)
-        assert period_key('daily', now) == '2026-10-01'
-        assert period_key('weekly', now) == '2026-W40'
-        assert period_key('monthly', now) == '2026-10'
-        assert period_key('custom', now) == 'once-2026-10-01T09:00:00+00:00'
-
-    def test_one_shot_keys_differ_per_slot(self):
-        # Re-enabling a one-shot issue gives it a new slot, so the unique period index can't block it.
-        assert period_key('once', dt(2026, 10, 1, 9)) != period_key('once', dt(2026, 10, 2, 9))
-
-    def test_key_comes_from_the_slot_not_processing_time(self):
-        # A daily slot at 23:00 retried after midnight still belongs to its own day.
-        assert period_key('daily', dt(2026, 10, 5, 23)) == '2026-10-05'
-
-    def test_uses_local_date(self):
-        # 23:30 UTC on Oct 1 is already Oct 2 in Tokyo.
-        assert period_key('daily', dt(2026, 10, 1, 23, 30), 'Asia/Tokyo') == '2026-10-02'
-
-
-def test_retry_delay_backoff_and_cap():
-    assert retry_delay(1) == timedelta(hours=1)
-    assert retry_delay(2) == timedelta(hours=2)
-    assert retry_delay(3) == timedelta(hours=4)
-    assert retry_delay(10) == timedelta(hours=24)
 
 
 def test_lock_timeout_must_exceed_worst_case_run():
@@ -130,6 +78,22 @@ class FakeStore:
         self.finished.append((issue_fields, delivery_id, delivery_fields))
         self.cadence = cadence
 
+    # Owner notification
+    notice = {'id': 'd1', 'owner_email': 'owner@x.co', 'title': 'T', 'period_key': '2026-10-05',
+              'error': 'email: boom', 'next_run_at': '2026-10-06T09:00:00+00:00', 'schedule_timezone': 'UTC'}
+    pending = ()
+
+    def claim_owner_notice(self, delivery_id):
+        self._call('claim_notice', delivery_id)
+        return self.notice
+
+    def release_owner_notice(self, delivery_id):
+        self._call('release_notice', delivery_id)
+
+    def unnotified_abandoned(self, limit=5):
+        self._call('sweep')
+        return list(self.pending)
+
 
 @pytest.fixture
 def svc(monkeypatch):
@@ -147,6 +111,13 @@ def svc(monkeypatch):
         s.store.log.append(('email', to, url, key))
         return s.email(_issue, to, url, key)
 
+    s.owner_notice = MagicMock(return_value=SendResult.sent('notice-1'))
+
+    def send_notice(notice):
+        s.store.log.append(('notice_email', notice['owner_email'], notice['id']))
+        return s.owner_notice(notice)
+
+    monkeypatch.setattr(s, '_send_owner_notice', send_notice)
     monkeypatch.setattr(s, '_load_issue', lambda issue_id: s._issue)
     monkeypatch.setattr(s, '_generate_pdf', gen)
     monkeypatch.setattr(s, '_send_email', send)
@@ -271,7 +242,7 @@ class TestScheduledRun:
         res = await svc._process_issue(CLAIM)
         assert res == {'success': False, 'error': 'config: no recipient email address is set'}
         svc.generate.assert_not_called()
-        assert steps(svc) == ['open', 'finish']
+        assert steps(svc) == ['open', 'finish', 'claim_notice', 'notice_email']   # the owner is told why nothing was sent
         issue_fields, _, d = svc.store.finished[0]
         assert d['status'] == 'abandoned' and d['error_kind'] == 'permanent'
         assert issue_fields['last_run_error'] == 'config: no recipient email address is set'
@@ -511,3 +482,225 @@ class TestStoreFinish:
         store, _ = store_with()
         with pytest.raises(ValueError):
             store.finish(CLAIM, {'claim_token': None})
+
+
+# ---------------------------------------------------------------------------
+# Retry window, slot anchoring and owner notification (issue #23)
+# ---------------------------------------------------------------------------
+
+def daily_issue(**over):
+    base = {'frequency': 'daily', 'schedule_time_local': '09:00', 'next_run_at': '2026-10-05T09:00:00+00:00'}
+    base.update(over)
+    return issue(**base)
+
+
+def open_delivery(attempts, slot=dt(2026, 10, 5, 9)):
+    return delivery(status='failed' if attempts else 'pending', attempts=attempts, pdf_url='http://pdf',
+                    scheduled_for=slot, period_key='2026-10-05')
+
+
+async def attempt(svc, at, attempts, result=TRANSIENT_FAILURE):
+    """Run one attempt at `at`, as the poll would, and return (issue_fields, delivery_fields)."""
+    svc.store = FakeStore(existing=open_delivery(attempts))
+    svc.email.return_value = result
+    with time_machine.travel(at, tick=False):
+        await svc._process_issue(CLAIM)
+    issue_fields, _, d = svc.store.finished[-1]
+    return issue_fields, d
+
+
+class TestRetryWindow:
+    async def test_full_ladder_then_gives_up_at_the_next_slot(self, svc):
+        svc._issue = daily_issue()
+        at, expected_delay = dt(2026, 10, 5, 9), [1, 2, 4, 8]
+        for n, hours in enumerate(expected_delay):
+            fields, d = await attempt(svc, at, n)
+            assert d['status'] == 'failed' and d['attempts'] == n + 1
+            assert fields['schedule_status'] == 'failed' and fields['next_run_at'] == at + timedelta(hours=hours)
+            at = fields['next_run_at']
+        assert at == dt(2026, 10, 6, 0)   # 15h after the slot, still before the next 09:00
+
+        fields, d = await attempt(svc, at, 4)   # fifth failure
+
+        assert d['status'] == 'abandoned' and 'gave up after 5 attempts' in d['error']
+        assert fields['schedule_status'] == 'idle'
+        assert fields['next_run_at'] == dt(2026, 10, 6, 9)       # the next slot, not 'now + 1 day'
+        assert fields['last_run_error'] == d['error']
+        assert 'auto_send' not in fields                          # the schedule stays on
+
+    async def test_retry_that_would_pass_the_next_slot_is_abandoned_instead(self, svc):
+        svc._issue = daily_issue()
+        # Fourth failure at 06:00 the next morning: +8h would be 14:00, after the 09:00 slot.
+        fields, d = await attempt(svc, dt(2026, 10, 6, 6), 3)
+
+        assert d['status'] == 'abandoned' and 'next edition is due first' in d['error']
+        assert fields['next_run_at'] == dt(2026, 10, 6, 9) and fields['schedule_status'] == 'idle'
+
+    async def test_retry_landing_exactly_on_the_next_slot_is_abandoned_one_minute_earlier_is_not(self, svc):
+        svc._issue = daily_issue()
+        # attempts=1 -> the next backoff is 2h; the next slot is Oct 6 09:00.
+        _, just_in_time = await attempt(svc, dt(2026, 10, 6, 6, 59), 1)    # retry at 08:59
+        _, on_the_slot = await attempt(svc, dt(2026, 10, 6, 7, 0), 1)      # retry at 09:00
+        assert just_in_time['status'] == 'failed'
+        assert on_the_slot['status'] == 'abandoned'
+
+    async def test_retry_after_from_the_provider_can_also_close_the_window(self, svc):
+        svc._issue = daily_issue()
+        limited = SendResult.failed('transient', 'email: rate limited', retry_after=24 * 3600)
+        fields, d = await attempt(svc, dt(2026, 10, 5, 9), 0, limited)
+        assert d['status'] == 'abandoned'
+
+    async def test_one_shot_issues_have_no_deadline_so_they_keep_retrying(self, svc):
+        svc._issue = issue(frequency='once', next_run_at='2026-10-05T09:00:00+00:00')
+        fields, d = await attempt(svc, dt(2026, 10, 5, 9), 3)
+        assert d['status'] == 'failed' and fields['next_run_at'] == dt(2026, 10, 5, 17)
+
+    async def test_the_period_key_stays_with_the_slot_when_a_retry_runs_in_the_next_period(self, svc):
+        # A retry claimed at 02:00 on Oct 6 still serves Oct 5's slot, so it is Oct 5's delivery.
+        svc._issue = daily_issue(next_run_at='2026-10-06T02:00:00+00:00')
+        svc.store = FakeStore(existing=open_delivery(2))
+        with time_machine.travel(dt(2026, 10, 6, 2), tick=False):
+            await svc._process_issue(CLAIM)
+        issue_fields, _, d = svc.store.finished[-1]
+        assert d['status'] == 'sent'
+        assert issue_fields['next_run_at'] == dt(2026, 10, 6, 9)
+
+
+class TestSlotAnchoring:
+    async def test_late_success_keeps_next_weeks_slot(self, svc):
+        # Weekly Friday 09:00 New York; succeeds on the third attempt at 16:00 local.
+        ny = ZoneInfo('America/New_York')
+        slot = datetime(2026, 10, 9, 9, 0, tzinfo=ny).astimezone(UTC)
+        late = datetime(2026, 10, 9, 16, 0, tzinfo=ny).astimezone(UTC)
+        svc._issue = issue(frequency='weekly', schedule_weekday=4, schedule_timezone='America/New_York',
+                           schedule_time_local='09:00', next_run_at=late.isoformat())
+        svc.store = FakeStore(existing=delivery(status='failed', attempts=2, pdf_url='http://pdf', scheduled_for=slot,
+                                                period_key='2026-W41'))
+        svc.email.return_value = SendResult.sent('msg-1')
+
+        with time_machine.travel(late, tick=False):
+            await svc._process_issue(CLAIM)
+
+        fields, _, d = svc.store.finished[-1]
+        assert d['status'] == 'sent'
+        assert fields['next_run_at'] == datetime(2026, 10, 16, 9, 0, tzinfo=ny).astimezone(UTC)
+
+    @pytest.mark.parametrize('freq, slot, finished, expected', [
+        # No weekday / day-of-month configured: the slot's own weekday / day is kept even when the
+        # retry that finally succeeds runs on a later day.
+        ('weekly', dt(2026, 10, 9, 9), dt(2026, 10, 10, 2), dt(2026, 10, 16, 9)),     # Friday slot, done Saturday 02:00
+        ('monthly', dt(2026, 10, 15, 9), dt(2026, 10, 17, 3), dt(2026, 11, 15, 9)),   # 15th slot, done on the 17th
+        ('daily', dt(2026, 10, 5, 9), dt(2026, 10, 5, 23), dt(2026, 10, 6, 9)),
+    ])
+    async def test_late_success_stays_on_the_slots_weekday_or_day_when_none_is_configured(
+            self, svc, freq, slot, finished, expected):
+        svc._issue = issue(frequency=freq, schedule_time_local='09:00', schedule_weekday=None,
+                           schedule_day_of_month=None, next_run_at=finished.isoformat())
+        svc.store = FakeStore(existing=delivery(status='failed', attempts=2, pdf_url='http://pdf', scheduled_for=slot))
+        svc.email.return_value = SendResult.sent('msg-1')
+
+        with time_machine.travel(finished, tick=False):
+            await svc._process_issue(CLAIM)
+
+        assert svc.store.finished[-1][0]['next_run_at'] == expected
+
+    async def test_a_period_already_handled_advances_from_its_slot(self, svc):
+        svc._issue = daily_issue()
+        svc.store = FakeStore(existing=delivery(status='sent', scheduled_for=dt(2026, 10, 5, 9)))
+        with time_machine.travel(dt(2026, 10, 5, 9, 30), tick=False):
+            await svc._process_issue(CLAIM)
+        assert svc.store.finished[-1][0]['next_run_at'] == dt(2026, 10, 6, 9)
+
+    def test_enabling_waits_for_the_next_configured_slot(self):
+        s = SchedulerService.__new__(SchedulerService)
+        s.store = MagicMock()
+        seen = {}
+
+        def init(first_run):
+            seen['at'] = first_run({'frequency': 'weekly', 'schedule_timezone': 'UTC', 'schedule_time_local': '09:00',
+                                    'schedule_weekday': 4, 'schedule_day_of_month': None})
+            return [('i1', seen['at'])]
+
+        s.store.initialize_unscheduled.side_effect = init
+        with time_machine.travel(dt(2026, 10, 7, 15), tick=False):   # a Wednesday
+            s._initialize_unscheduled()
+        assert seen['at'] == dt(2026, 10, 9, 9)
+
+    def test_one_shot_issues_are_due_right_away(self):
+        s = SchedulerService.__new__(SchedulerService)
+        s.store = MagicMock()
+        seen = {}
+        s.store.initialize_unscheduled.side_effect = lambda cb: seen.setdefault('at', cb({'frequency': 'once'})) and []
+        with time_machine.travel(dt(2026, 10, 7, 15), tick=False):
+            s._initialize_unscheduled()
+        assert seen['at'] == dt(2026, 10, 7, 15)
+
+
+class TestOwnerNotice:
+    async def abandon(self, svc, error_result=None):
+        svc._issue = daily_issue()
+        fields, d = await attempt(svc, dt(2026, 10, 5, 21), 4, error_result or TRANSIENT_FAILURE)
+        assert d['status'] == 'abandoned'
+
+    async def test_abandoning_an_edition_emails_the_owner_once(self, svc):
+        await self.abandon(svc)
+        assert [e[0] for e in svc.store.log if e[0] in ('claim_notice', 'notice_email', 'release_notice')] == [
+            'claim_notice', 'notice_email']
+        assert ('notice_email', 'owner@x.co', 'd1') in svc.store.log
+
+    async def test_a_permanent_failure_also_notifies(self, svc):
+        await self.abandon(svc, SendResult.failed('permanent', 'email: Resend rejected the message (422: bad address)'))
+        assert 'notice_email' in steps(svc)
+
+    async def test_the_schedule_stays_on_when_the_owner_is_told(self, svc):
+        await self.abandon(svc)
+        fields = svc.store.finished[-1][0]
+        assert 'auto_send' not in fields and fields['next_run_at'] is not None
+
+    async def test_no_notice_when_it_was_already_sent(self, svc):
+        svc.store = FakeStore(existing=open_delivery(4))
+        svc.store.notice = None          # claim_owner_notice found owner_notified_at already set
+        svc._issue = daily_issue()
+        svc.email.return_value = TRANSIENT_FAILURE
+        with time_machine.travel(dt(2026, 10, 5, 21), tick=False):
+            await svc._process_issue(CLAIM)
+        assert 'notice_email' not in steps(svc)
+
+    async def test_failed_send_releases_the_flag_so_a_later_tick_retries(self, svc):
+        svc.owner_notice.return_value = SendResult.failed('transient', 'email: Resend is unavailable')
+        await self.abandon(svc)
+        assert steps(svc)[-2:] == ['notice_email', 'release_notice']
+
+    async def test_an_exception_while_sending_releases_the_flag_and_does_not_break_the_run(self, svc):
+        svc.owner_notice.side_effect = RuntimeError('boom')
+        await self.abandon(svc)    # the run itself still completes and is recorded as abandoned
+        assert steps(svc)[-1] == 'release_notice'
+
+    async def test_a_failing_claim_does_not_break_the_run_and_releases_nothing(self, svc):
+        svc.store.claim_owner_notice = MagicMock(side_effect=RuntimeError('db down'))
+        svc._issue = daily_issue()
+        await attempt(svc, dt(2026, 10, 5, 21), 4)   # replaces the store; re-patch below
+        store = svc.store
+        store.claim_owner_notice = MagicMock(side_effect=RuntimeError('db down'))
+        svc._notify_owner('d1')
+        assert 'release_notice' not in steps(svc)
+
+    async def test_manual_sends_never_notify(self, svc):
+        svc.email.return_value = TRANSIENT_FAILURE
+        await svc.send_now(Claim('i1', 'tok', previous_status='idle'))
+        assert 'claim_notice' not in steps(svc)
+
+    def test_sweep_notifies_abandoned_editions_whose_notice_was_lost(self, svc):
+        svc.store.pending = ['d7', 'd8']
+        svc._notify_pending_owners()
+        assert [e for e in svc.store.log if e[0] == 'claim_notice'] == [('claim_notice', 'd7'), ('claim_notice', 'd8')]
+
+    def test_every_poll_ends_with_the_sweep(self, monkeypatch):
+        s = SchedulerService.__new__(SchedulerService)
+        s.batch_size = 5
+        s.store = MagicMock()
+        s.store.initialize_unscheduled.return_value = []
+        s.store.claim_next_due.return_value = None
+        s.store.unnotified_abandoned.return_value = []
+        s._job_check_and_process()
+        s.store.unnotified_abandoned.assert_called_once()
