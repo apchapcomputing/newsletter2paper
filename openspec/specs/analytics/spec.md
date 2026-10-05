@@ -72,15 +72,61 @@ restore.
 
 The system SHALL send uncaught browser exceptions and Next.js server request errors (`onRequestError` in
 `ui/instrumentation.js`) to PostHog Error tracking, and SHALL send PDF generation failures other than validation
-errors with their `error_type`. Reporting SHALL NOT throw. The browser's `x-posthog-distinct-id`
-and `x-posthog-session-id` headers are client-controlled: they SHALL be used only to attribute an error, and only when
-they look like an id (8–64 letters, digits or dashes); otherwise the error is anonymous.
+errors with their `error_type`. The API SHALL send unhandled exceptions, Go render failures, scheduler failures and a
+scheduler that fails to start (`services/analytics_service.py`), with emails and URLs scrubbed from exception messages.
+Reporting SHALL NOT throw. The Next.js API routes SHALL forward the browser's `x-posthog-distinct-id` and
+`x-posthog-session-id` headers to the API, and no other browser headers. These headers are client-controlled: the UI
+server and the API SHALL use them only to attribute an error, and only when they look like an id (8–64 letters,
+digits or dashes); otherwise the error is anonymous.
 
 #### Scenario: Forged distinct id
 
 - GIVEN a request whose `x-posthog-distinct-id` is `a@b.co`
 - WHEN its route handler throws
 - THEN the error is captured without a distinct id
+
+#### Scenario: Guest's PDF render fails
+
+- GIVEN a guest generates a PDF and the Go renderer fails
+- WHEN the API returns 400
+- THEN Error tracking has a `PDFGenerationError` (message scrubbed) with the guest's distinct id, `issue_id`, `layout` and `stage: render`
+
+---
+
+### Requirement: Server-Side Delivery Events
+
+The scheduler SHALL record `delivery_sent`, `delivery_failed` and `delivery_skipped` after the delivery's fenced write
+succeeds (a run that lost its claim records nothing), keyed by the issue owner's user id (`user_issues`), or
+`issue:<id>` for an issue without an owner. Events SHALL NOT include the error message or recipient; failures carry
+`error_kind`, `error_category` (the `email`/`config`/`pdf`/`unexpected error` prefix) and `final`.
+
+#### Scenario: Permanent email failure
+
+- GIVEN Resend rejects a scheduled delivery as permanent
+- WHEN the edition is abandoned
+- THEN `delivery_failed` is recorded with `final: true`, `error_kind: permanent`, `error_category: email` and no error text
+
+---
+
+### Requirement: Edition Opens
+
+When `PUBLIC_API_URL` is set, scheduled and manual delivery emails SHALL link to `{PUBLIC_API_URL}/d/{delivery_id}`
+(the same link on every attempt, so the idempotency key's payload doesn't change). The link SHALL redirect (302) to the
+delivery's PDF, record `edition_opened`, and set `issue_deliveries.opened_at` on the first open. An open within 30
+seconds of sending SHALL be flagged `likely_scanner` and SHALL NOT set `opened_at`. On-demand emails link to the PDF
+directly.
+
+#### Scenario: Mail scanner prefetch
+
+- GIVEN a delivery sent 5 seconds ago
+- WHEN its link is fetched
+- THEN the request is redirected to the PDF, `edition_opened` has `likely_scanner: true`, and `opened_at` stays NULL
+
+#### Scenario: Unknown link
+
+- GIVEN a delivery id that does not exist or was not sent
+- WHEN `/d/{id}` is requested
+- THEN the API returns 404
 
 ---
 
@@ -101,5 +147,9 @@ Names follow `object_action`, snake_case. Never send emails, article text, feed 
 | `signup_completed` / `signed_in` | `useAuth.trackCompletedSignIn`, once per sign-in (the auth callback adds `?signed_in=1`). An account created less than 10 minutes ago counts as a signup. | `method` |
 | `auto_send_enabled` / `auto_send_disabled` | `useNewsletterConfig.updateAutoSend` | `frequency` |
 | `send_now_clicked` | `ConfigureNewspaper` | |
+| `delivery_sent` | scheduler `_succeed` | `issue_id`, `delivery_id`, `trigger`, `frequency`, `attempts` |
+| `delivery_failed` | scheduler `_fail` | the above, plus `error_kind`, `error_category`, `final` |
+| `delivery_skipped` | scheduler `_skip` | the above, plus `reason`: `no_articles` |
+| `edition_opened` | `GET /d/{delivery_id}` (`routers/deliveries.py`) | `issue_id`, `delivery_id`, `trigger`, `first_open`, `likely_scanner`, `hours_since_sent` |
 
-People are identified by Supabase user id on sign-in. Guests are anonymous: a stored ID if they accepted the consent banner, cookieless otherwise.
+Server events use the issue owner's Supabase user id (`issue:<id>` for guest issues). People are identified by Supabase user id on sign-in. Guests are anonymous: a stored ID if they accepted the consent banner, cookieless otherwise.

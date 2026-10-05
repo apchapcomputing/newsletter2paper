@@ -511,3 +511,67 @@ class TestStoreFinish:
         store, _ = store_with()
         with pytest.raises(ValueError):
             store.finish(CLAIM, {'claim_token': None})
+
+
+class TestAnalytics:
+    """Delivery events, keyed by the issue owner, sent only after the fenced write succeeds."""
+
+    @pytest.fixture
+    def events(self, svc, monkeypatch):
+        sent = []
+        monkeypatch.setattr(sch.analytics, 'enabled', lambda: True)
+        monkeypatch.setattr(sch.analytics, 'capture', lambda event, distinct_id, props: sent.append((event, distinct_id, props)))
+        svc.store.owner_id = lambda issue_id: 'user-1'
+        return sent
+
+    async def test_sent(self, svc, events):
+        await svc._process_issue(CLAIM)
+        assert events == [('delivery_sent', 'user-1', {
+            'issue_id': 'i1', 'delivery_id': 'd1', 'trigger': 'scheduled', 'frequency': 'weekly', 'attempts': 1})]
+
+    async def test_transient_failure_is_not_final(self, svc, events):
+        svc.email.return_value = TRANSIENT_FAILURE
+        await svc._process_issue(CLAIM)
+        (event, _, props), = events
+        assert event == 'delivery_failed'
+        assert props['final'] is False and props['error_kind'] == 'transient' and props['error_category'] == 'email'
+
+    async def test_permanent_failure_is_final_and_has_no_error_text(self, svc, events):
+        svc.email.return_value = PERMANENT_FAILURE
+        await svc._process_issue(CLAIM)
+        (_, _, props), = events
+        assert props['final'] is True and props['error_kind'] == 'permanent'
+        assert 'error' not in props and 'Invalid' not in str(props)  # the message can contain the address
+
+    async def test_skip(self, svc, events):
+        svc.generate.return_value = None
+        await svc._process_issue(CLAIM)
+        assert [(e, p['reason']) for e, _, p in events] == [('delivery_skipped', 'no_articles')]
+
+    async def test_guest_issue_falls_back_to_an_issue_distinct_id(self, svc, events):
+        svc.store.owner_id = lambda issue_id: None
+        await svc._process_issue(CLAIM)
+        assert events[0][1] == 'issue:i1'
+
+    async def test_lost_claim_reports_nothing(self, svc, events):
+        svc.store.lose_claim_at = 'finish'
+        await svc._process_issue(CLAIM)  # stops quietly; another worker owns the issue
+        assert events == []
+
+    async def test_off_without_a_key_and_never_queries_the_owner(self, svc):
+        assert sch.analytics.enabled() is False
+        await svc._process_issue(CLAIM)  # FakeStore has no owner_id; it must not be called
+
+
+class TestEmailLink:
+    async def test_links_to_the_tracked_redirect_when_public_api_url_is_set(self, svc, monkeypatch):
+        monkeypatch.setattr(sch, 'PUBLIC_API_URL', 'https://api.example.com')
+        await svc._process_issue(CLAIM)
+        mark_sending = next(e for e in svc.store.log if e[0] == 'mark_sending')
+        email = next(e for e in svc.store.log if e[0] == 'email')
+        assert mark_sending[2] == 'http://pdf'  # the delivery keeps the real PDF URL
+        assert email[2] == 'https://api.example.com/d/d1'
+
+    async def test_links_to_the_pdf_without_public_api_url(self, svc):
+        await svc._process_issue(CLAIM)
+        assert next(e for e in svc.store.log if e[0] == 'email')[2] == 'http://pdf'

@@ -14,6 +14,9 @@ services:
       - GO_PDF_CONTAINER=pdf-maker
       - RESEND_API_KEY=${RESEND_API_KEY}
       - EMAIL_FROM=${EMAIL_FROM}
+      - POSTHOG_API_KEY=${POSTHOG_API_KEY:-}
+      - POSTHOG_HOST=${POSTHOG_HOST:-https://eu.i.posthog.com}
+      - PUBLIC_API_URL=${PUBLIC_API_URL:-}
     volumes:
       - ./shared:/shared
       - ./newsletter2paper:/app

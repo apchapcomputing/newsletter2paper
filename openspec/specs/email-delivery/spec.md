@@ -94,6 +94,14 @@ stored key. `attempts` counts every failure either way, so retries stay bounded.
 
 ---
 
+### Requirement: Tracked Delivery Links
+
+When `PUBLIC_API_URL` is set, the system SHALL link scheduled and manual delivery emails to
+`{PUBLIC_API_URL}/d/{delivery_id}`, which redirects to the PDF and records the open (see the analytics spec). The
+delivery row keeps the real PDF URL. Without `PUBLIC_API_URL`, and for on-demand emails, the email links to the PDF.
+
+---
+
 ### Requirement: Safe Email Content
 
 The system SHALL HTML-escape every interpolated value (issue title, PDF link) in the HTML body, and SHALL

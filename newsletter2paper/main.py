@@ -1,8 +1,10 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.responses import PlainTextResponse
 from contextlib import asynccontextmanager
 from fastapi.middleware.cors import CORSMiddleware
 import os
-from routers import rss, issues, publications, articles, pdf
+from routers import rss, issues, publications, articles, pdf, deliveries
+from services import analytics_service as analytics
 
 # Verify required environment variables
 required_env_vars = ['SUPABASE_URL', 'SUPABASE_KEY']
@@ -27,6 +29,7 @@ async def lifespan(app: FastAPI):
             app.state.scheduler = None
             app.state.scheduler_error = str(e)
             logging.critical(f"Scheduler NOT running; scheduled delivery is disabled: {e}", exc_info=True)
+            analytics.capture_exception(e, properties={'stage': 'scheduler_start'})
 
         yield
 
@@ -38,6 +41,7 @@ async def lifespan(app: FastAPI):
         except Exception:
             import logging
             logging.exception("Error shutting down scheduler during lifespan")
+        analytics.shutdown()
 
 
 app = FastAPI(
@@ -62,6 +66,14 @@ app.include_router(issues.router)
 app.include_router(publications.router)
 app.include_router(articles.router)
 app.include_router(pdf.router)
+app.include_router(deliveries.router)
+
+
+@app.exception_handler(Exception)
+async def unhandled_exception(request: Request, exc: Exception):
+    # Starlette still re-raises after this, so the traceback is logged as before.
+    analytics.capture_exception(exc, *analytics.request_context(request))
+    return PlainTextResponse("Internal Server Error", status_code=500)
 
 # Root endpoint
 @app.get("/")
