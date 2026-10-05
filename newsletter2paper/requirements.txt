@@ -58,6 +58,8 @@ python-jose==3.3.0
 pytest==9.0.2
 pytest-asyncio==1.4.0
 respx==0.23.1
+time-machine==3.5.1
+hypothesis==6.168.3
 resend>=2.30,<3
 APScheduler>=3.10.1
 psycopg2-binary>=2.9.7

@@ -21,10 +21,10 @@ GitHub issue for each group in brackets. Parent: #17.
 
 ## 2. Scheduling math
 
-- [ ] `services/scheduling.py`: `slot_after`, `period_key(issue, scheduled_for)`, `retry_deadline`; merge untracked `scheduling_utils.py` logic; delete it
-- [ ] Honour `schedule_time_local`, `schedule_weekday`, `schedule_day_of_month`, `schedule_timezone`; DST gap/overlap handling
-- [ ] Next slot anchored to `scheduled_for`, never `now`; no backlog replay
-- [ ] Property tests (`hypothesis`, `time-machine`) per design.md Testing Strategy
+- [x] `services/scheduling.py`: `slot_after`, `period_key`, `retry_deadline`, `next_slot_after_delivery` (the untracked `scheduling_utils.py` was never committed)
+- [x] Honour `schedule_time_local`, `schedule_weekday`, `schedule_day_of_month`, `schedule_timezone`; DST gap/overlap handling
+- [x] Next slot anchored to `scheduled_for`, never `now`; no backlog replay
+- [x] Property tests (`hypothesis`, `time-machine`) per design.md Testing Strategy
 
 ## 3. Crash safety and idempotency [#21]
 
@@ -45,10 +45,10 @@ GitHub issue for each group in brackets. Parent: #17.
 
 ## 5. Retries, give-up, and owner notification [#23]
 
-- [ ] Backoff 1h/2h/4h/8h… cap 24h, max `SCHEDULER_MAX_ATTEMPTS` (5); abandon if next attempt ≥ next slot
-- [ ] Abandoned edition: issue advances to next slot, `last_run_error` set, owner give-up email sent once (`owner_notified_at`)
-- [ ] Frozen-clock tests: full retry ladder, daily period-boundary abandonment, notification idempotency
-- [ ] Verify the migration doesn't touch `auto_send=false` rows
+- [x] Backoff 1h/2h/4h/8h… cap 24h, max `SCHEDULER_MAX_ATTEMPTS` (5); abandon if next attempt ≥ next slot
+- [x] Abandoned edition: issue advances to next slot, `last_run_error` set, owner give-up email sent once (`owner_notified_at`)
+- [x] Frozen-clock tests: full retry ladder, daily period-boundary abandonment, notification idempotency
+- [x] Verify the migration doesn't touch `auto_send=false` rows
 
 ## 6. Article selection
 
@@ -73,7 +73,7 @@ GitHub issue for each group in brackets. Parent: #17.
 ## 9. UI
 
 - [ ] Weekday / day-of-month / time pickers; timezone defaults to browser zone
-- [ ] Status panel from server `next_run_at` / `last_run_at` / `last_run_error`; remove `computeNextScheduled`
+- [ ] Status panel from server `next_run_at` / `last_run_at` / `last_run_error`; remove `computeNextScheduled` (#23 added the retry/last-error/next-delivery lines via `ScheduleStatus`; the estimate remains as a fallback until the scheduler sets `next_run_at`)
 - [ ] Recipient verification state; auto-send toggle gated on verification
 - [ ] Send now button with 409/412 handling; delivery history list (`GET /issues/{id}/deliveries`)
 - [ ] vitest coverage for the above

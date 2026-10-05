@@ -8,6 +8,8 @@ Runs only when SCHEDULER_TEST_DATABASE_URL is set; CI points it at the local Sup
         pytest tests/integration/test_delivery_store_pg.py
 """
 import os
+import threading
+import uuid
 from datetime import datetime, timedelta, timezone
 
 import pytest
@@ -30,6 +32,7 @@ def engine():
     yield eng
     with eng.begin() as conn:
         conn.execute(text("DELETE FROM public.issues WHERE title LIKE 'delivery-store-test%'"))
+        conn.execute(text("DELETE FROM auth.users WHERE email LIKE '%@delivery-store.test'"))
     eng.dispose()
 
 
@@ -277,3 +280,161 @@ def test_rollback_restores_columns_from_delivery_records(engine, store):
             assert conn.execute(text("SELECT to_regclass('public.issue_deliveries')")).scalar() is None
         finally:
             tx.rollback()
+
+
+def make_owner(engine, issue_id, email='owner@delivery-store.test'):
+    user_id = str(uuid.uuid4())
+    with engine.begin() as conn:
+        conn.execute(text("INSERT INTO auth.users (id, email) VALUES (:id, :email)"), {"id": user_id, "email": email})
+        conn.execute(text("INSERT INTO public.user_issues (user_id, issue_id) VALUES (:u, :i)"), {"u": user_id, "i": issue_id})
+    return user_id
+
+
+def make_delivery(engine, issue_id, **over):
+    values = {'issue_id': issue_id, 'trigger': 'scheduled', 'period_key': str(uuid.uuid4())[:8],
+              'scheduled_for': slot(), 'status': 'abandoned', 'error': 'email: Resend is unavailable'}
+    values.update(over)
+    cols, params = ', '.join(values), ', '.join(f':{c}' for c in values)
+    with engine.begin() as conn:
+        return str(conn.execute(text(f"INSERT INTO public.issue_deliveries ({cols}) VALUES ({params}) RETURNING id"), values).scalar())
+
+
+class TestOwnerNotice:
+    def test_returns_what_the_notice_needs_and_marks_it_notified(self, engine, store):
+        issue_id = make_issue(engine, title='delivery-store-test notice', schedule_timezone='America/New_York')
+        make_owner(engine, issue_id)
+        delivery_id = make_delivery(engine, issue_id, period_key='2026-W41')
+
+        notice = store.claim_owner_notice(delivery_id)
+
+        assert notice['owner_email'] == 'owner@delivery-store.test'
+        assert (notice['title'], notice['period_key'], notice['error']) == (
+            'delivery-store-test notice', '2026-W41', 'email: Resend is unavailable')
+        assert notice['schedule_timezone'] == 'America/New_York' and notice['next_run_at'] is not None
+        assert row(engine, "SELECT owner_notified_at FROM public.issue_deliveries WHERE id = :id", id=delivery_id)['owner_notified_at'] is not None
+
+    def test_only_one_of_two_simultaneous_callers_gets_the_notice(self, engine, store):
+        issue_id = make_issue(engine)
+        make_owner(engine, issue_id)
+        delivery_id = make_delivery(engine, issue_id)
+        results, barrier = [], threading.Barrier(2)
+
+        def worker():
+            barrier.wait()
+            results.append(DeliveryStore(engine).claim_owner_notice(delivery_id))
+
+        threads = [threading.Thread(target=worker) for _ in range(2)]
+        [t.start() for t in threads]
+        [t.join() for t in threads]
+
+        assert sorted(r is not None for r in results) == [False, True]
+
+    def test_release_lets_a_later_caller_claim_it_again(self, engine, store):
+        issue_id = make_issue(engine)
+        make_owner(engine, issue_id)
+        delivery_id = make_delivery(engine, issue_id)
+        assert store.claim_owner_notice(delivery_id) is not None
+        assert store.claim_owner_notice(delivery_id) is None
+        store.release_owner_notice(delivery_id)
+        assert store.claim_owner_notice(delivery_id) is not None
+
+    @pytest.mark.parametrize('over', [
+        {'status': 'failed'}, {'status': 'sent', 'error': None}, {'status': 'skipped', 'error': None},
+        {'trigger': 'manual', 'period_key': None},
+        {'error': 'config: schedule changed'},
+    ])
+    def test_only_abandoned_scheduled_editions_are_reported(self, engine, store, over):
+        issue_id = make_issue(engine)
+        make_owner(engine, issue_id)
+        delivery_id = make_delivery(engine, issue_id, **over)
+        assert store.claim_owner_notice(delivery_id) is None
+        assert delivery_id not in [str(i) for i in store.unnotified_abandoned()]
+
+    def test_an_issue_without_an_owner_account_has_nobody_to_tell(self, engine, store):
+        issue_id = make_issue(engine)
+        delivery_id = make_delivery(engine, issue_id)
+        assert store.claim_owner_notice(delivery_id) is None
+        assert delivery_id not in [str(i) for i in store.unnotified_abandoned()]   # flag stays set: no endless sweep
+
+    def test_changing_the_schedule_abandons_the_edition_silently(self, engine, store):
+        # The real trigger writes the 'config: schedule changed' error; it must not produce a notice.
+        issue_id = make_issue(engine)
+        make_owner(engine, issue_id)
+        delivery_id = make_delivery(engine, issue_id, status='pending', error=None)
+        with engine.begin() as conn:
+            conn.execute(text("UPDATE public.issues SET frequency = 'daily' WHERE id = :id"), {"id": issue_id})
+        assert row(engine, "SELECT status FROM public.issue_deliveries WHERE id = :id", id=delivery_id)['status'] == 'abandoned'
+        assert store.claim_owner_notice(delivery_id) is None
+
+    def test_a_released_notice_waits_out_the_cooldown_before_the_sweep_offers_it_again(self, engine, store):
+        issue_id = make_issue(engine)
+        make_owner(engine, issue_id)
+        delivery_id = make_delivery(engine, issue_id)
+        with engine.begin() as conn:   # abandoned an hour ago, so the sweep would normally take it
+            conn.execute(text("UPDATE public.issue_deliveries SET updated_at = now() - interval '1 hour' WHERE id = :id"),
+                         {"id": delivery_id})
+        assert delivery_id in [str(i) for i in store.unnotified_abandoned()]
+
+        assert store.claim_owner_notice(delivery_id) is not None
+        store.release_owner_notice(delivery_id)                 # transient failure: flag cleared, cooldown starts
+
+        assert delivery_id not in [str(i) for i in store.unnotified_abandoned()]
+        assert delivery_id in [str(i) for i in store.unnotified_abandoned(cooldown_minutes=0)]
+
+    def test_the_sweep_lists_unnotified_editions_from_the_last_week_and_skips_older_ones(self, engine, store):
+        issue_id = make_issue(engine)
+        make_owner(engine, issue_id)
+        recent = make_delivery(engine, issue_id)
+        stale = make_delivery(engine, issue_id)
+        with engine.begin() as conn:
+            conn.execute(text("UPDATE public.issue_deliveries SET updated_at = now() - interval '30 days' WHERE id = :id"),
+                         {"id": stale})
+            conn.execute(text("UPDATE public.issue_deliveries SET updated_at = now() - interval '1 hour' WHERE id = :id"),
+                         {"id": recent})
+        listed = [str(i) for i in store.unnotified_abandoned()]
+        assert recent in listed and stale not in listed
+
+
+class TestInitialiseUnscheduled:
+    def test_passes_the_schedule_columns_and_stores_the_first_slot(self, engine, store):
+        issue_id = make_issue(engine, next_run_at=None, schedule_timezone='Europe/London',
+                              schedule_time_local='07:30', schedule_weekday=2)
+        first = datetime(2026, 10, 7, 6, 30, tzinfo=timezone.utc)
+        seen = {}
+
+        def first_run(issue):
+            if str(issue['id']) == issue_id:
+                seen.update(issue)
+            return first
+
+        store.initialize_unscheduled(first_run)
+
+        assert (seen['frequency'], seen['schedule_timezone'], seen['schedule_time_local'], seen['schedule_weekday']) == (
+            'weekly', 'Europe/London', '07:30', 2)
+        assert row(engine, "SELECT next_run_at FROM public.issues WHERE id = :id", id=issue_id)['next_run_at'] == first
+
+
+class TestHardeningMigrationBackfill:
+    """20261004 moves rows stuck in 'failed' (the old code never polled them) back to 'idle'."""
+
+    @staticmethod
+    def backfill_sql():
+        import pathlib
+        import re
+        sql = (pathlib.Path(__file__).parents[2] / 'supabase/migrations/20261004000000_scheduler_hardening.sql').read_text()
+        match = re.search(r"UPDATE public\.issues SET schedule_status = 'idle'[^;]*;", sql)
+        assert match, 'backfill statement not found in the migration'
+        return match.group(0)
+
+    def test_unsticks_failed_rows_with_auto_send_on_and_leaves_auto_send_off_alone(self, engine):
+        stuck = make_issue(engine, schedule_status='failed', auto_send=True)
+        off = make_issue(engine, schedule_status='failed', auto_send=False)
+        idle = make_issue(engine, schedule_status='processing', auto_send=True, locked_at=datetime.now(timezone.utc))
+
+        with engine.begin() as conn:
+            conn.execute(text(self.backfill_sql()))
+
+        status = lambda i: row(engine, "SELECT schedule_status, auto_send FROM public.issues WHERE id = :id", id=i)  # noqa: E731
+        assert status(stuck)['schedule_status'] == 'idle'
+        assert (status(off)['schedule_status'], status(off)['auto_send']) == ('failed', False)
+        assert status(idle)['schedule_status'] == 'processing'
