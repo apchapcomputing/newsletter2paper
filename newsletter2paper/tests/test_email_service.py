@@ -35,8 +35,8 @@ def _make_service():
 class TestEmailServiceInit:
     """Tests for EmailService initialisation."""
 
-    def test_raises_when_api_key_missing(self):
-        """EmailService raises ValueError when RESEND_API_KEY is not set."""
+    def test_missing_api_key_is_a_permanent_config_failure(self):
+        """Without RESEND_API_KEY, sends fail permanently with a config: error and no request."""
         with patch.dict("os.environ", {}, clear=True):
             import importlib
             import config.settings as settings_mod
@@ -44,8 +44,11 @@ class TestEmailServiceInit:
             import services.email_service as email_mod
             importlib.reload(email_mod)
 
-            with pytest.raises(ValueError, match="RESEND_API_KEY"):
-                email_mod.EmailService()
+            with patch("resend.Emails.send") as mock_send:
+                result = email_mod.EmailService().send(EMAIL, PDF_URL)
+            assert not result.ok and result.error_kind == "permanent"
+            assert result.error == "config: RESEND_API_KEY is not set"
+            mock_send.assert_not_called()
 
     def test_initialises_successfully_with_api_key(self):
         """EmailService constructs without error when RESEND_API_KEY is present."""
@@ -224,7 +227,7 @@ class TestPdfRouterEmailWiring:
             _patch("services.rss_service.RSSService.fetch_recent_articles_for_issue", new=AsyncMock(return_value=articles_data)),
             _patch("services.database_service.DatabaseService", new=self._make_mock_db(mock_issue_with_email)),
             _patch("services.go_pdf_service.GoPDFService.generate_pdf_from_issue", new=AsyncMock(return_value=mock_pdf_result)),
-            _patch("services.email_service.EmailService.send_pdf", return_value=True) as mock_email,
+            _patch("services.email_service.EmailService.send", return_value=em.SendResult.sent("msg-1")) as mock_email,
         ):
             client = TestClient(app)
             response = client.post("/pdf/generate/issue-abc")
@@ -262,7 +265,7 @@ class TestPdfRouterEmailWiring:
             _patch("services.rss_service.RSSService.fetch_recent_articles_for_issue", new=AsyncMock(return_value=articles_data)),
             _patch("services.database_service.DatabaseService", new=self._make_mock_db(mock_issue_without_email)),
             _patch("services.go_pdf_service.GoPDFService.generate_pdf_from_issue", new=AsyncMock(return_value=mock_pdf_result)),
-            _patch("services.email_service.EmailService.send_pdf", return_value=True) as mock_email,
+            _patch("services.email_service.EmailService.send", return_value=em.SendResult.sent("msg-1")) as mock_email,
         ):
             client = TestClient(app)
             response = client.post("/pdf/generate/issue-abc")
@@ -271,3 +274,31 @@ class TestPdfRouterEmailWiring:
         data = response.json()
         assert "email_sent" not in data
         mock_email.assert_not_called()
+
+    def test_email_failure_reports_cause_and_pdf_still_succeeds(self, mock_issue_with_email):
+        """A failed send is reported with its cause; the PDF response is still a success."""
+        from fastapi.testclient import TestClient
+        from fastapi import FastAPI
+        from unittest.mock import AsyncMock, patch as _patch
+
+        app = FastAPI()
+        import importlib, services.email_service as em
+        from routers import pdf as pdf_mod
+        importlib.reload(pdf_mod)
+        app.include_router(pdf_mod.router)
+
+        mock_pdf_result = {"success": True, "pdf_url": PDF_URL, "issue_info": mock_issue_with_email,
+                           "articles_count": 1, "layout_type": "newspaper"}
+        failed = em.SendResult.failed("permanent", "email: Resend rejected the message (422: Invalid `to` field.)")
+        with (
+            _patch("services.rss_service.RSSService.fetch_recent_articles_for_issue",
+                   new=AsyncMock(return_value=self._build_articles_data(mock_issue_with_email))),
+            _patch("services.database_service.DatabaseService", new=self._make_mock_db(mock_issue_with_email)),
+            _patch("services.go_pdf_service.GoPDFService.generate_pdf_from_issue", new=AsyncMock(return_value=mock_pdf_result)),
+            _patch("services.email_service.EmailService.send", return_value=failed),
+        ):
+            data = TestClient(app).post("/pdf/generate/issue-abc").json()
+
+        assert data["success"] is True and data["email_sent"] is False
+        assert data["email_error"] == failed.error and data["email_error_kind"] == "permanent"
+        assert "email_recipient" not in data

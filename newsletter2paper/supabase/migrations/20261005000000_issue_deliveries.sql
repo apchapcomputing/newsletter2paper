@@ -1,6 +1,6 @@
 -- 2026-10-05: Delivery records and claim fencing (#21)
 -- One issue_deliveries row per edition replaces the per-issue retry columns from
--- 20261001000000_scheduler_hardening.sql, and issues.claim_token fences out a worker whose
+-- 20261004000000_scheduler_hardening.sql, and issues.claim_token fences out a worker whose
 -- claim was taken over after SCHEDULER_LOCK_TIMEOUT_MINUTES.
 -- Apply to Supabase immediately before deploying the matching scheduler code: the previous
 -- scheduler reads the columns this migration drops.
@@ -100,10 +100,10 @@ ALTER TABLE public.issues
 
 COMMIT;
 
--- Rollback (for reverting to the 20261001 scheduler code). Restores PR #5's columns with their
+-- Rollback (for reverting to the 20261004 scheduler code). Restores PR #5's columns with their
 -- original types and fills them from the delivery records, so the old scheduler doesn't resend a
 -- period that was already delivered or lose a pending email-only retry. Then restores the
--- auto_send-only trigger by re-applying 20261001000000_scheduler_hardening.sql.
+-- auto_send-only trigger by re-applying 20261004000000_scheduler_hardening.sql.
 -- WARNING: dropping issue_deliveries permanently deletes the send history (every edition, its
 -- status, error, PDF link and Resend message id). Export the table first if it is needed.
 -- BEGIN;
@@ -125,5 +125,5 @@ COMMIT;
 -- ALTER TABLE public.issues DROP COLUMN IF EXISTS claim_token;
 -- DROP TABLE IF EXISTS public.issue_deliveries;  -- deletes the send history
 -- COMMIT;
--- Then run 20261001000000_scheduler_hardening.sql again (idempotent) to recreate
+-- Then run 20261004000000_scheduler_hardening.sql again (idempotent) to recreate
 -- trg_reset_schedule_on_auto_send_change.

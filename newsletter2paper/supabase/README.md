@@ -19,7 +19,7 @@ All commands below are run from `newsletter2paper/`.
 Put the file in `supabase/migrations/` named `<YYYYMMDDHHMMSS>_<short_description>.sql`, for example
 `20260906000000_add_fine_grained_schedule_fields.sql`.
 
-- The numeric prefix is required, and migrations run in prefix order. A name like `2026_09_06_...`
+- The numeric prefix is required, and migrations run in prefix order. Use a timestamp **later than the newest file on `main`** (CI checks this). `supabase db push` refuses to apply a migration that sorts before one already applied to production, which blocks every later deploy until the file is renumbered. A name like `2026_09_06_...`
   is not valid for the CLI.
 - `20250101000000_baseline_schema.sql` builds the original tables (it is a copy of
   `data/create-tables.sql`) and includes sample rows. Your migration runs after it, so it is tested

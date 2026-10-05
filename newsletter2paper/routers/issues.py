@@ -14,6 +14,7 @@ from models.issue_publication import IssuePublication
 router = APIRouter(prefix="/issues", tags=["issues"])
 
 _VALID_FREQUENCIES = {"daily", "weekly", "monthly", "once", "custom"}
+_NO_RECIPIENT = "Set target_email before enabling automatic delivery"
 
 # Pydantic models for requests
 class CreateIssueRequest(BaseModel):
@@ -40,6 +41,12 @@ class CreateIssueRequest(BaseModel):
                 raise ValueError("custom_start_date and custom_end_date are required when frequency is 'custom'")
             if self.custom_start_date > self.custom_end_date:
                 raise ValueError("custom_start_date must be before custom_end_date")
+        return self
+
+    @model_validator(mode="after")
+    def validate_recipient(self) -> "CreateIssueRequest":
+        if self.auto_send and not (self.target_email or "").strip():
+            raise ValueError(_NO_RECIPIENT)
         return self
 
 class UpdateIssueRequest(BaseModel):
@@ -169,6 +176,18 @@ async def update_issue(
             update_data['target_email'] = request.target_email
         if request.auto_send is not None:
             update_data['auto_send'] = request.auto_send
+        if request.auto_send or (request.target_email is not None and not request.target_email.strip()):
+            # Automatic delivery needs somewhere to deliver to; check against the stored row
+            # for whichever of the two fields this request leaves unchanged.
+            current = db_service.client.table('issues').select('auto_send, target_email')\
+                .eq('id', str(issue_id)).execute()
+            if not current.data:
+                raise HTTPException(status_code=404, detail="Issue not found")
+            row = current.data[0]
+            auto_send = request.auto_send if request.auto_send is not None else row.get('auto_send')
+            target_email = request.target_email if request.target_email is not None else row.get('target_email')
+            if auto_send and not (target_email or '').strip():
+                raise HTTPException(status_code=422, detail=_NO_RECIPIENT)
         if request.article_window_days is not None:
             update_data['article_window_days'] = request.article_window_days
         # Write custom dates only when the caller sent the field (an explicit null clears it);
