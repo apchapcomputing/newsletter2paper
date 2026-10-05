@@ -4,7 +4,7 @@
 
 Product analytics and error tracking with PostHog (EU cloud), used to decide whether newsletter2paper is valuable
 (activation, retention, conversion to automatic delivery) and to see what breaks. All browser calls go through
-`ui/lib/analytics.js`; privacy helpers shared with the Next.js server are in `ui/lib/analyticsPrivacy.js`.
+`ui/lib/analytics.js`; privacy helpers shared with the Next.js server are in `ui/lib/analyticsPrivacy.js`. The PostHog-side setup (survey, dashboards, alerts) is in `posthog-setup.md`.
 
 ---
 
@@ -54,10 +54,25 @@ choices" link SHALL reopen the banner.
 
 ---
 
+### Requirement: Sign-in Events Fire Once
+
+The system SHALL record `signup_completed` (account created under 10 minutes ago) or `signed_in` once per completed
+sign-in, using the `signed_in=1` flag that `/auth/callback` adds to the redirect, and SHALL NOT record it on a session
+restore.
+
+#### Scenario: Returning user reloads the page
+
+- GIVEN a signed-in user with an existing session
+- WHEN the page reloads
+- THEN no `signed_in` event is recorded
+
+---
+
 ### Requirement: Error Tracking
 
 The system SHALL send uncaught browser exceptions and Next.js server request errors (`onRequestError` in
-`ui/instrumentation.js`) to PostHog Error tracking. Reporting SHALL NOT throw. The browser's `x-posthog-distinct-id`
+`ui/instrumentation.js`) to PostHog Error tracking, and SHALL send PDF generation failures other than validation
+errors with their `error_type`. Reporting SHALL NOT throw. The browser's `x-posthog-distinct-id`
 and `x-posthog-session-id` headers are client-controlled: they SHALL be used only to attribute an error, and only when
 they look like an id (8–64 letters, digits or dashes); otherwise the error is anonymous.
 
@@ -66,3 +81,25 @@ they look like an id (8–64 letters, digits or dashes); otherwise the error is 
 - GIVEN a request whose `x-posthog-distinct-id` is `a@b.co`
 - WHEN its route handler throws
 - THEN the error is captured without a distinct id
+
+---
+
+## Event Catalogue
+
+Names follow `object_action`, snake_case. Never send emails, article text, feed URLs or issue titles.
+
+| Event | Sent from | Properties |
+|---|---|---|
+| `$pageview`, `$exception` | posthog-js automatically | |
+| `publication_added` | `SearchModal`, `AddUrlModal` | `source`: `search` or `url` |
+| `issue_created` | `useNewsletterConfig` (first save of a new issue; auto-saves aren't counted) | `is_guest` |
+| `pdf_generate_clicked` | `app/page.js` `handleGeneratePdf` | `layout`, `frequency`, `publication_count`, `is_guest` |
+| `pdf_generated` | same | the above, plus `duration_ms` |
+| `pdf_generate_failed` | same (also sent to Error tracking unless it's a validation error) | the above, plus `error_type`: `validation`, `network`, `backend_4xx`, `backend_5xx` or `bad_response` |
+| `auth_modal_opened` | `AuthModal` | `trigger`: `header` or `guest_banner` |
+| `signup_started` | `useAuth` sign-in functions (magic link or OAuth) | `method` |
+| `signup_completed` / `signed_in` | `useAuth.trackCompletedSignIn`, once per sign-in (the auth callback adds `?signed_in=1`). An account created less than 10 minutes ago counts as a signup. | `method` |
+| `auto_send_enabled` / `auto_send_disabled` | `useNewsletterConfig.updateAutoSend` | `frequency` |
+| `send_now_clicked` | `ConfigureNewspaper` | |
+
+People are identified by Supabase user id on sign-in. Guests are anonymous: a stored ID if they accepted the consent banner, cookieless otherwise.

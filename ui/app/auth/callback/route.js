@@ -5,7 +5,7 @@ import { cookies } from 'next/headers'
 export async function GET(request) {
     const { searchParams, origin } = new URL(request.url)
     const code = searchParams.get('code')
-    const next = searchParams.get('next') ?? '/'
+    let next = searchParams.get('next') ?? '/'
 
     if (code) {
         const cookieStore = await cookies()
@@ -42,6 +42,10 @@ export async function GET(request) {
         const { error } = await supabase.auth.exchangeCodeForSession(code)
 
         if (!error) {
+            // Tells the browser to record the completed sign-in once (useAuth.trackCompletedSignIn).
+            const target = new URL(next, origin)
+            target.searchParams.set('signed_in', '1')
+            next = target.pathname + target.search
             const forwardedHost = request.headers.get('x-forwarded-host')
             const isLocalEnv = process.env.NODE_ENV === 'development'
 

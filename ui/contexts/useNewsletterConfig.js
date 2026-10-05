@@ -3,6 +3,7 @@ import { createContext, useContext, useState, useEffect } from "react";
 import { useAuth } from './useAuth';
 import { createClient } from '../lib/supabase';
 import logger from '../utils/logger';
+import { track } from '../lib/analytics';
 
 const NewsletterConfigContext = createContext();
 
@@ -297,6 +298,7 @@ export const NewsletterConfigProvider = ({ children }) => {
         // would fail every run with a config error).
         if (boolVal && !recipient) return;
         setAutoSend(boolVal);
+        track(boolVal ? 'auto_send_enabled' : 'auto_send_disabled', { frequency });
 
         // Persist auto_send to Supabase when user is authenticated.
         try {
@@ -330,6 +332,7 @@ export const NewsletterConfigProvider = ({ children }) => {
                         .single();
 
                     if (!result.error && result.data) {
+                        track('issue_created', { is_guest: false });
                         setCurrentIssueId(result.data.id);
                         // Ensure user-issue association exists
                         await supabase.from('user_issues').upsert({ user_id: user.id, issue_id: result.data.id }, { onConflict: 'user_id,issue_id' });
@@ -486,6 +489,7 @@ export const NewsletterConfigProvider = ({ children }) => {
                 }
             }
 
+            if (savedIssue.id !== currentIssueId) track('issue_created', { is_guest: false });
             setCurrentIssueId(savedIssue.id);
 
             // Refresh user issues by getting all issues associated with this user
@@ -580,6 +584,7 @@ export const NewsletterConfigProvider = ({ children }) => {
                 savedIssue = result.data;
             }
 
+            if (savedIssue.id !== currentIssueId) track('issue_created', { is_guest: true });
             setCurrentIssueId(savedIssue.id);
             return savedIssue;
         } catch (error) {
