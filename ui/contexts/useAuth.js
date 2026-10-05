@@ -26,7 +26,8 @@ export function AuthProvider({ children }) {
     const [user, setUser] = useState(null)
     const [session, setSession] = useState(null)
     const [loading, setLoading] = useState(true)
-    const supabase = createClient()
+    // Create the client once, not on every render.
+    const [supabase] = useState(() => createClient())
 
     useEffect(() => {
         // Get initial session
@@ -66,7 +67,7 @@ export function AuthProvider({ children }) {
         })
 
         return () => subscription?.unsubscribe()
-    }, [])
+    }, [supabase])
 
     const signInWithMagicLink = async (email) => {
         try {
