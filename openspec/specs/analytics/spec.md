@@ -4,7 +4,7 @@
 
 Product analytics and error tracking with PostHog (EU cloud), used to decide whether newsletter2paper is valuable
 (activation, retention, conversion to automatic delivery) and to see what breaks. All browser calls go through
-`ui/lib/analytics.js`. The PostHog-side setup (survey, dashboards, alerts) is in `posthog-setup.md`.
+`ui/lib/analytics.js`; privacy helpers shared with the Next.js server are in `ui/lib/analyticsPrivacy.js`. The PostHog-side setup (survey, dashboards, alerts) is in `posthog-setup.md`.
 
 ---
 
@@ -14,7 +14,9 @@ Product analytics and error tracking with PostHog (EU cloud), used to decide whe
 
 The system SHALL NOT send email addresses, article text, feed URLs or issue titles to PostHog. The wrapper SHALL drop
 the properties `email`, `target_email`, `url`, `feed_url`, `title`, `query` and `html`, and SHALL drop events whose
-names are not `object_action` snake_case. People SHALL be identified by Supabase user id only. Without
+names are not `object_action` snake_case. Before sending, every event SHALL have emails and URLs replaced in
+exception messages and in custom (non-`$`) string properties (`scrubEvent`, the SDKs' `before_send`). Stack frames
+are kept so source maps work. People SHALL be identified by Supabase user id only. Without
 `NEXT_PUBLIC_POSTHOG_KEY` every analytics call SHALL be a no-op.
 
 #### Scenario: Blocked property
@@ -23,19 +25,32 @@ names are not `object_action` snake_case. People SHALL be identified by Supabase
 - WHEN it is sent
 - THEN PostHog receives `issue_created` with `{ is_guest: true }` only
 
+#### Scenario: Error message quoting a feed
+
+- GIVEN an exception `Failed to fetch https://x.substack.com/feed`
+- WHEN it is captured in the browser or by `onRequestError`
+- THEN Error tracking receives the message `Failed to fetch [url]`, with the stack frames intact
+
 ---
 
 ### Requirement: Consent
 
 The system SHALL store no analytics identifier in the browser until the visitor accepts the consent banner. Until then,
-and after a decline, events SHALL be sent in PostHog cookieless mode (`cookieless_mode: 'on_reject'`). The footer's
-"Privacy choices" link SHALL reopen the banner.
+and after a decline, events SHALL be sent in PostHog cookieless mode (`cookieless_mode: 'on_reject'`) and a signed-in
+visitor SHALL NOT be identified; if they accept later, they are identified at that point. The footer's "Privacy
+choices" link SHALL reopen the banner.
 
 #### Scenario: Visitor declines
 
 - GIVEN a first-time visitor
 - WHEN they click Decline
 - THEN no `ph_*` cookie or localStorage entry is written, and pageviews are still counted cookieless
+
+#### Scenario: Signed-in visitor accepts later
+
+- GIVEN a signed-in user who has not answered the banner
+- WHEN they load the page, then click Accept
+- THEN no `$identify` is sent on load, and one is sent with their user id on Accept
 
 ---
 
@@ -55,17 +70,26 @@ restore.
 
 ### Requirement: Error Tracking
 
-The system SHALL send uncaught browser exceptions and Next.js server request errors to PostHog Error tracking, and
-SHALL send PDF generation failures other than validation errors with their `error_type`. The API SHALL send unhandled
-exceptions, Go render failures, scheduler failures and a scheduler that fails to start
-(`services/analytics_service.py`). The Next.js API routes SHALL forward the browser's `x-posthog-distinct-id` and
-`x-posthog-session-id` headers to the API (and no other browser headers), so an API error is linked to the visitor.
+The system SHALL send uncaught browser exceptions and Next.js server request errors (`onRequestError` in
+`ui/instrumentation.js`) to PostHog Error tracking, and SHALL send PDF generation failures other than validation
+errors with their `error_type`. The API SHALL send unhandled exceptions, Go render failures, scheduler failures and a
+scheduler that fails to start (`services/analytics_service.py`), with emails and URLs scrubbed from exception messages.
+Reporting SHALL NOT throw. The Next.js API routes SHALL forward the browser's `x-posthog-distinct-id` and
+`x-posthog-session-id` headers to the API, and no other browser headers. These headers are client-controlled: the UI
+server and the API SHALL use them only to attribute an error, and only when they look like an id (8–64 letters,
+digits or dashes); otherwise the error is anonymous.
+
+#### Scenario: Forged distinct id
+
+- GIVEN a request whose `x-posthog-distinct-id` is `a@b.co`
+- WHEN its route handler throws
+- THEN the error is captured without a distinct id
 
 #### Scenario: Guest's PDF render fails
 
 - GIVEN a guest generates a PDF and the Go renderer fails
 - WHEN the API returns 400
-- THEN Error tracking has a `PDFGenerationError` with the guest's distinct id, `issue_id`, `layout` and `stage: render`
+- THEN Error tracking has a `PDFGenerationError` (message scrubbed) with the guest's distinct id, `issue_id`, `layout` and `stage: render`
 
 ---
 

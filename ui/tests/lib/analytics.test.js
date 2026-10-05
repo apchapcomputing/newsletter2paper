@@ -52,6 +52,9 @@ describe('analytics with a PostHog key', () => {
     beforeEach(() => {
         vi.stubEnv('NEXT_PUBLIC_POSTHOG_KEY', 'phc_test')
         for (const fn of calls()) fn.mockClear()
+        posthog.get_explicit_consent_status.mockReturnValue('pending')
+        reset()
+        posthog.reset.mockClear()
     })
 
     it('initialises through the proxy, cookieless until consent, with exception capture', () => {
@@ -87,6 +90,7 @@ describe('analytics with a PostHog key', () => {
     })
 
     it('identifies by user id only, and skips when already identified', () => {
+        posthog.get_explicit_consent_status.mockReturnValue('granted')
         identify('user-1')
         expect(posthog.identify).toHaveBeenCalledWith('user-1')
         posthog.identify.mockClear()
@@ -95,6 +99,29 @@ describe('analytics with a PostHog key', () => {
         expect(posthog.identify).not.toHaveBeenCalled()
         identify(undefined)
         expect(posthog.identify).not.toHaveBeenCalled()
+    })
+
+    it('keeps a visitor without consent anonymous until they accept', () => {
+        posthog.get_explicit_consent_status.mockReturnValue('pending')
+        identify('user-2')
+        expect(posthog.identify).not.toHaveBeenCalled()
+        posthog.opt_in_capturing.mockImplementationOnce(() => posthog.get_explicit_consent_status.mockReturnValue('granted'))
+        consent.accept()
+        expect(posthog.identify).toHaveBeenCalledWith('user-2')
+    })
+
+    it('forgets the waiting user on sign-out', () => {
+        posthog.get_explicit_consent_status.mockReturnValue('pending')
+        identify('user-3')
+        reset()
+        posthog.opt_in_capturing.mockImplementationOnce(() => posthog.get_explicit_consent_status.mockReturnValue('granted'))
+        consent.accept()
+        expect(posthog.identify).not.toHaveBeenCalled()
+    })
+
+    it('scrubs event values before sending', () => {
+        initAnalytics()
+        expect(typeof posthog.init.mock.calls[0][1].before_send).toBe('function')
     })
 
     it('resets on sign-out', () => {
