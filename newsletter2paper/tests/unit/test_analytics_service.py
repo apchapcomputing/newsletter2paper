@@ -60,9 +60,36 @@ def test_never_raises(client):
 
 def test_request_context_reads_forwarded_posthog_headers():
     request = SimpleNamespace(
-        headers={'x-posthog-distinct-id': 'anon-1', 'x-posthog-session-id': 's-1'},
+        headers={'x-posthog-distinct-id': 'anon-0001', 'x-posthog-session-id': 'session-0001'},
         url=SimpleNamespace(path='/pdf/generate/abc'), method='POST',
     )
     distinct_id, props = analytics.request_context(request, stage='render')
-    assert distinct_id == 'anon-1'
-    assert props == {'$session_id': 's-1', 'path': '/pdf/generate/abc', 'method': 'POST', 'stage': 'render'}
+    assert distinct_id == 'anon-0001'
+    assert props == {'$session_id': 'session-0001', 'path': '/pdf/generate/abc', 'method': 'POST', 'stage': 'render'}
+
+
+@pytest.mark.parametrize('value', [None, '', 'short', '$posthog_cookieless', 'a@b.co', 'x' * 65, 'id with spaces'])
+def test_forged_or_malformed_forwarded_ids_are_ignored(value):
+    request = SimpleNamespace(headers={'x-posthog-distinct-id': value, 'x-posthog-session-id': value},
+                              url=SimpleNamespace(path='/x'), method='GET')
+    distinct_id, props = analytics.request_context(request)
+    assert distinct_id is None and props['$session_id'] is None
+
+
+def test_client_scrubs_exception_messages_before_sending(monkeypatch):
+    monkeypatch.setenv('POSTHOG_API_KEY', 'phc_test')
+    assert analytics.enabled()
+    hook = analytics._client.before_send
+    event = {'properties': {
+        '$exception_list': [{'type': 'PDFGenerationError', 'value': 'fetch https://x.substack.com/feed failed',
+                             'stacktrace': {'frames': [{'filename': 'routers/pdf.py'}]}}],
+        '$exception_message': 'mail to a@b.co bounced',
+        'stage': 'render for a@b.co',
+        '$current_url': 'https://api.example/pdf',
+    }}
+    props = hook(event)['properties']
+    assert props['$exception_list'][0]['value'] == 'fetch [url] failed'
+    assert props['$exception_list'][0]['stacktrace']['frames'] == [{'filename': 'routers/pdf.py'}]
+    assert props['$exception_message'] == 'mail to [email] bounced'
+    assert props['stage'] == 'render for [email]'
+    assert props['$current_url'] == 'https://api.example/pdf'
