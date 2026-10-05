@@ -101,14 +101,14 @@ describe('POST /api/pdf/generate/[issueId]', () => {
         expect(p.get('keep_html')).toBe('false')
     })
 
-    it('forwards PostHog tracing headers and nothing else from the browser', async () => {
+    it('forwards only id-shaped PostHog tracing headers and nothing else from the browser', async () => {
         const POST = await load()
         await POST(req('http://app/api/pdf/generate/abc', {
-            method: 'POST', headers: { 'x-posthog-distinct-id': 'anon-1', cookie: 'secret=1' },
+            method: 'POST', headers: { 'x-posthog-distinct-id': 'anon-0001', 'x-posthog-session-id': 'a@b.co', cookie: 'secret=1' },
         }), { params: Promise.resolve({ issueId: 'abc' }) })
         const headers = fetchMock.mock.calls[0][1].headers
-        expect(headers['x-posthog-distinct-id']).toBe('anon-1')
-        expect(headers).not.toHaveProperty('x-posthog-session-id')
+        expect(headers['x-posthog-distinct-id']).toBe('anon-0001')
+        expect(headers).not.toHaveProperty('x-posthog-session-id') // not id-shaped
         expect(headers).not.toHaveProperty('cookie')
     })
 
@@ -176,9 +176,9 @@ describe('POST /api/issues/[issueId]/send-now', () => {
 
     it('forwards PostHog tracing headers so backend errors link to the visitor', async () => {
         fetchMock.mockResolvedValue(upstream({ success: true }, { status: 202 }))
-        await call({ Authorization: 'Bearer tok', 'x-posthog-distinct-id': 'anon-1', 'x-posthog-session-id': 's-1' })
+        await call({ Authorization: 'Bearer tok', 'x-posthog-distinct-id': 'anon-0001', 'x-posthog-session-id': 'session-0001' })
         expect(fetchMock.mock.calls[0][1].headers).toEqual({
-            Authorization: 'Bearer tok', 'x-posthog-distinct-id': 'anon-1', 'x-posthog-session-id': 's-1',
+            Authorization: 'Bearer tok', 'x-posthog-distinct-id': 'anon-0001', 'x-posthog-session-id': 'session-0001',
         })
     })
 
