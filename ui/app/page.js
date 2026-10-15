@@ -29,6 +29,7 @@ import logger from '../utils/logger';
 import { useSelectedPublications } from '../contexts/useSelectedPublications';
 import { useNewsletterConfig } from '../contexts/useNewsletterConfig';
 import { useAuth } from '../contexts/useAuth';
+import { apiFetch } from '../lib/apiFetch';
 
 export default function Home() {
   const { selectedPublications, addPublication, removePublication, clearAllPublications, isLoaded } = useSelectedPublications();
@@ -133,7 +134,7 @@ export default function Home() {
         setIsPopulatingPublications(true);
         isLoadingPublications.current = true;
         logger.log(`🔄 Loading publications for issue: ${currentIssueId}`);
-        const pubResponse = await fetch(`/api/issues/${currentIssueId}/publications`);
+        const pubResponse = await apiFetch(`/api/issues/${currentIssueId}/publications`);
 
         if (pubResponse.ok) {
           const pubData = await pubResponse.json();
@@ -299,7 +300,7 @@ export default function Home() {
         logger.log(`📋 Publications with settings to save:`, publicationsWithSettings);
 
         // Update publications for this issue (this will clear old ones and add new ones)
-        const pubResponse = await fetch(`/api/issues/${savedIssue.id}/publications`, {
+        const pubResponse = await apiFetch(`/api/issues/${savedIssue.id}/publications`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -387,7 +388,7 @@ export default function Home() {
       }
 
       // Call Next.js API route, which proxies to Python backend
-      const response = await fetch(pdfApiUrl, {
+      const response = await apiFetch(pdfApiUrl, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -459,7 +460,7 @@ export default function Home() {
     }
 
     try {
-      const response = await fetch(`/api/issues/${issueId}`, {
+      const response = await apiFetch(`/api/issues/${issueId}`, {
         method: 'DELETE',
       });
 

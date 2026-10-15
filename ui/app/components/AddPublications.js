@@ -10,6 +10,7 @@ import { useNewsletterConfig } from '../../contexts/useNewsletterConfig'
 import AddUrlModal from './AddUrlModal'
 import ArticlePreviewList from './ArticlePreviewList'
 import logger from '../../utils/logger'
+import { apiFetch } from '../../lib/apiFetch'
 
 const AddPublications = forwardRef(({ onOpenSearch, onSaveIssue, isSaving: isSavingProp, isPopulatingPublications = false }, ref) => {
     const { selectedPublications, removePublication, toggleRemoveImages } = useSelectedPublications()
@@ -112,7 +113,7 @@ const AddPublications = forwardRef(({ onOpenSearch, onSaveIssue, isSaving: isSav
                 previewUrl = `/api/articles/preview/${currentIssueId}?days_back=${daysBack}&publication_id=${pubId}`
             }
 
-            const response = await fetch(previewUrl)
+            const response = await apiFetch(previewUrl)
 
             if (!response.ok) {
                 const errorText = await response.text()

@@ -7,6 +7,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from routers import articles
+from services.auth import IssueAccess
 
 
 class FakeRss:
@@ -19,6 +20,8 @@ def make_client(rss=None, db=None):
     app.include_router(articles.router)
     app.dependency_overrides[articles.get_rss_service] = lambda: rss
     app.dependency_overrides[articles.get_db_service] = lambda: db
+    # Access control is covered in test_route_auth.py
+    app.dependency_overrides[articles.require_issue_access] = lambda: IssueAccess('issue', 'user')
     return TestClient(app)
 
 

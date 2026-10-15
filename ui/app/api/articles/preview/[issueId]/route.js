@@ -1,3 +1,4 @@
+import { authHeaders } from '@/lib/authHeaders';
 import logger from '@/utils/logger';
 
 const BACKEND_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
@@ -43,6 +44,7 @@ export async function GET(request, { params }) {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
+                ...authHeaders(request),
             },
             body: JSON.stringify({
                 days_back: startDate ? null : parseInt(daysBack),

@@ -6,6 +6,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from routers import issues
+from services.auth import IssueAccess
 from services.delivery_store import Claim
 from services.scheduler import SendNowCooldown
 from tests.unit.conftest import FakeSupabase
@@ -13,11 +14,24 @@ from tests.unit.conftest import FakeSupabase
 ISSUE_ID = uuid4()
 
 
-def client_for(db):
+OWNER = str(uuid4())
+OWNER_HEADERS = {"Authorization": "Bearer good"}
+
+
+def client_for(db, as_owner=True):
+    """as_owner short-circuits issue access; auth itself is covered in test_route_auth.py."""
     app = FastAPI()
     app.include_router(issues.router)
     app.dependency_overrides[issues.get_db_service] = lambda: db
+    if as_owner:
+        app.dependency_overrides[issues.require_issue_access] = lambda: IssueAccess(str(ISSUE_ID), OWNER)
     return TestClient(app)
+
+
+def signed_in_db(responses=None):
+    db = FakeSupabase({("user_issues", "insert"): [{"issue_id": str(ISSUE_ID)}], **(responses or {})})
+    db.client.auth.get_user.return_value.user.id = OWNER
+    return db
 
 
 class TestCreateValidation:
@@ -40,14 +54,17 @@ class TestCreateValidation:
         assert resp.status_code == 422
 
     def test_valid_request_inserts_defaults(self):
-        db = FakeSupabase({("issues", "insert"): [{"id": str(ISSUE_ID)}]})
+        db = signed_in_db({("issues", "insert"): [{"id": str(ISSUE_ID)}]})
 
-        resp = client_for(db).post("/issues/", json={"format": "newspaper"})
+        resp = client_for(db).post("/issues/", json={"format": "newspaper"}, headers=OWNER_HEADERS)
 
         assert resp.status_code == 200
         (_, _, payload, _), = db.calls_for("issues", "insert")
         assert payload["title"] == "Your Newspaper"
         assert (payload["frequency"], payload["auto_send"], payload["article_window_days"]) == ("weekly", False, 7)
+        assert "status" not in payload  # signed-in issues are not guest rows
+        (_, _, link, _), = db.calls_for("user_issues", "insert")
+        assert link == {"user_id": OWNER, "issue_id": str(ISSUE_ID)}
 
 
 class TestUpdate:
@@ -99,8 +116,9 @@ class TestAutoSendNeedsRecipient:
         assert resp.status_code == 422 and "target_email" in resp.text
 
     def test_create_with_auto_send_and_email_is_accepted(self):
-        db = FakeSupabase({("issues", "insert"): [{"id": str(ISSUE_ID)}]})
-        resp = client_for(db).post("/issues/", json={"format": "essay", "auto_send": True, "target_email": "a@b.co"})
+        db = signed_in_db({("issues", "insert"): [{"id": str(ISSUE_ID)}]})
+        resp = client_for(db).post("/issues/", json={"format": "essay", "auto_send": True, "target_email": "a@b.co"},
+                                   headers=OWNER_HEADERS)
         assert resp.status_code == 200
 
     def put(self, stored, body):
