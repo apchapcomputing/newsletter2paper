@@ -14,7 +14,7 @@ Newsletter2Paper turns Substack/RSS newsletters into printable PDFs (newspaper o
 
 ## Commands
 
-Backend (from `newsletter2paper/`; needs `SUPABASE_URL` and `SUPABASE_KEY` or `main.py` raises at import; the scheduler additionally needs `SUPABASE_DATABASE_URL`):
+Backend (from `newsletter2paper/`; needs `SUPABASE_URL` and `SUPABASE_SECRET_KEY` or `main.py` raises at import; the scheduler additionally needs `SUPABASE_DATABASE_URL`):
 ```bash
 pip install -r requirements.txt
 uvicorn main:app --reload            # API on :8000, health at /health
