@@ -7,7 +7,7 @@ that need data must inject fakes.
 import os
 
 os.environ["SUPABASE_URL"] = "http://127.0.0.1:9"
-os.environ["SUPABASE_KEY"] = "test-key"
+os.environ["SUPABASE_SECRET_KEY"] = "test-key"
 os.environ.setdefault("SUPABASE_DATABASE_URL", "sqlite://")
 # Analytics stays off: no test may send events to PostHog. Tests that check events fake the client.
 os.environ.pop("POSTHOG_API_KEY", None)
