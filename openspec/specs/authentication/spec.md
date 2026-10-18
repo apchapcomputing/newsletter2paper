@@ -101,7 +101,7 @@ The system SHALL automatically create a user profile record when a new Supabase 
 The system SHALL enforce Row Level Security on every table in the `public` schema. Browser clients (anon key or an authenticated JWT) can only access their own data; the backend and scheduler use the service role, which bypasses RLS.
 
 - `publications` and `articles` are readable by everyone and writable only by the service role.
-- `users` is not accessible to clients.
+- Identity lives in Supabase Auth (`auth.users`); there is no `public.users` table, and clients cannot read `auth.users`.
 - `issues` are accessible to their owner (linked through `user_issues`, or matching `target_email`).
 - `user_issues` rows are accessible only to the user they belong to, and a user can only link themselves to an issue they can already access.
 - `issue_publications` follow access to the parent issue.
@@ -124,6 +124,31 @@ The system SHALL enforce Row Level Security on every table in the `public` schem
 - GIVEN a guest issue created with `guest_token = T`
 - WHEN a request without `x-guest-token: T` queries or updates it
 - THEN no row is visible or modified
+
+---
+
+### Requirement: Account Ownership Integrity
+
+The system SHALL reference Supabase Auth users from `user_issues.user_id` with a foreign key to `auth.users(id)` that cascades on delete, so a user's links never outlive their account.
+
+#### Scenario: Link to a nonexistent user is rejected
+
+- GIVEN a `user_issues` insert whose `user_id` is not in `auth.users`
+- WHEN the insert runs
+- THEN it fails with a foreign key violation
+
+#### Scenario: Deleting an account removes its links but not its issues
+
+- GIVEN a user linked to an issue through `user_issues`
+- WHEN the user is deleted from `auth.users`
+- THEN their `user_issues` rows are deleted
+- AND the issue row remains (it is then unowned)
+
+#### Scenario: Migration archives dangling links before deleting them
+
+- GIVEN `user_issues` rows whose user is no longer in `auth.users`
+- WHEN the foreign key migration runs
+- THEN those rows are first copied to `public.user_issues_dangling_archive` and then deleted, so they can be restored
 
 ---
 
