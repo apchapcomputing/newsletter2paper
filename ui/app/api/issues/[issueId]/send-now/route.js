@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { tracingHeaders } from '@/lib/tracingHeaders';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
@@ -14,7 +15,7 @@ export async function POST(request, context) {
         // The backend verifies this Supabase access token and checks the caller owns the issue.
         const response = await fetch(`${API_URL}/issues/${issueId}/send-now`, {
             method: 'POST',
-            headers: { Authorization: authorization },
+            headers: { Authorization: authorization, ...tracingHeaders(request) },
         });
         const body = await response.json().catch(() => ({}));
 
