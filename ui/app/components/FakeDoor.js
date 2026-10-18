@@ -57,9 +57,7 @@ export default function FakeDoor({ feature, label, description, sx }) {
                 <DialogContent>
                     <Typography variant="body2">
                         {requested
-                            ? (user
-                                ? "Thanks! We'll let you know at your account email when it's ready."
-                                : "Thanks! Sign in so we can let you know when it's ready.")
+                            ? "Thanks! Your interest is noted and helps us decide what to build next. We don't collect your email for this, so we won't send a notification."
                             : (payload?.description || description || "We're deciding what to build next. Want early access?")}
                     </Typography>
                 </DialogContent>

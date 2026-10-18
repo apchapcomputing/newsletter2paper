@@ -134,13 +134,14 @@ directly.
 
 The system SHALL render a fake-door button only while its PostHog flag (`fake-door-<feature>`, underscores as dashes)
 is on, SHALL record `fake_door_clicked` and `early_access_requested`, and SHALL NOT collect an email address in the
-dialog (signed-in users are reachable through their account; guests are asked to sign in).
+dialog. The dialog SHALL NOT promise a notification, since the request is recorded only as the event.
 
 ---
 
 ### Requirement: Session Replay Needs Consent
 
-The system SHALL record sessions only for visitors who accepted the consent banner, with all inputs masked, and SHALL
+The system SHALL record sessions only for visitors who accepted the consent banner, with all inputs and all rendered
+text masked (so article and publication titles, issue titles, previews and delivery details never reach PostHog), and SHALL
 stop recording when the visitor declines.
 
 ---

@@ -47,9 +47,10 @@ export function initAnalytics() {
         person_profiles: 'identified_only',
         capture_exceptions: true,
         // Replay only for visitors who accepted the banner (started below and in consent.accept),
-        // with every input masked. It also has to be enabled in the PostHog project settings.
+        // with every input and all rendered text masked (article and publication titles, issue
+        // titles, previews). It also has to be enabled in the PostHog project settings.
         disable_session_recording: true,
-        session_recording: { maskAllInputs: true },
+        session_recording: { maskAllInputs: true, maskTextSelector: '*' },
         loaded: (ph) => {
             if (ph.get_explicit_consent_status() === 'granted') ph.startSessionRecording()
         },

@@ -143,7 +143,7 @@ describe('analytics with a PostHog key', () => {
         initAnalytics()
         const { loaded, session_recording, disable_session_recording } = posthog.init.mock.calls[0][1]
         expect(disable_session_recording).toBe(true)
-        expect(session_recording).toEqual({ maskAllInputs: true })
+        expect(session_recording).toEqual({ maskAllInputs: true, maskTextSelector: '*' })
         const ph = { get_explicit_consent_status: () => 'pending', startSessionRecording: vi.fn() }
         loaded(ph)
         expect(ph.startSessionRecording).not.toHaveBeenCalled()

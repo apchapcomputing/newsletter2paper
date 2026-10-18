@@ -41,7 +41,7 @@ describe('FakeDoor', () => {
         expect(track).toHaveBeenCalledWith('fake_door_clicked', { feature: 'mail_printed_copy', is_guest: true })
         await userEvent.click(screen.getByRole('button', { name: 'Yes, I want early access' }))
         expect(track).toHaveBeenCalledWith('early_access_requested', { feature: 'mail_printed_copy', is_guest: true })
-        expect(screen.getByText(/Sign in so we can let you know/)).toBeInTheDocument()
+        expect(screen.getByText(/Your interest is noted/)).toBeInTheDocument()
     })
 
     it('thanks a signed-in user without asking for anything', async () => {
@@ -51,7 +51,7 @@ describe('FakeDoor', () => {
         await userEvent.click(screen.getByRole('button', { name: 'Add a single article' }))
         await userEvent.click(screen.getByRole('button', { name: 'Yes, I want early access' }))
         expect(track).toHaveBeenLastCalledWith('early_access_requested', { feature: 'single_article', is_guest: false })
-        expect(screen.getByText(/your account email/)).toBeInTheDocument()
+        expect(screen.getByText(/Your interest is noted/)).toBeInTheDocument()
     })
 
     it('takes its copy from the flag payload when set', () => {

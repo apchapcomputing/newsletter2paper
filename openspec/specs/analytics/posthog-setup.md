@@ -36,7 +36,7 @@ Compare `early_access_requested` per feature against the people who saw it (`pdf
 
 ## Session replay
 
-Turn on session replay in project settings, with "Mask all inputs" on. Recording starts only for visitors who accepted the banner. Useful playlists:
+Turn on session replay in project settings, with "Mask all inputs" on. The client also masks all text (`maskTextSelector: '*'`), so replays show layout and clicks but not content. Recording starts only for visitors who accepted the banner. Useful playlists:
 - sessions with `pdf_generate_failed`
 - sessions with `publication_added` but no `pdf_generated`
 - first sessions of people who later did `signup_completed`
