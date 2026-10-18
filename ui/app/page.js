@@ -346,7 +346,7 @@ export default function Home() {
       publication_count: selectedPublications.length,
       is_guest: !user,
     };
-    let errorType = 'validation';
+    let errorType = 'save';
     track('pdf_generate_clicked', generateProps);
 
     try {
@@ -377,6 +377,7 @@ export default function Home() {
       let pdfApiUrl;
       if (frequency === 'custom') {
         // Validate custom dates before proceeding
+        errorType = 'validation';
         if (!dateFrom || !dateTo) {
           throw new Error('Please select both a start and end date for a custom date range.');
         }

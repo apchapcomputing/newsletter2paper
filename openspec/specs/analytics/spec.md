@@ -141,7 +141,7 @@ Names follow `object_action`, snake_case. Never send emails, article text, feed 
 | `issue_created` | `useNewsletterConfig` (first save of a new issue; auto-saves aren't counted) | `is_guest` |
 | `pdf_generate_clicked` | `app/page.js` `handleGeneratePdf` | `layout`, `frequency`, `publication_count`, `is_guest` |
 | `pdf_generated` | same | the above, plus `duration_ms` |
-| `pdf_generate_failed` | same (also sent to Error tracking unless it's a validation error) | the above, plus `error_type`: `validation`, `network`, `backend_4xx`, `backend_5xx` or `bad_response` |
+| `pdf_generate_failed` | same (also sent to Error tracking unless it's a validation error) | the above, plus `error_type`: `validation`, `save` (saving the issue before generating failed), `network`, `backend_4xx`, `backend_5xx` or `bad_response` |
 | `auth_modal_opened` | `AuthModal` | `trigger`: `header` or `guest_banner` |
 | `signup_started` | `useAuth` sign-in functions (magic link or OAuth) | `method` |
 | `signup_completed` / `signed_in` | `useAuth.trackCompletedSignIn`, once per sign-in (the auth callback adds `?signed_in=1`). An account created less than 10 minutes ago counts as a signup. | `method` |

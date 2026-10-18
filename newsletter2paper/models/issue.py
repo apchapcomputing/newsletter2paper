@@ -4,10 +4,8 @@ from uuid import UUID
 from sqlmodel import Field, SQLModel, Relationship
 
 if TYPE_CHECKING:
-    from .user import User
     from .issue_publication import IssuePublication
 else:
-    User = ForwardRef("User")
     IssuePublication = ForwardRef("IssuePublication")
 
 
@@ -15,7 +13,9 @@ class UserIssue(SQLModel, table=True):
     """Association table for the many-to-many relationship between users and issues"""
     __tablename__ = "user_issues"
 
-    user_id: UUID = Field(foreign_key="users.id", primary_key=True)
+    # References auth.users(id) in the database (Supabase Auth owns identity); the foreign key
+    # is declared in SQL because SQLModel metadata cannot see the auth schema.
+    user_id: UUID = Field(primary_key=True)
     issue_id: UUID = Field(foreign_key="issues.id", primary_key=True)
     created_at: Optional[datetime] = Field(
         default=None,
@@ -73,13 +73,6 @@ class Issue(SQLModel, table=True):
         default=None,
         nullable=True,
         sa_column_kwargs={"server_default": "CURRENT_TIMESTAMP"}
-    )
-    
-    # Relationship with users through the association table
-    users: List["User"] = Relationship(
-        back_populates="issues",
-        link_model=UserIssue,
-        sa_relationship_kwargs={'lazy': 'selectin'}
     )
     
     # Relationship with publications through the association table
