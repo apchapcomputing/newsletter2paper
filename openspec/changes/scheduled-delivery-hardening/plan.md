@@ -16,7 +16,7 @@ Status: implemented; see tasks.md. This file is the original plan and is kept fo
 
 ## 2. Retry failed runs with backoff
 - Poll selects `schedule_status IN ('idle','failed')` with `next_run_at <= now()`.
-- Add `run_attempts int default 0` (migration `data/migrations/2026_10_01_scheduler_hardening.sql`); failure: `next_run_at = now() + interval '1 hour' * 2^attempts` (cap 24h); after 5 attempts leave `failed`, stop auto-retry, keep `last_run_error`.
+- Add `run_attempts int default 0` (migration `data/migrations/2026_10_04_scheduler_hardening.sql`); failure: `next_run_at = now() + interval '1 hour' * 2^attempts` (cap 24h); after 5 attempts leave `failed`, stop auto-retry, keep `last_run_error`.
 - Reset `run_attempts=0` on success.
 
 ## 3. Email failures are recorded, not swallowed

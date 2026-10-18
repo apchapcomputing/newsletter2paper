@@ -1,4 +1,5 @@
 import Modal from '@mui/material/Modal';
+import { track } from '../../lib/analytics';
 import Paper from '@mui/material/Paper';
 import Box from '@mui/material/Box';
 import TextField from '@mui/material/TextField';
@@ -135,6 +136,7 @@ export default function SearchModal({
                 };
 
                 addPublication(publication);
+                track('publication_added', { source: 'search' });
 
                 // Trigger preview fetch if callback provided
                 if (onPublicationAdded && publicationId !== tempId) {

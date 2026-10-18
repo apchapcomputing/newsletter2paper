@@ -1,18 +1,6 @@
 -- Enable UUID extension if not already enabled
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
--- Create users table
-CREATE TABLE IF NOT EXISTS users (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    email VARCHAR(255) NOT NULL UNIQUE,
-    username VARCHAR(255) NOT NULL UNIQUE,
-    password VARCHAR(255) NOT NULL,
-    first_name VARCHAR(255) NOT NULL,
-    last_name VARCHAR(255) NOT NULL,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-);
-
 -- Create publications table
 CREATE TABLE IF NOT EXISTS publications (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -51,7 +39,9 @@ CREATE TABLE IF NOT EXISTS articles (
 
 -- Create user_issues junction table
 CREATE TABLE IF NOT EXISTS user_issues (
-    user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+    -- References auth.users(id); the foreign key is added by migration 20261007000000
+    -- (Supabase Auth owns identity, and the auth schema is not part of this file).
+    user_id UUID NOT NULL,
     issue_id UUID REFERENCES issues(id) ON DELETE CASCADE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
@@ -80,14 +70,7 @@ CREATE INDEX IF NOT EXISTS idx_issue_publications_publication_id ON issue_public
 -- Guarded so the file can be re-run without duplicating rows or breaking the subselects
 DO $$
 BEGIN
-IF NOT EXISTS (SELECT 1 FROM users WHERE email = 'john.doe@example.com') THEN
-
-INSERT INTO users (email, username, password, first_name, last_name) VALUES
-    ('john.doe@example.com', 'johndoe', 'hashed_password_1', 'John', 'Doe'),
-    ('sarah.smith@example.com', 'sarahs', 'hashed_password_2', 'Sarah', 'Smith'),
-    ('michael.johnson@example.com', 'michaelj', 'hashed_password_3', 'Michael', 'Johnson'),
-    ('emma.wilson@example.com', 'emmaw', 'hashed_password_4', 'Emma', 'Wilson'),
-    ('james.brown@example.com', 'jamesb', 'hashed_password_5', 'James', 'Brown');
+IF NOT EXISTS (SELECT 1 FROM publications WHERE title = 'Kyla''s Newsletter') THEN
 
 -- Insert sample publications (based on what was in your original publications.csv)
 INSERT INTO publications (title, url, rss_feed_url, publisher) VALUES
@@ -127,19 +110,6 @@ INSERT INTO articles (title, subtitle, date_published, author, publication_id, c
      (SELECT id FROM publications WHERE title = 'Future of Work Digest'), 
      'https://futureofwork.substack.com/p/remote-work', 
      'https://storage.example.com/articles/remote-work');
-
--- Create relationships between users and issues
-INSERT INTO user_issues (user_id, issue_id) VALUES
-    ((SELECT id FROM users WHERE email = 'john.doe@example.com'), 
-     (SELECT id FROM issues WHERE target_email = 'john.doe@example.com')),
-    ((SELECT id FROM users WHERE email = 'sarah.smith@example.com'), 
-     (SELECT id FROM issues WHERE target_email = 'sarah.smith@example.com')),
-    ((SELECT id FROM users WHERE email = 'michael.johnson@example.com'), 
-     (SELECT id FROM issues WHERE target_email = 'michael.johnson@example.com')),
-    ((SELECT id FROM users WHERE email = 'emma.wilson@example.com'), 
-     (SELECT id FROM issues WHERE target_email = 'emma.wilson@example.com')),
-    ((SELECT id FROM users WHERE email = 'james.brown@example.com'), 
-     (SELECT id FROM issues WHERE target_email = 'james.brown@example.com'));
 
 -- Create relationships between issues and publications
 INSERT INTO issue_publications (issue_id, publication_id) VALUES
