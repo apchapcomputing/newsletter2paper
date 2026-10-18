@@ -31,7 +31,7 @@ Create each insight below and add it to one dashboard. **"Printers"** means peop
 | Activation | Funnel, 1-day window | `$pageview` → `publication_added` → `pdf_generated` |
 | Monetization | Funnel, 30-day window | `pdf_generated` → `signup_completed` → `auto_send_enabled` (add `subscription_started` once Stripe exists) |
 | Retention | Retention, weekly | Start: `pdf_generated`. Return: `pdf_generated` or `delivery_sent`. Break down by `is_guest`. Look for a curve that flattens, not one that decays to zero. |
-| Edition open rate | Trends, formula | A = `edition_opened` where `first_open = true` and `likely_scanner = false`; B = `delivery_sent`; formula `A / B`, weekly |
+| Edition open rate | Trends, formula | A = `edition_opened` where `trigger = scheduled`, `first_open = true` and `likely_scanner = false`; B = `delivery_sent` where `trigger = scheduled`; formula `A / B`, weekly. Both events carry `trigger` (`scheduled` or `manual`); without the filter, send-now deliveries inflate B and the rate stops describing auto-send users. |
 | Acquisition | Funnel (activation) | Break down by `$initial_referring_domain`, then by `$initial_utm_source` |
 | Repeat use | Trends | Unique users with `pdf_generated` at least 2 times in 30 days |
 | PMF survey | Survey results | the survey from the section above |
