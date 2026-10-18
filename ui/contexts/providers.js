@@ -6,6 +6,7 @@ import { SelectedPublicationsProvider } from './useSelectedPublications';
 import { NewsletterConfigProvider } from './useNewsletterConfig';
 import { AuthProvider } from './useAuth';
 import theme from '../app/theme';
+import ConsentBanner from '../app/components/ConsentBanner';
 
 export default function Providers({ children }) {
     return (
@@ -17,6 +18,7 @@ export default function Providers({ children }) {
                         {children}
                     </NewsletterConfigProvider>
                 </SelectedPublicationsProvider>
+                <ConsentBanner />
             </AuthProvider>
         </ThemeProvider>
     );

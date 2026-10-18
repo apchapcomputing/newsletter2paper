@@ -10,7 +10,7 @@ Newsletter2Paper turns Substack/RSS newsletters into printable PDFs (newspaper o
 - `pdf-maker/` — Go CLI (`cmd/makepdf`, `cmd/fetcharticle`) that fetches articles, cleans HTML, and renders PDFs. Both layouts (newspaper, essay) render via Typst (binary + `droplet` package baked into the Docker image); wkhtmltopdf mentions in `generator.go` options and the Dockerfile are stale.
 - `ui/` — Next.js 15 (App Router, JS, MUI + Tailwind 4) frontend using Supabase auth via `@supabase/ssr`.
 
-`openspec/specs/<domain>/spec.md` (authentication, articles, issues, pdf-generation, publications) is the source of truth for intended behavior; proposed changes go in `openspec/changes/<name>/`.
+`openspec/specs/<domain>/spec.md` (analytics, authentication, articles, issues, pdf-generation, publications) is the source of truth for intended behavior; proposed changes go in `openspec/changes/<name>/`.
 
 ## Commands
 
@@ -44,6 +44,8 @@ Full stack via Docker (from repo root): `docker compose up --build` (API + pdf-m
 **Data layer.** Supabase Postgres (with RLS; guest mode = issues with no user). Backend uses both the Supabase client (`services/database_service.py`) and raw SQLAlchemy (scheduler). Identity is Supabase Auth (`auth.users`); there is no `public.users` table, and `user_issues.user_id` is a foreign key to `auth.users` with `ON DELETE CASCADE` (deleting an account removes its links but not the issues). Schema is in `data/create-tables.sql` plus dated SQL files in `data/migrations/` applied manually — there's no migration runner.
 
 **Backend layout.** `routers/` (rss, issues, publications, articles, pdf) are thin; logic sits in `services/` (`rss_service.py` is the largest: feed discovery, Atom/RSS parsing, date-window filtering). `models/` holds Pydantic models.
+
+**Analytics (PostHog, EU cloud).** Everything goes through `ui/lib/analytics.js` (`track`, `identify`, `reset`, `captureError`, `consent`); nothing else imports `posthog-js`, and it is all a no-op without `NEXT_PUBLIC_POSTHOG_KEY` (local dev, vitest). Event names are `object_action` snake_case (`pdf_generated`, `issue_created`); the wrapper drops badly named events and PII-prone props (`email`, `url`, `title`, ...). Never send emails, article text, feed URLs or issue titles; people are identified by Supabase user id only (`useAuth.js`). It is initialised in `ui/instrumentation-client.js` with `cookieless_mode: 'on_reject'`: nothing is stored until the visitor accepts `ConsentBanner` (reopened from the footer's "Privacy choices"). The browser sends to `/ingest`, which `next.config.mjs` rewrites to PostHog; exceptions are autocaptured in the browser and by `onRequestError` in `ui/instrumentation.js` on the server, and source maps upload on builds that have `POSTHOG_PERSONAL_API_KEY`/`POSTHOG_PROJECT_ID`. Values are scrubbed of emails and URLs before sending (`ui/lib/analyticsPrivacy.js`), signed-in visitors are only identified after they accept, and the forwarded `x-posthog-*` headers are client-controlled (attribution only, validated). Requirements: `openspec/specs/analytics/spec.md`. Plan and follow-ups: issue #20.
 
 **UI → backend.** The Next.js `app/api/*` routes (articles/preview, issues, pdf/generate, publications, rss, substack/search) proxy/compose calls to the FastAPI backend and Supabase. CORS in `main.py` only allows `localhost:3000` / `127.0.0.1:3000`.
 

@@ -15,10 +15,12 @@
     "@emotion/styled": "^11.14.1",
     "@mui/icons-material": "^7.3.2",
     "@mui/material": "^7.3.2",
+    "@posthog/nextjs-config": "^1.11.1",
     "@supabase/ssr": "^0.7.0",
     "@supabase/supabase-js": "^2.81.1",
-    "@vercel/analytics": "^1.6.1",
     "next": "15.5.9",
+    "posthog-js": "^1.435.8",
+    "posthog-node": "^5.55.0",
     "react": "19.1.0",
     "react-dom": "19.1.0"
   },
