@@ -58,6 +58,31 @@ jobs:
           done
           exit $status
 
+      - name: Migration versions are unique and newer than everything on the base branch
+        if: github.event_name == 'pull_request'
+        working-directory: .
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          # `supabase db push` refuses to apply a migration older than the newest one already on
+          # production ("found local migration files to be inserted before the last migration").
+          # Production gets everything on main, so a new file must sort after every file on main.
+          dir=newsletter2paper/supabase/migrations
+          status=0
+          dups=$(ls "$dir" | cut -d_ -f1 | sort | uniq -d)
+          if [ -n "$dups" ]; then echo "::error::Duplicate migration versions: $dups"; status=1; fi
+          git fetch --no-tags --depth=1 origin "$BASE_REF"
+          latest=$(git ls-tree --name-only FETCH_HEAD "$dir/" | xargs -n1 basename | cut -d_ -f1 | sort | tail -1)
+          # Renames (-M) are not additions: renumbering a not-yet-applied migration is how an out-of-order one is fixed.
+          for f in $(git diff -M --name-only --diff-filter=A FETCH_HEAD HEAD -- "$dir"); do
+            ver=$(basename "$f" | cut -d_ -f1)
+            if [ "$ver" -le "$latest" ]; then
+              echo "::error file=$f::Version $ver must be greater than the latest migration on $BASE_REF ($latest). Rename the file with a newer timestamp."
+              status=1
+            fi
+          done
+          exit $status
+
       - name: Start local Postgres and apply migrations
         run: npx supabase db start
 
@@ -76,6 +101,11 @@ jobs:
         run: |
           container=$(docker ps --format '{{.Names}}' | grep supabase_db | head -n 1)
           docker exec -i "$container" psql -U postgres -v ON_ERROR_STOP=1 < supabase/tests/rls_policies.sql
+
+      - name: Run user_issues foreign key tests
+        run: |
+          container=$(docker ps --format '{{.Names}}' | grep supabase_db | head -n 1)
+          docker exec -i "$container" psql -U postgres -v ON_ERROR_STOP=1 < supabase/tests/user_issues_fk.sql
 
       - name: Set up Python
         uses: actions/setup-python@v5

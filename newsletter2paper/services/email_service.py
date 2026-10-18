@@ -1,6 +1,7 @@
 import html
 import logging
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Dict, List, Mapping, Optional, Tuple, Union
 
 import httpx
@@ -8,6 +9,7 @@ import resend
 from resend.http_client import HTTPClient
 
 from config.settings import RESEND_API_KEY, EMAIL_FROM
+from services.scheduling import resolve_tz
 
 logger = logging.getLogger(__name__)
 
@@ -41,6 +43,24 @@ class SendResult:
                outcome_unknown: bool = False) -> "SendResult":
         return cls(ok=False, error_kind=error_kind, error=error, retry_after=retry_after,
                    outcome_unknown=outcome_unknown)
+
+
+def describe_failure(error: Optional[str]) -> str:
+    """Plain-language version of a stored delivery error (`pdf:` / `email:` / `config:` prefixes).
+
+    The technical detail is kept after the sentence, since the owner may need to act on it."""
+    text = (error or '').strip()
+    if not text:
+        return "an unknown error occurred."
+    prefix, _, detail = text.partition(':')
+    detail = detail.strip() or text
+    if prefix == 'pdf':
+        return f"we could not build the PDF from your newsletters ({detail})."
+    if prefix == 'email':
+        return f"the email could not be sent ({detail})."
+    if prefix == 'config':
+        return f"the newspaper is not set up to send ({detail})."
+    return f"{text}."
 
 
 def classify_resend_error(exc: Exception) -> SendResult:
@@ -148,10 +168,9 @@ class EmailService:
         email_address = (email_address or '').strip()
         if not email_address:
             return SendResult.failed(PERMANENT, "config: no recipient email address is set")
-        if not RESEND_API_KEY:
-            return SendResult.failed(PERMANENT, "config: RESEND_API_KEY is not set")
-        if not EMAIL_FROM:
-            return SendResult.failed(PERMANENT, "config: EMAIL_FROM is not set")
+        problem = self._config_error()
+        if problem:
+            return problem
 
         display_title = issue_title or "Your newsletter"
         params: resend.Emails.SendParams = {
@@ -161,6 +180,55 @@ class EmailService:
             "html": self._build_html(pdf_url=pdf_url, issue_title=display_title),
             "text": self._build_text(pdf_url=pdf_url, issue_title=display_title),
         }
+        return self._dispatch(params, email_address, idempotency_key)
+
+    def send_owner_notice(
+        self,
+        to: Optional[str],
+        issue_title: Optional[str],
+        period: Optional[str],
+        error: Optional[str],
+        next_run_at: Optional[datetime] = None,
+        timezone_name: Optional[str] = None,
+        idempotency_key: Optional[str] = None,
+    ) -> SendResult:
+        """Tell an issue's owner that an edition could not be delivered and was given up on.
+
+        Transactional: sent to the owner's account address whatever the issue's recipient or its
+        auto_send setting. The schedule stays on; the notice says when the next edition is due."""
+        to = (to or '').strip()
+        if not to:
+            return SendResult.failed(PERMANENT, "config: no owner email address")
+        problem = self._config_error()
+        if problem:
+            return problem
+
+        title = issue_title or "Your newsletter"
+        reason = describe_failure(error)
+        next_line = ""
+        if next_run_at is not None:
+            local = next_run_at.astimezone(resolve_tz(timezone_name))
+            next_line = f"Your schedule is still on. The next edition is due {local.strftime('%A, %B %-d at %-I:%M %p %Z')}."
+        params: resend.Emails.SendParams = {
+            "from": EMAIL_FROM,
+            "to": [to],
+            "subject": f"We couldn't deliver \u201c{title}\u201d",
+            "html": self._build_notice_html(title, period, reason, next_line),
+            "text": self._build_notice_text(title, period, reason, next_line),
+        }
+        return self._dispatch(params, to, idempotency_key)
+
+    @staticmethod
+    def _config_error() -> Optional[SendResult]:
+        if not RESEND_API_KEY:
+            return SendResult.failed(PERMANENT, "config: RESEND_API_KEY is not set")
+        if not EMAIL_FROM:
+            return SendResult.failed(PERMANENT, "config: EMAIL_FROM is not set")
+        return None
+
+    @staticmethod
+    def _dispatch(params: "resend.Emails.SendParams", email_address: str,
+                  idempotency_key: Optional[str]) -> SendResult:
         options: resend.Emails.SendOptions = {}
         if idempotency_key:
             options["idempotency_key"] = idempotency_key
@@ -229,6 +297,35 @@ class EmailService:
         </body>
         </html>
         """
+
+    def _build_notice_html(self, title: str, period: Optional[str], reason: str, next_line: str) -> str:
+        """Owner notice body. Every interpolated value is escaped: the title is user-controlled."""
+        t, r = html.escape(title), html.escape(reason)
+        p = f" ({html.escape(period)})" if period and not period.startswith('once-') else ""
+        n = f"<p>{html.escape(next_line)}</p>" if next_line else ""
+        return f"""
+        <!DOCTYPE html>
+        <html lang="en"><head><meta charset="UTF-8"><title>Delivery problem</title></head>
+        <body style="font-family: Georgia, serif; color: #222;">
+          <div style="max-width: 600px; margin: 40px auto; padding: 24px;">
+            <h1 style="font-size: 20px;">We couldn&rsquo;t deliver &ldquo;{t}&rdquo;</h1>
+            <p>The edition{p} could not be delivered, and we have stopped retrying it.</p>
+            <p><strong>What went wrong:</strong> {r}</p>
+            {n}
+            <p style="font-size: 12px; color: #999;">You are receiving this because you own this newspaper
+              in Newsletter2Paper.</p>
+          </div>
+        </body></html>
+        """
+
+    def _build_notice_text(self, title: str, period: Optional[str], reason: str, next_line: str) -> str:
+        p = f" ({period})" if period and not period.startswith('once-') else ""
+        lines = [f"We couldn't deliver \u201c{title}\u201d", "",
+                 f"The edition{p} could not be delivered, and we have stopped retrying it.", "",
+                 f"What went wrong: {reason}"]
+        if next_line:
+            lines += ["", next_line]
+        return "\n".join(lines) + "\n"
 
     def _build_text(
         self, pdf_url: str, issue_title: str

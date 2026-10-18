@@ -91,7 +91,8 @@ def capture(event: str, distinct_id: str, properties: Optional[dict] = None) -> 
 
 def capture_exception(exc: BaseException, distinct_id: Optional[str] = None, properties: Optional[dict] = None) -> None:
     """Send a caught exception to Error tracking. distinct_id is the browser's
-    (X-POSTHOG-DISTINCT-ID) or the issue owner's, when known."""
+    (X-POSTHOG-DISTINCT-ID) or the issue owner's, when known. Messages (including chained causes)
+    are scrubbed of emails and URLs by the client's before_send hook, `_scrub_event`."""
     client = _get_client()
     if client is None:
         return

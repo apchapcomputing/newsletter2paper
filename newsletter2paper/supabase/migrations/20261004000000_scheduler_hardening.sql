@@ -1,4 +1,4 @@
--- 2026-10-01: Scheduler hardening
+-- 2026-10-01: Scheduler hardening (file renumbered to 20261004 so it sorts after 20261003_enable_rls, already applied to production)
 -- Adds retry/idempotency columns and a trigger that resets the schedule when auto_send is toggled.
 -- Apply to Supabase BEFORE deploying the matching scheduler code (supabase db push, or paste into the SQL editor).
 --

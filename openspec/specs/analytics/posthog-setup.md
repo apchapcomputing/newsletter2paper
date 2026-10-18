@@ -7,7 +7,7 @@ Configuration done in the PostHog UI, which the code can't express. The event ca
 | Where | Variables |
 |---|---|
 | Vercel (UI) | `NEXT_PUBLIC_POSTHOG_KEY`, `NEXT_PUBLIC_POSTHOG_HOST`; optionally `POSTHOG_PERSONAL_API_KEY` and `POSTHOG_PROJECT_ID` for source maps |
-| Droplet `.env` (API) | `POSTHOG_API_KEY` (the same project key), `POSTHOG_HOST`, and `PUBLIC_API_URL` (the API's public https URL) once migration `20261007000000_delivery_opened_at.sql` is applied |
+| Droplet `.env` (API) | `POSTHOG_API_KEY` (the same project key), `POSTHOG_HOST`, and `PUBLIC_API_URL` (the API's public https URL) once migration `20261008000000_delivery_opened_at.sql` is applied |
 
 ## PMF survey (configured in PostHog, no code)
 
@@ -68,7 +68,7 @@ Create each insight below and add it to one dashboard. **"Printers"** means peop
 | Activation | Funnel, 1-day window | `$pageview` → `publication_added` → `pdf_generated` |
 | Monetization | Funnel, 30-day window | `pdf_generated` → `signup_completed` → `auto_send_enabled` (add `subscription_started` once Stripe exists) |
 | Retention | Retention, weekly | Start: `pdf_generated`. Return: `pdf_generated` or `delivery_sent`. Break down by `is_guest`. Look for a curve that flattens, not one that decays to zero. |
-| Edition open rate | Trends, formula | A = `edition_opened` where `first_open = true` and `likely_scanner = false`; B = `delivery_sent`; formula `A / B`, weekly |
+| Edition open rate | Trends, formula | A = `edition_opened` where `trigger = scheduled`, `first_open = true` and `likely_scanner = false`; B = `delivery_sent` where `trigger = scheduled`; formula `A / B`, weekly. Both events carry `trigger` (`scheduled` or `manual`); without the filter, send-now deliveries inflate B and the rate stops describing auto-send users. |
 | Acquisition | Funnel (activation) | Break down by `$initial_referring_domain`, then by `$initial_utm_source` |
 | Repeat use | Trends | Unique users with `pdf_generated` at least 2 times in 30 days |
 | PMF survey | Survey results | the survey from the section above |

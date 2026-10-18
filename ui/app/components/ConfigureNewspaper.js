@@ -6,6 +6,7 @@ import { useNewsletterConfig } from '../../contexts/useNewsletterConfig'
 import { useAuth } from '../../contexts/useAuth'
 import { track } from '../../lib/analytics'
 import FakeDoor from './FakeDoor'
+import ScheduleStatus from './ScheduleStatus'
 
 const FORMAT_OPTIONS = [
     { value: 'essay', label: 'Essay' },
@@ -367,9 +368,11 @@ export default function ConfigureNewspaper() {
                             ))}
                         </Box>
 
-                        <Typography variant="caption" sx={{ display: 'block', mt: 1, color: 'text.secondary' }}>
-                            First scheduled delivery: {computeNextScheduled(frequency).toLocaleString()}
-                        </Typography>
+                        <ScheduleStatus
+                            issueId={currentIssueId}
+                            refreshKey={sendNowState.status}
+                            fallbackNext={computeNextScheduled(frequency)}
+                        />
 
                         <Button
                             variant="outlined"
