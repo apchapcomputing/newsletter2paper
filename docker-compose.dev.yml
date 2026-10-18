@@ -10,7 +10,7 @@ services:
       - "8000:8000"
     environment:
       - SUPABASE_URL=${SUPABASE_URL}
-      - SUPABASE_KEY=${SUPABASE_KEY}
+      - SUPABASE_SECRET_KEY=${SUPABASE_SECRET_KEY}
       - GO_PDF_CONTAINER=pdf-maker
     volumes:
       - ./shared:/shared

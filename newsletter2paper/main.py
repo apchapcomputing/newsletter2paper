@@ -5,7 +5,7 @@ import os
 from routers import rss, issues, publications, articles, pdf
 
 # Verify required environment variables
-required_env_vars = ['SUPABASE_URL', 'SUPABASE_KEY']
+required_env_vars = ['SUPABASE_URL', 'SUPABASE_SECRET_KEY']
 missing_vars = [var for var in required_env_vars if not os.getenv(var)]
 if missing_vars:
     raise RuntimeError(f"Missing required environment variables: {', '.join(missing_vars)}")
