@@ -101,6 +101,17 @@ describe('POST /api/pdf/generate/[issueId]', () => {
         expect(p.get('keep_html')).toBe('false')
     })
 
+    it('forwards only id-shaped PostHog tracing headers and nothing else from the browser', async () => {
+        const POST = await load()
+        await POST(req('http://app/api/pdf/generate/abc', {
+            method: 'POST', headers: { 'x-posthog-distinct-id': 'anon-0001', 'x-posthog-session-id': 'a@b.co', cookie: 'secret=1' },
+        }), { params: Promise.resolve({ issueId: 'abc' }) })
+        const headers = fetchMock.mock.calls[0][1].headers
+        expect(headers['x-posthog-distinct-id']).toBe('anon-0001')
+        expect(headers).not.toHaveProperty('x-posthog-session-id') // not id-shaped
+        expect(headers).not.toHaveProperty('cookie')
+    })
+
     it('does not override the issue’s saved layout / image settings unless the caller passes them', async () => {
         await call()
         expect(backendParams().has('layout_type')).toBe(false)
@@ -161,6 +172,14 @@ describe('POST /api/issues/[issueId]/send-now', () => {
         expect(fetchMock.mock.calls[0][0]).toBe('http://backend.test/issues/abc/send-now')
         expect(fetchMock.mock.calls[0][1].headers).toEqual({ Authorization: 'Bearer tok' })
         expect(res.status).toBe(202)
+    })
+
+    it('forwards PostHog tracing headers so backend errors link to the visitor', async () => {
+        fetchMock.mockResolvedValue(upstream({ success: true }, { status: 202 }))
+        await call({ Authorization: 'Bearer tok', 'x-posthog-distinct-id': 'anon-0001', 'x-posthog-session-id': 'session-0001' })
+        expect(fetchMock.mock.calls[0][1].headers).toEqual({
+            Authorization: 'Bearer tok', 'x-posthog-distinct-id': 'anon-0001', 'x-posthog-session-id': 'session-0001',
+        })
     })
 
     it('passes through the backend’s cooldown error', async () => {
