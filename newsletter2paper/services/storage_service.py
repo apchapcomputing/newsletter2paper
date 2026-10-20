@@ -18,10 +18,10 @@ class StorageService:
     def __init__(self):
         """Initialize Supabase client for storage operations."""
         supabase_url = os.environ.get('SUPABASE_URL', '')
-        supabase_key = os.environ.get('SUPABASE_KEY', '')
+        supabase_key = os.environ.get('SUPABASE_SECRET_KEY', '')
         
         if not supabase_url or not supabase_key:
-            raise Exception("SUPABASE_URL and SUPABASE_KEY environment variables are required")
+            raise Exception("SUPABASE_URL and SUPABASE_SECRET_KEY environment variables are required")
         
         # Log key type for debugging (first few characters only for security)
         key_prefix = supabase_key[:10] + "..." if len(supabase_key) > 10 else "short_key"

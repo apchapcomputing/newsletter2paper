@@ -321,6 +321,53 @@ class DeliveryStore:
             ).fetchall()
         return [r[0] for r in rows]
 
+    # ------------------------------------------------------------------
+    # Analytics lookups (no claim needed)
+    # ------------------------------------------------------------------
+
+    def owner_id(self, issue_id) -> Optional[str]:
+        """The issue owner's user id (analytics distinct id), or None for guest issues."""
+        with self.engine.connect() as conn:
+            row = conn.execute(
+                text("SELECT user_id FROM public.user_issues WHERE issue_id = :id ORDER BY created_at LIMIT 1"),
+                {"id": str(issue_id)},
+            ).fetchone()
+        return str(row[0]) if row else None
+
+    def record_open(self, delivery_id, scanner_window: timedelta) -> Optional[dict]:
+        """Look up a sent delivery for its email link and record the first open.
+
+        Returns None for an unknown or unsent delivery. An open within `scanner_window` of sending
+        is flagged `likely_scanner` (mail scanners prefetch links) and doesn't set opened_at.
+
+        The lookup takes no row lock (this is hit unauthenticated, on every click). Only the first
+        real open writes, through a conditional UPDATE, so concurrent first opens can't both win.
+        """
+        with self.engine.begin() as conn:
+            row = conn.execute(
+                text(
+                    "SELECT issue_id, trigger, pdf_url, sent_at, opened_at, now() AS db_now "
+                    "FROM public.issue_deliveries "
+                    "WHERE id = CAST(:id AS uuid) AND status = 'sent' AND pdf_url IS NOT NULL"
+                ),
+                {"id": str(delivery_id)},
+            ).mappings().fetchone()
+            if not row:
+                return None
+            info = dict(row)
+            info['first_open'] = info['opened_at'] is None
+            info['likely_scanner'] = info['sent_at'] is not None and info['db_now'] - info['sent_at'] < scanner_window
+            if info['first_open'] and not info['likely_scanner']:
+                won = conn.execute(
+                    text(
+                        "UPDATE public.issue_deliveries SET opened_at = now() "
+                        "WHERE id = CAST(:id AS uuid) AND opened_at IS NULL"
+                    ),
+                    {"id": str(delivery_id)},
+                )
+                info['first_open'] = won.rowcount == 1
+            return info
+
     def _check_claim(self, conn, claim: Claim) -> None:
         # FOR UPDATE holds the row until commit, so a takeover cannot slip in between the check
         # and the delivery write that follows it.

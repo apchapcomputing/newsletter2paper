@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import {
     Dialog,
     DialogTitle,
@@ -16,8 +16,13 @@ import {
 } from '@mui/material'
 import { Close as CloseIcon } from '@mui/icons-material'
 import { useAuth } from '../../contexts/useAuth'
+import { track } from '../../lib/analytics'
 
-export default function AuthModal({ open, onClose }) {
+export default function AuthModal({ open, onClose, trigger }) {
+    useEffect(() => {
+        if (open) track('auth_modal_opened', { trigger })
+    }, [open, trigger])
+
     const [email, setEmail] = useState('')
     const [loading, setLoading] = useState(false)
     const [message, setMessage] = useState('')

@@ -7,7 +7,7 @@
 --     `guest_token`. The browser sends that token in an `x-guest-token` request header
 --     (ui/lib/supabase.js); PostgREST exposes it via request.headers.
 --   * FastAPI backend and scheduler: must use the SERVICE ROLE key / direct DB URL, which
---     bypass RLS. If SUPABASE_KEY is the anon key, switch it to the service role key BEFORE
+--     bypass RLS. If SUPABASE_SECRET_KEY is the anon key, switch it to the service role key BEFORE
 --     applying this migration or backend reads/writes will start failing.
 --
 -- Table summary:

@@ -3,7 +3,7 @@ PDF Router Module
 Handles PDF generation endpoints using Go-based PDF service.
 """
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import RedirectResponse
 from typing import Optional, Dict, Any
 from datetime import datetime, timezone
@@ -13,6 +13,7 @@ from uuid import UUID
 
 from services.auth import IssueAccess, require_admin, require_issue_access
 from services.go_pdf_service import GoPDFService
+from services import analytics_service as analytics
 
 router = APIRouter(prefix="/pdf", tags=["pdf"])
 pdf_service = GoPDFService(use_docker=True, shared_dir="/shared")
@@ -71,8 +72,13 @@ def _resolve_date_window(
     return start, end
 
 
+class PDFGenerationError(Exception):
+    """A render the Go service reported as failed; raised only to report it to Error tracking."""
+
+
 @router.post("/generate/{issue_id}")
 async def generate_pdf_for_issue(
+    request: Request,
     issue_id: UUID,
     access: IssueAccess = Depends(require_issue_access),
     days_back: int = Query(7, description="Number of days to look back for articles (ignored when start_date/end_date are provided)"),
@@ -185,6 +191,10 @@ async def generate_pdf_for_issue(
         )
         
         if not result['success']:
+            analytics.capture_exception(
+                PDFGenerationError(result.get('error') or 'PDF generation failed'),
+                *analytics.request_context(request, issue_id=issue_id, layout=effective_layout_type, stage='render'),
+            )
             raise HTTPException(status_code=400, detail=result.get('error', 'PDF generation failed'))
         
         response = {
@@ -230,6 +240,7 @@ async def generate_pdf_for_issue(
         raise HTTPException(status_code=422, detail=str(e))
     except Exception as e:
         logging.error(f"PDF generation failed: {e}", exc_info=True)
+        analytics.capture_exception(e, *analytics.request_context(request, issue_id=issue_id, stage='generate'))
         raise HTTPException(status_code=500, detail=f"PDF generation failed: {str(e)}")
 
 

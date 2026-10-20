@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { authHeaders } from '@/lib/authHeaders';
 import logger from '@/utils/logger';
+import { tracingHeaders } from '@/lib/tracingHeaders';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL;
 
@@ -47,6 +48,7 @@ export async function POST(request, { params }) {
                 'Content-Type': 'application/json',
                 ...authHeaders(request),
                 'Accept': 'application/json',
+                ...tracingHeaders(request),
             },
             body: JSON.stringify({}), // Empty body as required by the backend
         });
