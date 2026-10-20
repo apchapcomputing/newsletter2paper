@@ -17,7 +17,8 @@ from tests.unit.conftest import FakeSupabase
 ISSUE_ID = str(uuid4())
 USER_ID = str(uuid4())
 OWNER = {"Authorization": "Bearer good"}
-GUEST = {"x-guest-token": "s3cret"}
+GUEST_TOKEN = "guest_" + "a" * 36
+GUEST = {"x-guest-token": GUEST_TOKEN}
 
 # (method, path, json body) for every owner-or-guest route
 PROTECTED = [
@@ -76,7 +77,7 @@ class TestProtectedRoutes:
         assert call(make_client(make_db(guest_row=row)), method, path, body, GUEST).status_code == 404
 
     def test_guest_token_on_a_claimed_issue_is_404(self, method, path, body):
-        row = {"status": "draft", "guest_token": "s3cret"}
+        row = {"status": "draft", "guest_token": GUEST_TOKEN}
         assert call(make_client(make_db(guest_row=row)), method, path, body, GUEST).status_code == 404
 
     def test_issue_without_a_guest_token_never_matches(self, method, path, body):
@@ -104,7 +105,7 @@ class TestAccessDependency:
         assert resp.json() == {"owner": True, "user_id": USER_ID}
 
     def test_guest_token_holder_is_let_in_but_is_not_an_owner(self):
-        row = {"status": "guest", "guest_token": "s3cret"}
+        row = {"status": "guest", "guest_token": GUEST_TOKEN}
         resp = self.probe(make_db(guest_row=row)).get(f"/probe/{ISSUE_ID}", headers=GUEST)
         assert resp.json() == {"owner": False, "user_id": None}
 
@@ -113,19 +114,32 @@ class TestAccessDependency:
         assert resp.json()["owner"] is True
 
     def test_guest_token_works_alongside_a_stale_bearer_for_another_user(self):
-        row = {"status": "guest", "guest_token": "s3cret"}
+        row = {"status": "guest", "guest_token": GUEST_TOKEN}
         resp = self.probe(make_db(owned=False, guest_row=row)).get(f"/probe/{ISSUE_ID}", headers={**OWNER, **GUEST})
         assert resp.json()["owner"] is False
 
+    def test_guest_token_works_alongside_an_expired_bearer(self):
+        row = {"status": "guest", "guest_token": GUEST_TOKEN}
+        db = make_db(guest_row=row)
+        db.client.auth.get_user.side_effect = Exception("expired")
+        resp = self.probe(db).get(f"/probe/{ISSUE_ID}", headers={**OWNER, **GUEST})
+        assert resp.status_code == 200
+        assert resp.json()["owner"] is False
+
+    def test_expired_bearer_alone_is_still_401(self):
+        db = make_db(owned=True)
+        db.client.auth.get_user.side_effect = Exception("expired")
+        assert self.probe(db).get(f"/probe/{ISSUE_ID}", headers=OWNER).status_code == 401
+
     def test_owner_only_rejects_guests(self):
-        row = {"status": "guest", "guest_token": "s3cret"}
+        row = {"status": "guest", "guest_token": GUEST_TOKEN}
         c = self.probe(make_db(guest_row=row))
         assert c.get(f"/owner-only/{ISSUE_ID}", headers=GUEST).status_code == 401
         assert c.get(f"/owner-only/{ISSUE_ID}", headers=OWNER).status_code == 404
 
 
 class TestGuestAccess:
-    ROW = {"id": ISSUE_ID, "status": "guest", "guest_token": "s3cret", "title": "T"}
+    ROW = {"id": ISSUE_ID, "status": "guest", "guest_token": GUEST_TOKEN, "title": "T"}
 
     def test_guest_token_reads_the_issue_without_leaking_it(self):
         resp = call(make_client(make_db(guest_row=self.ROW)), "GET", f"/issues/{ISSUE_ID}", None, GUEST)
@@ -162,13 +176,19 @@ class TestCreate:
         assert resp.status_code == 403
         assert db.calls_for("issues", "insert") == []
 
+    def test_short_guest_token_is_rejected(self):
+        db = make_db()
+        resp = call(make_client(db), "POST", "/issues/", {"format": "essay"}, {"x-guest-token": "s3cret"})
+        assert resp.status_code == 422
+        assert db.calls_for("issues", "insert") == []
+
     def test_guest_issue_is_stored_as_guest_with_its_token(self):
         db = make_db()
-        db.responses[("issues", "insert")] = [{"id": ISSUE_ID, "guest_token": "s3cret"}]
+        db.responses[("issues", "insert")] = [{"id": ISSUE_ID, "guest_token": GUEST_TOKEN}]
         resp = call(make_client(db), "POST", "/issues/", {"format": "essay"}, GUEST)
         assert resp.status_code == 200
         (_, _, payload, _), = db.calls_for("issues", "insert")
-        assert (payload["status"], payload["guest_token"], payload["target_email"]) == ("guest", "s3cret", None)
+        assert (payload["status"], payload["guest_token"], payload["target_email"]) == ("guest", GUEST_TOKEN, None)
         assert db.calls_for("user_issues", "insert") == []
         assert "guest_token" not in resp.json()["issue"]
 
@@ -183,7 +203,7 @@ class TestPdfEmail:
         import services.rss_service as rss
 
         issue = {"id": ISSUE_ID, "title": "T", "format": "essay", "target_email": "victim@example.com",
-                 "status": "guest", "guest_token": "s3cret"}
+                 "status": "guest", "guest_token": GUEST_TOKEN}
         db = make_db(guest_row=issue, owned=False)
         monkeypatch.setattr(dbs, "DatabaseService", lambda: db)
         fake_rss = MagicMock()

@@ -21,6 +21,7 @@ from services.database_service import DatabaseService
 
 GUEST_TOKEN_HEADER = "x-guest-token"
 ADMIN_TOKEN_HEADER = "x-admin-token"
+MIN_GUEST_TOKEN_LENGTH = 32  # the UI sends `guest_<uuid4>` (42 chars)
 
 
 def get_db_service():
@@ -94,9 +95,15 @@ def require_issue_access(
         raise HTTPException(status_code=401, detail="Sign in to continue")
 
     if bearer:
-        user_id = get_current_user_id(request, db_service)  # 401 on a bad token
-        if _is_owner(db_service, issue, user_id):
-            return IssueAccess(issue, user_id)
+        try:
+            user_id = get_current_user_id(request, db_service)
+        except HTTPException:
+            # A stale session must not lock out a guest who also sent a valid token.
+            if not guest_token:
+                raise
+        else:
+            if _is_owner(db_service, issue, user_id):
+                return IssueAccess(issue, user_id)
     if guest_token and _holds_guest_token(db_service, issue, guest_token):
         return IssueAccess(issue)
     raise HTTPException(status_code=404, detail="Issue not found")
@@ -135,5 +142,10 @@ def resolve_new_issue_owner(request: Request, db_service: DatabaseService) -> tu
         return get_current_user_id(request, db_service), None
     guest_token = request.headers.get(GUEST_TOKEN_HEADER, "").strip()
     if guest_token:
+        if len(guest_token) < MIN_GUEST_TOKEN_LENGTH:
+            raise HTTPException(
+                status_code=422,
+                detail=f"{GUEST_TOKEN_HEADER} must be at least {MIN_GUEST_TOKEN_LENGTH} characters",
+            )
         return None, guest_token
     raise HTTPException(status_code=401, detail="Sign in to continue")
