@@ -49,7 +49,7 @@ Full stack via Docker (from repo root): `docker compose up --build` (API + pdf-m
 
 **UI → backend.** The Next.js `app/api/*` routes (articles/preview, issues, pdf/generate, publications, rss, substack/search) proxy/compose calls to the FastAPI backend and Supabase. CORS in `main.py` only allows `localhost:3000` / `127.0.0.1:3000`.
 
-**Cleanup job.** (On branch `feature/cleanup-guest-newspapers`, not yet merged to `main`.) Also available as the `cleanup_guest_newspapers` click command in `cli/commands.py` (`--days`, `--dry-run`, `--verbose`). `.github/workflows/cleanup-guest-newspapers.yml` runs weekly (Sun 02:00 UTC), applying `data/migrations/2026_09_30_cleanup_guest_newspapers.sql` against Supabase to drop guest issues older than 2 weeks and orphaned articles/publications. Setup (secrets) is in `.github/CLEANUP_SETUP.md`.
+**Cleanup job.** (On branch `feature/cleanup-guest-newspapers`, not yet merged to `main`.) Also available as the `cleanup_guest_newspapers` click command in `cli/commands.py` (`--days`, `--dry-run`, `--verbose`). `.github/workflows/cleanup-guest-newspapers.yml` runs weekly (Sun 02:00 UTC), applying `data/jobs/cleanup_guest_newspapers.sql` against Supabase to drop guest issues older than 2 weeks and orphaned articles/publications. Setup (secrets) is in `.github/CLEANUP_SETUP.md`.
 
 ## Specs and in-flight work
 

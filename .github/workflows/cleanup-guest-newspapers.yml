@@ -35,7 +35,7 @@ jobs:
             -p "$SUPABASE_DB_PORT" \
             -U "$SUPABASE_DB_USER" \
             -d "$SUPABASE_DB_NAME" \
-            -f data/migrations/2026_09_30_cleanup_guest_newspapers.sql
+            -f data/jobs/cleanup_guest_newspapers.sql
 
       - name: Log cleanup completion
         if: success()

@@ -74,7 +74,7 @@ If you prefer direct database access:
 
 ```bash
 # Connect to your Supabase database
-psql -h $SUPABASE_DB_HOST -p 5432 -U postgres -d postgres -f data/migrations/2026_09_30_cleanup_guest_newspapers.sql
+psql -h $SUPABASE_DB_HOST -p 5432 -U postgres -d postgres -f data/jobs/cleanup_guest_newspapers.sql
 ```
 
 ## Monitoring
@@ -168,3 +168,9 @@ For issues or questions:
 1. Check the GitHub Actions logs for error messages
 2. Review the `cleanup_log` table in your database
 3. Test locally using the CLI command before adjusting settings
+
+## Prerequisite
+
+The job writes to `public.cleanup_log`, created by migration `20261009000000_cleanup_log.sql`
+(applied by `deploy-db-migrations.yml` on merge to `main`). The job script itself lives in
+`data/jobs/` because it runs repeatedly and must not be treated as a one-time migration.

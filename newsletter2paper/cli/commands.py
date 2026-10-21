@@ -61,7 +61,7 @@ def cleanup_guest_newspapers(days, dry_run, verbose):
         # Find old guest issues (no user association)
         old_issues = client.table('issues').select('id, title, created_at').lt(
             'created_at', cutoff_date
-        ).execute()
+        ).neq('auto_send', True).execute()
 
         if not old_issues.data:
             click.echo("✅ No old guest issues found. Nothing to clean up.")

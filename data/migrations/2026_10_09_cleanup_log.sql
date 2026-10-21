@@ -1,0 +1,1 @@
+../../newsletter2paper/supabase/migrations/20261009000000_cleanup_log.sql
