@@ -8,10 +8,11 @@ import { describeSchedule } from '../../utils/scheduleStatus'
 /**
  * Read-only view of the scheduler's state for one issue: when the next delivery is, whether a
  * failed one is being retried, and the last error. Reads the owner's own issue row (RLS applies).
- * `refreshKey` re-fetches, e.g. after "Send now". `fallbackNext` is shown until the scheduler has
- * set a real next_run_at (it does so within a minute of enabling automatic delivery).
+ * `refreshKey` re-fetches, e.g. after "Send now" or a schedule change. Right after enabling or
+ * changing the schedule the scheduler has not yet picked the next slot (it does within a minute),
+ * so there is no date to show until then; nothing is guessed on the client.
  */
-export default function ScheduleStatus({ issueId, refreshKey, fallbackNext }) {
+export default function ScheduleStatus({ issueId, refreshKey }) {
     const supabase = useMemo(() => createClient(), [])
     const [issue, setIssue] = useState(null)
 
@@ -33,7 +34,7 @@ export default function ScheduleStatus({ issueId, refreshKey, fallbackNext }) {
     }, [issueId, refreshKey, supabase])
 
     const { nextAt, retryAt, error } = describeSchedule(issue)
-    const next = nextAt || (retryAt ? null : fallbackNext)
+    const scheduling = Boolean(issue) && !nextAt && !retryAt
 
     return (
         <>
@@ -42,9 +43,14 @@ export default function ScheduleStatus({ issueId, refreshKey, fallbackNext }) {
                     Delivery failed. Retrying at {retryAt.toLocaleString()}.
                 </Typography>
             )}
-            {next && (
+            {nextAt && (
                 <Typography variant="caption" sx={{ display: 'block', mt: 1, color: 'text.secondary' }}>
-                    {nextAt ? 'Next delivery' : 'First scheduled delivery'}: {next.toLocaleString()}
+                    Next delivery: {nextAt.toLocaleString()}
+                </Typography>
+            )}
+            {scheduling && (
+                <Typography variant="caption" sx={{ display: 'block', mt: 1, color: 'text.secondary' }} role="status">
+                    Working out your next delivery…
                 </Typography>
             )}
             {error && (
