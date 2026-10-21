@@ -40,6 +40,8 @@ async def get_publications(
             "count": len(result.data) if result.data else 0
         }
         
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to get publications: {str(e)}")
 
@@ -79,6 +81,8 @@ async def create_publication(
             "message": "Publication created successfully"
         }
         
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to create publication: {str(e)}")
 
@@ -104,6 +108,8 @@ async def get_publication(
             "publication": result.data[0]
         }
         
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to get publication: {str(e)}")
 
@@ -151,5 +157,7 @@ async def find_or_create_publication(
             "message": "Created new publication"
         }
         
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to find or create publication: {str(e)}")

@@ -207,42 +207,29 @@ func processArticlesFromJSON(ctx context.Context, jsonPath string, imgDownloader
 	// Fetch articles that need fetching
 	if len(articlesToFetch) > 0 {
 		fmt.Printf("\nFetching %d articles (max parallel=%d)...\n", len(articlesToFetch), maxPar)
-		fetchedArticles, fetchErrs := fetch.FetchArticlesConcurrentWithImages(ctx, articlesToFetch, maxPar, imgDownloader)
+		fetchedArticles, fetchErrs := fetch.FetchArticlesAligned(ctx, articlesToFetch, maxPar, imgDownloader)
 
-		// Map fetched articles back to their positions
-		fetchedIndex := 0
+		// fetchedArticles[i] belongs to articles[articleIndices[i]]; failed fetches are nil.
 		for i, idx := range articleIndices {
-			if fetchedIndex < len(fetchedArticles) && fetchedArticles[fetchedIndex] != nil {
-				// Merge fetched content with existing metadata
-				original := articles[idx]
-				fetched := fetchedArticles[fetchedIndex]
-
-				// Keep original metadata if it was provided, use fetched as fallback
-				if original.Title == "" {
-					original.Title = fetched.Title
-				}
-				if original.Author == "" {
-					original.Author = fetched.Author
-				}
-				if original.Publication == "" {
-					original.Publication = fetched.Publication
-				}
-				original.Content = fetched.Content
-				// RemoveImages is already preserved from original ArticleInput
-
-				articles[idx] = original
-				fetchedIndex++
-			} else {
-				// Fetch failed for this article
-				if i < len(fetchErrs) {
-					errs = append(errs, fetchErrs[i])
-				}
+			fetched := fetchedArticles[i]
+			if fetched == nil {
+				errs = append(errs, fetchErrs[i])
+				continue
 			}
-		}
 
-		// Add any remaining fetch errors
-		if len(fetchErrs) > len(articleIndices) {
-			errs = append(errs, fetchErrs[len(articleIndices):]...)
+			// Keep original metadata if it was provided, use fetched as fallback
+			original := articles[idx]
+			if original.Title == "" {
+				original.Title = fetched.Title
+			}
+			if original.Author == "" {
+				original.Author = fetched.Author
+			}
+			if original.Publication == "" {
+				original.Publication = fetched.Publication
+			}
+			original.Content = fetched.Content
+			// RemoveImages is already preserved from original ArticleInput
 		}
 	}
 

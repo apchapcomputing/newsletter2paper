@@ -29,6 +29,8 @@ import logger from '../utils/logger';
 import { useSelectedPublications } from '../contexts/useSelectedPublications';
 import { useNewsletterConfig } from '../contexts/useNewsletterConfig';
 import { useAuth } from '../contexts/useAuth';
+import { apiFetch } from '../lib/apiFetch';
+import { track, captureError } from '../lib/analytics';
 
 export default function Home() {
   const { selectedPublications, addPublication, removePublication, clearAllPublications, isLoaded } = useSelectedPublications();
@@ -133,7 +135,7 @@ export default function Home() {
         setIsPopulatingPublications(true);
         isLoadingPublications.current = true;
         logger.log(`🔄 Loading publications for issue: ${currentIssueId}`);
-        const pubResponse = await fetch(`/api/issues/${currentIssueId}/publications`);
+        const pubResponse = await apiFetch(`/api/issues/${currentIssueId}/publications`);
 
         if (pubResponse.ok) {
           const pubData = await pubResponse.json();
@@ -299,7 +301,7 @@ export default function Home() {
         logger.log(`📋 Publications with settings to save:`, publicationsWithSettings);
 
         // Update publications for this issue (this will clear old ones and add new ones)
-        const pubResponse = await fetch(`/api/issues/${savedIssue.id}/publications`, {
+        const pubResponse = await apiFetch(`/api/issues/${savedIssue.id}/publications`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -338,6 +340,16 @@ export default function Home() {
     setIsGeneratingPdf(true);
     setPdfUrl(null);
 
+    const startedAt = Date.now();
+    const generateProps = {
+      layout: outputMode,
+      frequency,
+      publication_count: selectedPublications.length,
+      is_guest: !user,
+    };
+    let errorType = 'save';
+    track('pdf_generate_clicked', generateProps);
+
     try {
       // IMPORTANT: Ensure any pending save completes before generating PDF
       // This prevents race conditions where the PDF is generated with stale data
@@ -366,6 +378,7 @@ export default function Home() {
       let pdfApiUrl;
       if (frequency === 'custom') {
         // Validate custom dates before proceeding
+        errorType = 'validation';
         if (!dateFrom || !dateTo) {
           throw new Error('Please select both a start and end date for a custom date range.');
         }
@@ -387,16 +400,19 @@ export default function Home() {
       }
 
       // Call Next.js API route, which proxies to Python backend
-      const response = await fetch(pdfApiUrl, {
+      errorType = 'network';
+      const response = await apiFetch(pdfApiUrl, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
       });
 
+      errorType = response.status >= 500 ? 'backend_5xx' : response.ok ? 'bad_response' : 'backend_4xx';
       const data = await response.json();
 
       if (data.success && data.pdf_url) {
+        track('pdf_generated', { ...generateProps, duration_ms: Date.now() - startedAt });
         setPdfUrl(data.pdf_url);
         logger.log('PDF generated successfully:', data.pdf_url);
 
@@ -408,6 +424,9 @@ export default function Home() {
 
     } catch (error) {
       console.error('Error generating PDF:', error);
+      const failure = { ...generateProps, error_type: errorType, duration_ms: Date.now() - startedAt };
+      track('pdf_generate_failed', failure);
+      if (errorType !== 'validation') captureError(error, failure);
     } finally {
       setIsGeneratingPdf(false);
     }
@@ -459,7 +478,7 @@ export default function Home() {
     }
 
     try {
-      const response = await fetch(`/api/issues/${issueId}`, {
+      const response = await apiFetch(`/api/issues/${issueId}`, {
         method: 'DELETE',
       });
 
@@ -779,6 +798,7 @@ export default function Home() {
       {/* Auth Modal */}
       <AuthModal
         open={isAuthModalOpen}
+        trigger="guest_banner"
         onClose={() => setIsAuthModalOpen(false)}
       />
 

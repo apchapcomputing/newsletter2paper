@@ -55,6 +55,7 @@ The system SHALL allow full use of core functionality without authentication.
 - GIVEN a guest user configures an issue
 - WHEN the page is reloaded in the same browser
 - THEN the previously configured issue (title, publications, format, frequency) is restored from `localStorage`
+- AND the selected publications are not cleared merely because no user is signed in
 
 ---
 
@@ -97,13 +98,90 @@ The system SHALL automatically create a user profile record when a new Supabase 
 
 ### Requirement: Row Level Security
 
-The system SHALL enforce that users can only access their own issues, profiles, and issue_publications.
+The system SHALL enforce Row Level Security on every table in the `public` schema. Browser clients (anon key or an authenticated JWT) can only access their own data; the backend and scheduler use the service role, which bypasses RLS.
+
+- `publications` and `articles` are readable by everyone and writable only by the service role.
+- Identity lives in Supabase Auth (`auth.users`); there is no `public.users` table, and clients cannot read `auth.users`.
+- `issues` are accessible to their owner (linked through `user_issues`, or matching `target_email`).
+- `user_issues` rows are accessible only to the user they belong to, and a user can only link themselves to an issue they can already access.
+- `issue_publications` follow access to the parent issue.
+- Guest issues (`status = 'guest'`) are accessible only to the browser holding the issue's `guest_token`, sent in the `x-guest-token` header.
 
 #### Scenario: User cannot read another user's issues
 
 - GIVEN two authenticated users each with their own issues
-- WHEN user A queries `GET /issues/{id}` for an issue owned by user B
-- THEN a 403 or 404 response is returned and user A's session does not reveal user B's data
+- WHEN user A queries the `issues` table for an issue owned by user B
+- THEN no row is returned and user A's session does not reveal user B's data
+
+#### Scenario: User cannot attach themselves to another user's issue
+
+- GIVEN an issue owned by user B
+- WHEN user A inserts a `user_issues` row linking A to that issue
+- THEN the insert is rejected by RLS
+
+#### Scenario: Guest issue is private to its creator
+
+- GIVEN a guest issue created with `guest_token = T`
+- WHEN a request without `x-guest-token: T` queries or updates it
+- THEN no row is visible or modified
+
+---
+
+### Requirement: Backend Route Authorization
+
+The FastAPI backend uses the service role, so RLS does not protect requests that go through it. Every route that reads or changes an issue SHALL authorize the caller itself (`services/auth.py`):
+
+- A signed-in owner sends `Authorization: Bearer <Supabase access token>` and owns an issue through a `user_issues` row.
+- A guest sends `x-guest-token`, which must match `issues.guest_token` of an issue with `status = 'guest'`.
+- Covered routes: `PUT/GET/DELETE /issues/{id}`, `POST/GET /issues/{id}/publications`, `POST /articles/fetch/{id}`, `GET /articles/issue/{id}/summary`, `POST /pdf/generate/{id}`, `GET /pdf/download/{id}`, `GET /pdf/status/{id}`. `POST /issues/{id}/send-now` is owner-only.
+- `POST /issues/` needs either credential; guests' issues are stored with `status = 'guest'` and their token, owners' issues get a `user_issues` row.
+- `guest_token` is never returned in a response.
+- `GET /pdf/test-storage`, `DELETE /pdf/cleanup` and `GET /pdf/memory/stats` are internal: they require an `X-Admin-Token` header equal to `ADMIN_API_TOKEN` and respond 404 while that variable is unset.
+- `publications` and `rss` lookups remain public.
+
+#### Scenario: No credentials
+
+- GIVEN a request without `Authorization` or `x-guest-token`
+- WHEN it targets a covered route
+- THEN the response is 401 and nothing is read or changed
+
+#### Scenario: Credentials that do not match the issue
+
+- GIVEN a valid session of another user, or a guest token that does not match the issue
+- WHEN the caller targets the issue
+- THEN the response is 404, the same as for an issue that does not exist
+
+#### Scenario: Guests cannot cause email to be sent
+
+- GIVEN a guest-token holder
+- WHEN they create or update an issue with a non-empty `target_email` or `auto_send = true`
+- THEN the response is 403 and nothing is stored
+- AND `POST /pdf/generate/{id}` for their issue generates the PDF without emailing it
+
+---
+
+### Requirement: Account Ownership Integrity
+
+The system SHALL reference Supabase Auth users from `user_issues.user_id` with a foreign key to `auth.users(id)` that cascades on delete, so a user's links never outlive their account.
+
+#### Scenario: Link to a nonexistent user is rejected
+
+- GIVEN a `user_issues` insert whose `user_id` is not in `auth.users`
+- WHEN the insert runs
+- THEN it fails with a foreign key violation
+
+#### Scenario: Deleting an account removes its links but not its issues
+
+- GIVEN a user linked to an issue through `user_issues`
+- WHEN the user is deleted from `auth.users`
+- THEN their `user_issues` rows are deleted
+- AND the issue row remains (it is then unowned)
+
+#### Scenario: Migration archives dangling links before deleting them
+
+- GIVEN `user_issues` rows whose user is no longer in `auth.users`
+- WHEN the foreign key migration runs
+- THEN those rows are first copied to `public.user_issues_dangling_archive` and then deleted, so they can be restored
 
 ---
 
@@ -117,3 +195,11 @@ The system SHALL allow authenticated users to sign out, invalidating their curre
 - WHEN the sign-out action is processed
 - THEN the Supabase session is invalidated
 - AND the user is returned to the unauthenticated (guest) state
+- AND the selected publications are cleared
+
+#### Scenario: Guest selection survives without sign-in
+
+- GIVEN a visitor who has never signed in has selected publications
+- WHEN the app loads or reloads
+- THEN the selection is kept, because `localStorage` is the guest's only copy
+- AND it is cleared only on a transition from signed-in to signed-out

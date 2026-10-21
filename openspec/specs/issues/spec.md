@@ -31,6 +31,12 @@ The system SHALL allow creating an issue with a title, format, and frequency.
 - WHEN the client sends `POST /issues/`
 - THEN a 422 error is returned indicating start must be before end
 
+#### Scenario: Automatic delivery needs a recipient
+
+- GIVEN a request with `auto_send: true` and no (or a blank) `target_email`
+- WHEN the client sends `POST /issues/`
+- THEN a 422 error is returned
+
 ---
 
 ### Requirement: Issue Update
@@ -42,6 +48,31 @@ The system SHALL allow partially updating an issue's title, format, frequency, a
 - GIVEN an issue with `frequency: "custom"` and stored custom dates
 - WHEN the client sends `PUT /issues/{id}` with `frequency: "weekly"`
 - THEN `custom_start_date` and `custom_end_date` are cleared from the database
+
+#### Scenario: Custom dates preserved when not sent
+
+- GIVEN an issue with `frequency: "custom"` and stored custom dates
+- WHEN the client sends `PUT /issues/{id}` without `custom_start_date` or `custom_end_date` (for example, only a new title)
+- THEN the stored custom dates are unchanged
+
+#### Scenario: Explicit null clears a custom date
+
+- GIVEN an issue with stored custom dates
+- WHEN the client sends `PUT /issues/{id}` with `custom_start_date: null`
+- THEN `custom_start_date` is cleared and `custom_end_date` is unchanged
+
+#### Scenario: Updating a nonexistent issue
+
+- GIVEN no issue exists with the given ID
+- WHEN the client sends `PUT /issues/{id}`
+- THEN a 404 response is returned (not 500)
+
+#### Scenario: Automatic delivery needs a recipient on update
+
+- GIVEN an issue
+- WHEN the client sends `PUT /issues/{id}` that would leave `auto_send` true with no (or a blank) `target_email`, combining the request with the stored row (enabling without a stored address, or clearing the address while enabled)
+- THEN a 422 error is returned and nothing is written; disabling `auto_send` never needs an address
+- AND the UI only allows enabling automatic delivery once a delivery email is entered, and saves the address with the flag
 
 #### Scenario: Updating title only
 

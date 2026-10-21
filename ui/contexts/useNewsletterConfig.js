@@ -3,6 +3,7 @@ import { createContext, useContext, useState, useEffect } from "react";
 import { useAuth } from './useAuth';
 import { createClient } from '../lib/supabase';
 import logger from '../utils/logger';
+import { track } from '../lib/analytics';
 
 const NewsletterConfigContext = createContext();
 
@@ -292,14 +293,20 @@ export const NewsletterConfigProvider = ({ children }) => {
 
     const updateAutoSend = async (value) => {
         const boolVal = !!value;
+        const recipient = (targetEmail || '').trim();
+        // Automatic delivery needs a recipient (the API rejects it otherwise, and the scheduler
+        // would fail every run with a config error).
+        if (boolVal && !recipient) return;
         setAutoSend(boolVal);
+        track(boolVal ? 'auto_send_enabled' : 'auto_send_disabled', { frequency });
 
         // Persist auto_send to Supabase when user is authenticated.
         try {
             if (user && session && currentIssueId) {
                 const { error } = await supabase
                     .from('issues')
-                    .update({ auto_send: boolVal })
+                    // Save the address with the flag so the stored row is never enabled without one.
+                    .update(boolVal ? { auto_send: true, target_email: recipient } : { auto_send: false })
                     .eq('id', currentIssueId);
 
                 if (error) {
@@ -325,6 +332,7 @@ export const NewsletterConfigProvider = ({ children }) => {
                         .single();
 
                     if (!result.error && result.data) {
+                        track('issue_created', { is_guest: false });
                         setCurrentIssueId(result.data.id);
                         // Ensure user-issue association exists
                         await supabase.from('user_issues').upsert({ user_id: user.id, issue_id: result.data.id }, { onConflict: 'user_id,issue_id' });
@@ -481,6 +489,7 @@ export const NewsletterConfigProvider = ({ children }) => {
                 }
             }
 
+            if (savedIssue.id !== currentIssueId) track('issue_created', { is_guest: false });
             setCurrentIssueId(savedIssue.id);
 
             // Refresh user issues by getting all issues associated with this user
@@ -509,7 +518,7 @@ export const NewsletterConfigProvider = ({ children }) => {
             // Generate or get a guest session ID
             let guestSessionId = localStorage.getItem('guestSessionId');
             if (!guestSessionId) {
-                guestSessionId = `guest_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+                guestSessionId = `guest_${crypto.randomUUID()}`;
                 localStorage.setItem('guestSessionId', guestSessionId);
             }
 
@@ -518,6 +527,7 @@ export const NewsletterConfigProvider = ({ children }) => {
                 format: issueData.format || 'newspaper',
                 frequency: 'once',
                 status: 'guest',
+                guest_token: guestSessionId, // RLS: only requests sending this token (x-guest-token) can access the row
                 remove_images: issueData.remove_images || false,
                 custom_start_date: issueData.custom_start_date || null,
                 custom_end_date: issueData.custom_end_date || null
@@ -574,6 +584,7 @@ export const NewsletterConfigProvider = ({ children }) => {
                 savedIssue = result.data;
             }
 
+            if (savedIssue.id !== currentIssueId) track('issue_created', { is_guest: true });
             setCurrentIssueId(savedIssue.id);
             return savedIssue;
         } catch (error) {

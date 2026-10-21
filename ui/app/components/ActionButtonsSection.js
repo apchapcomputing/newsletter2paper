@@ -6,6 +6,7 @@ import ExpandMoreIcon from '@mui/icons-material/ExpandMore'
 import ExpandLessIcon from '@mui/icons-material/ExpandLess'
 import { useNewsletterConfig } from '../../contexts/useNewsletterConfig'
 import { useSelectedPublications } from '../../contexts/useSelectedPublications'
+import FakeDoor from './FakeDoor'
 
 export default function ActionButtonsSection({
     isSaving,
@@ -144,6 +145,15 @@ export default function ActionButtonsSection({
                                 </Collapse>
                             </Box>
                         </Alert>
+                    </Box>
+                )}
+
+                {/* Fake doors for ideas we haven't built; each is hidden until its PostHog flag is on. */}
+                {pdfUrl && (
+                    <Box sx={{ mt: 2, display: 'flex', flexWrap: 'wrap', gap: 1, justifyContent: 'center' }}>
+                        <FakeDoor feature="send_to_ereader" label="Send it to my Kindle or reMarkable" />
+                        <FakeDoor feature="mail_printed_copy" label="Mail me a printed copy" />
+                        <FakeDoor feature="single_article" label="Add a single article from a link" />
                     </Box>
                 )}
             </Box >

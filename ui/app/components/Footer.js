@@ -1,6 +1,7 @@
 import Box from '@mui/material/Box';
 import Typography from '@mui/material/Typography';
 import DecorativeLine from './DecorativeLine';
+import { OPEN_CONSENT_EVENT } from './ConsentBanner';
 
 export default function Footer() {
     return (
@@ -52,6 +53,30 @@ export default function Footer() {
                     }}
                 >
                     Feature Request
+                </Typography>
+                <Typography
+                    variant="body2"
+                    sx={{
+                        color: '#504f4e',
+                        display: { xs: 'none', sm: 'block' }
+                    }}
+                >
+                    •
+                </Typography>
+                <Typography
+                    variant="body2"
+                    onClick={() => window.dispatchEvent(new Event(OPEN_CONSENT_EVENT))}
+                    sx={{
+                        cursor: 'pointer',
+                        color: '#504f4e',
+                        fontSize: { xs: '0.75rem', sm: '0.875rem' },
+                        textAlign: 'center',
+                        '&:hover': {
+                            color: 'secondary.main'
+                        }
+                    }}
+                >
+                    Privacy choices
                 </Typography>
                 {/* <Typography
                     variant="body2"

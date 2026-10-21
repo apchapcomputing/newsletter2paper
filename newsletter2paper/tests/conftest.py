@@ -1,32 +1,18 @@
-import pytest
+"""Test-wide setup.
 
-@pytest.fixture(scope='session')
-def db_connection():
-    # Setup database connection
-    connection = create_db_connection()
-    yield connection
-    # Teardown database connection
-    connection.close()
+Several services build a Supabase client when constructed. Point them at an
+unroutable local address so no test can reach a real project by accident; tests
+that need data must inject fakes.
+"""
+import os
 
-@pytest.fixture
-def sample_article():
-    return {
-        'title': 'Sample Article',
-        'content': 'This is a sample article for testing.',
-        'author': 'Author Name'
-    }
+os.environ["SUPABASE_URL"] = "http://127.0.0.1:9"
+os.environ["SUPABASE_SECRET_KEY"] = "test-key"
+os.environ.setdefault("SUPABASE_DATABASE_URL", "sqlite://")
+# Analytics stays off: no test may send events to PostHog. Tests that check events fake the client.
+os.environ.pop("POSTHOG_API_KEY", None)
 
-@pytest.fixture
-def sample_publication():
-    return {
-        'name': 'Sample Publication',
-        'issue_number': 1,
-        'year': 2023
-    }
+# Same for Resend: no test may send real email. Contract tests mock the API with respx.
+import resend  # noqa: E402
 
-@pytest.fixture
-def mock_api_response():
-    return {
-        'status': 'success',
-        'data': []
-    }
+resend.api_url = "http://127.0.0.1:9"

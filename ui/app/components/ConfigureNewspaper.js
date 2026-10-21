@@ -1,8 +1,12 @@
 'use client'
 
+import { useState } from 'react'
 import { Box, Button, Typography, TextField, Switch, FormControlLabel } from '@mui/material'
 import { useNewsletterConfig } from '../../contexts/useNewsletterConfig'
 import { useAuth } from '../../contexts/useAuth'
+import { track } from '../../lib/analytics'
+import FakeDoor from './FakeDoor'
+import ScheduleStatus from './ScheduleStatus'
 
 const FORMAT_OPTIONS = [
     { value: 'essay', label: 'Essay' },
@@ -46,6 +50,29 @@ export default function ConfigureNewspaper() {
         updateArticleWindow,
         updateAutoSend
     } = useNewsletterConfig()
+
+    const { session } = useAuth()
+    const [sendNowState, setSendNowState] = useState({ status: 'idle', message: '' })
+    const hasRecipient = Boolean(targetEmail && targetEmail.trim())
+
+    const handleSendNow = async () => {
+        track('send_now_clicked')
+        setSendNowState({ status: 'sending', message: '' })
+        try {
+            const res = await fetch(`/api/issues/${currentIssueId}/send-now`, {
+                method: 'POST',
+                headers: session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {},
+            })
+            const data = await res.json().catch(() => ({}))
+            if (!res.ok) {
+                setSendNowState({ status: 'error', message: data.error || 'Could not start sending' })
+                return
+            }
+            setSendNowState({ status: 'sent', message: `Sending started. It will arrive at ${targetEmail} shortly.` })
+        } catch (err) {
+            setSendNowState({ status: 'error', message: 'Could not reach the server' })
+        }
+    }
 
     // Persist the email change to the DB so it's available when PDF generation fires
     const handleEmailBlur = async () => {
@@ -281,10 +308,23 @@ export default function ConfigureNewspaper() {
                                 <Switch
                                     checked={autoSend}
                                     onChange={(e) => updateAutoSend(e.target.checked)}
+                                    // Automatic delivery needs a recipient; turning it off is always allowed.
+                                    disabled={!autoSend && !hasRecipient}
                                     color="primary"
                                 />
                             }
                             label="Enable automatic delivery"
+                        />
+                        {!autoSend && !hasRecipient && (
+                            <Typography variant="body2" sx={{ color: 'text.secondary' }}>
+                                Add a delivery email below to enable automatic delivery.
+                            </Typography>
+                        )}
+                        <FakeDoor
+                            feature="upgrade_auto_send"
+                            label="Automatic delivery will be a paid feature. Reserve founder pricing"
+                            description="Automatic delivery is free while we're in beta and will become part of a paid plan. Want founder pricing when it launches?"
+                            sx={{ px: 0 }}
                         />
                     </Box>
                 )}
@@ -328,14 +368,34 @@ export default function ConfigureNewspaper() {
                             ))}
                         </Box>
 
-                        <Typography variant="caption" sx={{ display: 'block', mt: 1, color: 'text.secondary' }}>
-                            Next scheduled: {computeNextScheduled(frequency).toLocaleString()}
-                        </Typography>
+                        <ScheduleStatus
+                            issueId={currentIssueId}
+                            refreshKey={sendNowState.status}
+                            fallbackNext={computeNextScheduled(frequency)}
+                        />
+
+                        <Button
+                            variant="outlined"
+                            onClick={handleSendNow}
+                            disabled={!currentIssueId || !targetEmail || sendNowState.status === 'sending'}
+                            sx={{ mt: 1.5, textTransform: 'none' }}
+                        >
+                            {sendNowState.status === 'sending' ? 'Sending…' : 'Send now'}
+                        </Button>
+                        {sendNowState.message && (
+                            <Typography
+                                variant="caption"
+                                role={sendNowState.status === 'error' ? 'alert' : 'status'}
+                                sx={{ display: 'block', mt: 0.5, color: sendNowState.status === 'error' ? 'error.main' : 'text.secondary' }}
+                            >
+                                {sendNowState.message}
+                            </Typography>
+                        )}
                     </Box>
                 )}
 
-                {/* Email delivery (only when authenticated). When automatic delivery is OFF show field disabled/greyed so users know automation isn't used. */}
-                {isAuthenticated && autoSend && (
+                {/* Email delivery (only when authenticated). Shown before automatic delivery is enabled, since enabling it needs an address. */}
+                {isAuthenticated && (
                     <Box>
                         <Typography variant="body1" sx={{ mb: 1, fontWeight: 500 }}>
                             EMAIL DELIVERY
@@ -355,7 +415,7 @@ export default function ConfigureNewspaper() {
                             onBlur={handleEmailBlur}
                             placeholder="e.g., you@example.com"
                             helperText={
-                                !targetEmail ? 'Enter an email to enable automatic delivery' : ''
+                                !hasRecipient ? 'Enter an email to enable automatic delivery' : ''
                             }
                             sx={{
                                 '& .MuiOutlinedInput-root': {

@@ -34,6 +34,11 @@ jobs:
             echo "🔄 Pulling latest changes from GitHub..."
             git pull origin main
             
+            echo "🧹 Pruning dangling images and old build cache before build..."
+            docker image prune -f || true
+            docker builder prune -f --filter until=72h || true
+            df -h /
+
             echo "🛑 Stopping containers..."
             docker compose down
             
@@ -69,7 +74,11 @@ jobs:
             fi
             
             echo "🎉 Deployment complete!"
-            
+
+            echo "🧹 Pruning images left behind by this build..."
+            docker image prune -f || true
+            df -h /
+
             echo "📋 Recent logs:"
             docker compose logs --tail=50
       

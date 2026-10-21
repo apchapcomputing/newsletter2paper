@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { authHeaders } from '@/lib/authHeaders';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
@@ -10,6 +11,7 @@ export async function DELETE(request, context) {
         // Forward DELETE request to Python backend
         const response = await fetch(`${API_URL}/issues/${issueId}`, {
             method: 'DELETE',
+            headers: authHeaders(request),
         });
 
         if (!response.ok) {

@@ -4,6 +4,7 @@ from typing import Optional
 from datetime import datetime, timezone
 from pydantic import BaseModel
 
+from services.auth import IssueAccess, get_db_service, require_issue_access
 from services.database_service import DatabaseService
 from services.rss_service import RSSService
 
@@ -30,9 +31,6 @@ def _parse_date_param(value: Optional[str], param_name: str) -> Optional[datetim
         )
 
 # Dependencies
-def get_db_service():
-    return DatabaseService()
-
 def get_rss_service():
     return RSSService()
 
@@ -43,6 +41,7 @@ async def fetch_articles_for_issue(
     publication_id: Optional[str] = Query(default=None, description="Optional publication UUID to fetch only one publication"),
     start_date: Optional[str] = Query(default=None, description="Optional start date (YYYY-MM-DD or ISO 8601)"),
     end_date: Optional[str] = Query(default=None, description="Optional end date (YYYY-MM-DD or ISO 8601)"),
+    access: IssueAccess = Depends(require_issue_access),
     db_service: DatabaseService = Depends(get_db_service),
     rss_service: RSSService = Depends(get_rss_service)
 ):
@@ -73,6 +72,8 @@ async def fetch_articles_for_issue(
             end_date=parsed_end,
         )
         
+        if isinstance(result.get('issue'), dict):
+            result['issue'] = {k: v for k, v in result['issue'].items() if k != 'guest_token'}
         return {
             "success": True,
             "data": result,
@@ -81,6 +82,8 @@ async def fetch_articles_for_issue(
         
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to fetch articles: {str(e)}")
 
@@ -88,6 +91,7 @@ async def fetch_articles_for_issue(
 async def get_issue_articles_summary(
     issue_id: UUID,
     days_back: int = Query(default=7, description="Number of days to look back"),
+    access: IssueAccess = Depends(require_issue_access),
     db_service: DatabaseService = Depends(get_db_service)
 ):
     """
@@ -119,7 +123,7 @@ async def get_issue_articles_summary(
         
         return {
             "success": True,
-            "issue": issue_result.data[0],
+            "issue": {k: v for k, v in issue_result.data[0].items() if k != 'guest_token'},
             "publications_count": len(publications),
             "publications": [
                 {
@@ -138,6 +142,8 @@ async def get_issue_articles_summary(
             }
         }
         
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to get issue summary: {str(e)}")
 

@@ -1,16 +1,25 @@
-from fastapi import APIRouter, HTTPException, Depends
+import asyncio
+import logging
+from fastapi import APIRouter, BackgroundTasks, HTTPException, Depends, Request
 from uuid import UUID
 from typing import List, Optional
 from datetime import datetime, timezone
 from pydantic import BaseModel, field_validator, model_validator
 
+from services.auth import (
+    IssueAccess, get_current_user_id, get_db_service, require_issue_access, require_issue_owner,
+    resolve_new_issue_owner,
+)
 from services.database_service import DatabaseService
+from services.scheduler import SendNowCooldown
 from models.issue import Issue
 from models.issue_publication import IssuePublication
 
 router = APIRouter(prefix="/issues", tags=["issues"])
 
 _VALID_FREQUENCIES = {"daily", "weekly", "monthly", "once", "custom"}
+_NO_RECIPIENT = "Set target_email before enabling automatic delivery"
+_GUEST_NO_EMAIL = "Sign in to have newspapers emailed to you"
 
 # Pydantic models for requests
 class CreateIssueRequest(BaseModel):
@@ -37,6 +46,12 @@ class CreateIssueRequest(BaseModel):
                 raise ValueError("custom_start_date and custom_end_date are required when frequency is 'custom'")
             if self.custom_start_date > self.custom_end_date:
                 raise ValueError("custom_start_date must be before custom_end_date")
+        return self
+
+    @model_validator(mode="after")
+    def validate_recipient(self) -> "CreateIssueRequest":
+        if self.auto_send and not (self.target_email or "").strip():
+            raise ValueError(_NO_RECIPIENT)
         return self
 
 class UpdateIssueRequest(BaseModel):
@@ -81,18 +96,22 @@ class AddPublicationsRequest(BaseModel):
     publication_ids: List[UUID] = []  # Deprecated: use publications instead
     publications: Optional[List[PublicationSettings]] = None  # New format with settings
 
-# Dependency to get database service
-def get_db_service():
-    return DatabaseService()
-
 @router.post("/", response_model=dict)
 async def create_issue(
     request: CreateIssueRequest,
+    http_request: Request,
     db_service: DatabaseService = Depends(get_db_service)
 ):
     """
     Create a new issue with the specified title and format.
+
+    Signed-in callers own the new issue (a `user_issues` row is created). Guests identify
+    themselves with `x-guest-token`; their issue is created with status 'guest' and can
+    never carry a recipient or automatic delivery.
     """
+    user_id, guest_token = resolve_new_issue_owner(http_request, db_service)
+    if user_id is None and ((request.target_email or '').strip() or request.auto_send):
+        raise HTTPException(status_code=403, detail=_GUEST_NO_EMAIL)
     try:
         # Create the issue in the database
         issue_data = {
@@ -107,18 +126,30 @@ async def create_issue(
             'created_at': datetime.now(timezone.utc).isoformat(),
             'updated_at': datetime.now(timezone.utc).isoformat()
         }
+        if user_id is None:
+            issue_data['status'] = 'guest'
+            issue_data['guest_token'] = guest_token
         
         result = db_service.client.table('issues').insert(issue_data).execute()
         
         if not result.data:
             raise HTTPException(status_code=500, detail="Failed to create issue")
+
+        if user_id is not None:
+            link = db_service.client.table('user_issues')\
+                .insert({'user_id': user_id, 'issue_id': result.data[0]['id']}).execute()
+            if not link.data:
+                db_service.client.table('issues').delete().eq('id', result.data[0]['id']).execute()
+                raise HTTPException(status_code=500, detail="Failed to create issue")
             
         return {
             "success": True,
-            "issue": result.data[0],
+            "issue": {k: v for k, v in result.data[0].items() if k != 'guest_token'},
             "message": "Issue created successfully"
         }
         
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to create issue: {str(e)}")
 
@@ -126,11 +157,17 @@ async def create_issue(
 async def update_issue(
     issue_id: UUID,
     request: UpdateIssueRequest,
+    access: IssueAccess = Depends(require_issue_access),
     db_service: DatabaseService = Depends(get_db_service)
 ):
     """
     Update an existing issue with new title and/or format.
+
+    Guests (holders of the issue's guest token) can't set a recipient or turn on
+    automatic delivery; that needs a signed-in owner.
     """
+    if not access.is_owner and ((request.target_email or '').strip() or request.auto_send):
+        raise HTTPException(status_code=403, detail=_GUEST_NO_EMAIL)
     try:
         # Prepare update data (only include non-None values)
         update_data = {
@@ -151,12 +188,25 @@ async def update_issue(
             update_data['target_email'] = request.target_email
         if request.auto_send is not None:
             update_data['auto_send'] = request.auto_send
+        if request.auto_send or (request.target_email is not None and not request.target_email.strip()):
+            # Automatic delivery needs somewhere to deliver to; check against the stored row
+            # for whichever of the two fields this request leaves unchanged.
+            current = db_service.client.table('issues').select('auto_send, target_email')\
+                .eq('id', str(issue_id)).execute()
+            if not current.data:
+                raise HTTPException(status_code=404, detail="Issue not found")
+            row = current.data[0]
+            auto_send = request.auto_send if request.auto_send is not None else row.get('auto_send')
+            target_email = request.target_email if request.target_email is not None else row.get('target_email')
+            if auto_send and not (target_email or '').strip():
+                raise HTTPException(status_code=422, detail=_NO_RECIPIENT)
         if request.article_window_days is not None:
             update_data['article_window_days'] = request.article_window_days
-        # Always write custom dates when explicitly provided (even as None to clear them)
-        if 'custom_start_date' not in update_data:  # don't overwrite if already set by frequency change
+        # Write custom dates only when the caller sent the field (an explicit null clears it);
+        # a frequency change away from 'custom' has already cleared them above.
+        if 'custom_start_date' in request.model_fields_set and 'custom_start_date' not in update_data:
             update_data['custom_start_date'] = request.custom_start_date.isoformat() if request.custom_start_date else None
-        if 'custom_end_date' not in update_data:
+        if 'custom_end_date' in request.model_fields_set and 'custom_end_date' not in update_data:
             update_data['custom_end_date'] = request.custom_end_date.isoformat() if request.custom_end_date else None
         
         # Update the issue in the database
@@ -170,16 +220,19 @@ async def update_issue(
             
         return {
             "success": True,
-            "issue": result.data[0],
+            "issue": {k: v for k, v in result.data[0].items() if k != 'guest_token'},
             "message": "Issue updated successfully"
         }
         
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to update issue: {str(e)}")
 
 @router.get("/{issue_id}", response_model=dict)
 async def get_issue(
     issue_id: UUID,
+    access: IssueAccess = Depends(require_issue_access),
     db_service: DatabaseService = Depends(get_db_service)
 ):
     """
@@ -196,16 +249,71 @@ async def get_issue(
             
         return {
             "success": True,
-            "issue": result.data[0]
+            "issue": {k: v for k, v in result.data[0].items() if k != 'guest_token'}
         }
         
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to get issue: {str(e)}")
+
+@router.post("/{issue_id}/send-now", status_code=202, response_model=dict)
+def send_issue_now(
+    issue_id: UUID,
+    request: Request,
+    background_tasks: BackgroundTasks,
+    db_service: DatabaseService = Depends(get_db_service),
+    access: IssueAccess = Depends(require_issue_owner),
+):
+    """
+    Generate the PDF and email it to the issue's target_email right now, without
+    changing the automatic delivery schedule. Runs in the background; poll the issue's
+    `schedule_status` / `last_run_at` / `last_run_error` for the outcome.
+
+    Sync on purpose: the DB claim, PDF subprocess and email calls are blocking, so the
+    endpoint and its background task run in the threadpool instead of the event loop.
+
+    Only the issue's owner may call it (the backend's service key bypasses RLS, so ownership
+    is checked here), and each issue is rate-limited by SEND_NOW_COOLDOWN_MINUTES.
+    """
+    result = db_service.client.table('issues').select('id, target_email')\
+        .eq('id', str(issue_id)).execute()
+    # Same 404 for "missing" and "not yours" so issue IDs can't be probed.
+    if not result.data:
+        raise HTTPException(status_code=404, detail="Issue not found")
+    if not result.data[0].get('target_email'):
+        raise HTTPException(status_code=400, detail="Issue has no target_email to send to")
+
+    svc = getattr(request.app.state, 'scheduler', None)
+    if svc is None:
+        raise HTTPException(status_code=503, detail="Scheduler is not running")
+
+    try:
+        claim = svc.claim_for_send_now(str(issue_id))
+    except SendNowCooldown as e:
+        raise HTTPException(
+            status_code=429,
+            detail=f"This issue was sent recently; try again in {max(1, round(e.retry_after / 60))} min",
+            headers={"Retry-After": str(e.retry_after)},
+        )
+    if claim is None:
+        raise HTTPException(status_code=409, detail="Issue is already being processed")
+
+    def _run():
+        try:
+            asyncio.run(svc.send_now(claim))
+        except Exception as e:
+            logging.exception(f"send-now failed for {issue_id}: {e}")
+            svc.release_after_error(claim, f"unexpected error: {e}", force=True)
+
+    background_tasks.add_task(_run)
+    return {"success": True, "message": "Sending started"}
 
 @router.post("/{issue_id}/publications", response_model=dict)
 async def add_publications_to_issue(
     issue_id: UUID,
     request: AddPublicationsRequest,
+    access: IssueAccess = Depends(require_issue_access),
     db_service: DatabaseService = Depends(get_db_service)
 ):
     """
@@ -265,12 +373,15 @@ async def add_publications_to_issue(
             "publication_count": len(publications_to_add)
         }
         
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to add publications to issue: {str(e)}")
 
 @router.get("/{issue_id}/publications", response_model=dict)
 async def get_issue_publications(
     issue_id: UUID,
+    access: IssueAccess = Depends(require_issue_access),
     db_service: DatabaseService = Depends(get_db_service)
 ):
     """
@@ -310,6 +421,7 @@ async def get_issue_publications(
 @router.delete("/{issue_id}", response_model=dict)
 async def delete_issue(
     issue_id: UUID,
+    access: IssueAccess = Depends(require_issue_access),
     db_service: DatabaseService = Depends(get_db_service)
 ):
     """

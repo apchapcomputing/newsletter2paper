@@ -1,0 +1,7 @@
+<img src=x onerror=alert(1)> & "Friends"
+
+Your newsletter PDF is ready.
+
+Download: https://cdn.example.com/a.pdf?token=abc&sig="x"
+
+This link is valid for 30 days.

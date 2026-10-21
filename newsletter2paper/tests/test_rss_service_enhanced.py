@@ -22,7 +22,7 @@ class MockResponse:
             raise requests.RequestException(f"HTTP {self.status_code}")
 
 
-class TestEnhancedFeedDiscovery(unittest.TestCase):
+class TestEnhancedFeedDiscovery(unittest.IsolatedAsyncioTestCase):
     """Test cases for enhanced RSS feed discovery."""
 
     def setUp(self):
@@ -159,7 +159,7 @@ class TestEnhancedFeedDiscovery(unittest.TestCase):
             self.assertTrue(args[0].startswith("https://"))
 
 
-class TestRSSParsingUtilities(unittest.TestCase):
+class TestRSSParsingUtilities(unittest.IsolatedAsyncioTestCase):
     """Test cases for RSS parsing utilities."""
 
     def setUp(self):
@@ -266,7 +266,7 @@ class TestRSSParsingUtilities(unittest.TestCase):
             self.assertIsNone(result)
 
 
-class TestDateFilteringUtilities(unittest.TestCase):
+class TestDateFilteringUtilities(unittest.IsolatedAsyncioTestCase):
     """Test cases for date filtering utilities."""
 
     def setUp(self):

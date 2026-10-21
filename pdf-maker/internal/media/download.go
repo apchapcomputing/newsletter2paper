@@ -167,13 +167,18 @@ func DownloadAndCacheImages(htmlContent string, opts DownloadOptions) (string, D
 		filename := fmt.Sprintf("%s.%s", urlHash, ext)
 		localPath := filepath.Join(opts.ImagesDir, filename)
 
-		// Check if image already exists (cached)
-		if _, err := os.Stat(localPath); err == nil {
+		// Check if image already exists (cached). The extension may have been
+		// corrected after download, so match on the URL hash, not the URL ext.
+		if cachedPath := findCachedImage(opts.ImagesDir, urlHash, localPath); cachedPath != "" {
+			localPath = cachedPath
+			if fixed, err := FixImageExtension(localPath); err == nil {
+				localPath = fixed
+			}
 			if opts.Verbose {
-				fmt.Printf("  - Using cached image: %s\n", filename)
+				fmt.Printf("  - Using cached image: %s\n", filepath.Base(localPath))
 			}
 			img.SetAttr("src", localPath)
-			// Remove srcset to prevent browser/wkhtmltopdf from using remote URLs
+			// Remove srcset so only the local src is used, not remote URLs
 			img.RemoveAttr("srcset")
 			// Also remove srcset from parent picture/source elements
 			img.Parent().Find("source").RemoveAttr("srcset")
@@ -205,9 +210,15 @@ func DownloadAndCacheImages(htmlContent string, opts DownloadOptions) (string, D
 			return
 		}
 
+		// Typst picks the decoder from the file extension, so make sure it
+		// matches the real content (URLs often say .png but serve JPEG/WebP).
+		if fixed, err := FixImageExtension(localPath); err == nil {
+			localPath = fixed
+		}
+
 		// Update img src to local path
 		img.SetAttr("src", localPath)
-		// Remove srcset to prevent browser/wkhtmltopdf from using remote URLs
+		// Remove srcset so only the local src is used, not remote URLs
 		img.RemoveAttr("srcset")
 		// Also remove srcset from parent picture/source elements
 		img.Parent().Find("source").RemoveAttr("srcset")
@@ -287,38 +298,80 @@ func downloadImage(client *http.Client, imageURL, localPath, userAgent string) e
 	return nil
 }
 
-// validateImageFile checks that a file begins with a recognised image header.
-// Rejects HTML error pages, truncated downloads, and other non-image content.
+// validateImageFile checks that a file is an image Typst can decode
+// (JPEG, PNG, GIF or WebP). Rejects HTML error pages, truncated downloads,
+// and formats Typst can't render such as AVIF and BMP.
 func validateImageFile(path string) error {
+	if DetectImageExt(path) != "" {
+		return nil
+	}
 	f, err := os.Open(path)
 	if err != nil {
 		return err
 	}
 	defer f.Close()
-
-	buf := make([]byte, 12)
+	buf := make([]byte, 4)
 	n, _ := f.Read(buf)
 	if n < 4 {
 		return fmt.Errorf("file too small (%d bytes)", n)
 	}
-	b := buf[:n]
+	return fmt.Errorf("unsupported image format (header bytes: %d %d %d %d)", buf[0], buf[1], buf[2], buf[3])
+}
 
-	switch {
-	case b[0] == 0xFF && b[1] == 0xD8 && b[2] == 0xFF: // JPEG
-		return nil
-	case b[0] == 0x89 && b[1] == 'P' && b[2] == 'N' && b[3] == 'G': // PNG
-		return nil
-	case b[0] == 'G' && b[1] == 'I' && b[2] == 'F' && b[3] == '8': // GIF
-		return nil
-	case n >= 12 && b[0] == 'R' && b[1] == 'I' && b[2] == 'F' && b[3] == 'F' &&
-		b[8] == 'W' && b[9] == 'E' && b[10] == 'B' && b[11] == 'P': // WebP
-		return nil
-	case n >= 8 && b[4] == 'f' && b[5] == 't' && b[6] == 'y' && b[7] == 'p': // AVIF/HEIF
-		return nil
-	case b[0] == 'B' && b[1] == 'M': // BMP
-		return nil
+// findCachedImage returns the path of an already-downloaded image for the
+// given URL hash, or "" if none exists. It checks the URL-derived path first,
+// then any file with the same hash and a different (corrected) extension.
+func findCachedImage(dir, urlHash, preferred string) string {
+	if _, err := os.Stat(preferred); err == nil {
+		return preferred
 	}
-	return fmt.Errorf("unrecognised image format (header bytes: %d %d %d %d)", b[0], b[1], b[2], b[3])
+	matches, _ := filepath.Glob(filepath.Join(dir, urlHash+".*"))
+	if len(matches) > 0 {
+		return matches[0]
+	}
+	return ""
+}
+
+// DetectImageExt returns the file extension matching the file's magic bytes,
+// or "" if the format is not recognised.
+func DetectImageExt(path string) string {
+	f, err := os.Open(path)
+	if err != nil {
+		return ""
+	}
+	defer f.Close()
+	b := make([]byte, 12)
+	n, _ := f.Read(b)
+	b = b[:n]
+	switch {
+	case n >= 3 && b[0] == 0xFF && b[1] == 0xD8 && b[2] == 0xFF:
+		return "jpg"
+	case n >= 4 && b[0] == 0x89 && b[1] == 'P' && b[2] == 'N' && b[3] == 'G':
+		return "png"
+	case n >= 4 && string(b[:4]) == "GIF8":
+		return "gif"
+	case n >= 12 && string(b[:4]) == "RIFF" && string(b[8:12]) == "WEBP":
+		return "webp"
+	}
+	return ""
+}
+
+// FixImageExtension renames the file if its extension disagrees with its
+// content and returns the (possibly new) path.
+func FixImageExtension(path string) (string, error) {
+	want := DetectImageExt(path)
+	if want == "" {
+		return path, nil
+	}
+	ext := strings.ToLower(strings.TrimPrefix(filepath.Ext(path), "."))
+	if ext == want || (want == "jpg" && ext == "jpeg") {
+		return path, nil
+	}
+	newPath := strings.TrimSuffix(path, filepath.Ext(path)) + "." + want
+	if err := os.Rename(path, newPath); err != nil {
+		return path, err
+	}
+	return newPath, nil
 }
 
 // getImageExtension extracts the file extension from an image URL.

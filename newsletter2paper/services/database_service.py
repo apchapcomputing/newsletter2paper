@@ -16,7 +16,7 @@ class DatabaseService:
         """Initialize Supabase client using environment variables."""
         self.client: Client = create_client(
             os.environ.get('SUPABASE_URL', ''),
-            os.environ.get('SUPABASE_KEY', '')
+            os.environ.get('SUPABASE_SECRET_KEY', '')
         )
 
     async def store_article(self, 

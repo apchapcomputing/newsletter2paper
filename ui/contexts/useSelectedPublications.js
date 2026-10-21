@@ -1,5 +1,5 @@
 // create context
-import { createContext, useContext, useState, useEffect } from "react";
+import { createContext, useContext, useState, useEffect, useRef } from "react";
 import { useAuth } from './useAuth';
 import logger from '../utils/logger';
 
@@ -35,12 +35,16 @@ export const SelectedPublicationsProvider = ({ children }) => {
         }
     }, []);
 
-    // Clear publications when user logs out
+    // Clear publications when a signed-in user logs out. Guests (never signed in) keep their
+    // selection: localStorage is its only copy, so it must survive reloads.
+    const wasSignedIn = useRef(false);
     useEffect(() => {
-        if (!user && !session && isLoaded) {
+        const signedIn = Boolean(user || session);
+        if (wasSignedIn.current && !signedIn && isLoaded) {
             logger.log('🧹 User logged out, clearing selected publications');
             setSelectedPublications([]);
         }
+        wasSignedIn.current = signedIn;
     }, [user, session, isLoaded]);
 
     // Save to localStorage whenever selectedPublications changes

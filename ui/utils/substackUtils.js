@@ -12,17 +12,17 @@ import logger from './logger';
 const capitalizeName = (name) => {
     if (!name) return name;
 
+    // Particles stay lowercase mid-name ("Ludwig van Beethoven") but start a name capitalised ("Van Jones").
+    const particles = ['von', 'de', 'van', 'der', 'da', 'di'];
     return name
         .split(' ')
-        .map(word => {
+        .map((word, index) => {
             if (!word) return word;
-            // Handle lowercase words like "von", "de", "van" etc.
-            const lowercase = ['von', 'de', 'van', 'der', 'da', 'di'];
-            if (lowercase.includes(word.toLowerCase())) {
+            if (index > 0 && particles.includes(word.toLowerCase())) {
                 return word.toLowerCase();
             }
-            // Capitalize first letter, keep rest as is (to preserve things like McDonald)
-            return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
+            // Capitalize the first letter only; keep the rest as typed to preserve names like McDonald
+            return word.charAt(0).toUpperCase() + word.slice(1);
         })
         .join(' ');
 };
@@ -61,7 +61,7 @@ export const searchSubstack = async (query) => {
                 };
             } else if (result.type === 'publication') {
                 const p = result.publication;
-                const domain = p?.subdomain + '.substack.com';
+                const domain = p?.subdomain ? p.subdomain + '.substack.com' : undefined;
                 return {
                     name: p?.name || 'Unknown Publication',
                     publisher: capitalizeName(p?.author_name) || 'Unknown Publisher',

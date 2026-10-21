@@ -499,8 +499,9 @@ class RSSService:
                 for source in content_sources:
                     description_elem = item.find(source)
                     if description_elem is not None and description_elem.text:
-                        # Handle possible CDATA content and strip HTML tags if needed
-                        subtitle = ''.join(description_elem.itertext()).strip()
+                        # CDATA bodies arrive as literal HTML text; reduce to plain text
+                        raw = ''.join(description_elem.itertext())
+                        subtitle = ' '.join(BeautifulSoup(raw, 'html.parser').get_text().split())
                         if subtitle:
                             # Truncate to fit the max_length of 255 characters
                             subtitle = subtitle[:255]

@@ -239,9 +239,8 @@ func emitNode(s *goquery.Selection, sb *strings.Builder, removeImages bool) {
 		sb.WriteString("\n#line(length: 100%, stroke: 0.5pt)\n\n")
 
 	case "code":
-		var inner strings.Builder
-		convertNode(s, &inner, removeImages)
-		body := inner.String()
+		// Raw spans are verbatim in Typst; escaping would print literal backslashes.
+		body := s.Text()
 		if body != "" {
 			sb.WriteString("`")
 			sb.WriteString(body)
