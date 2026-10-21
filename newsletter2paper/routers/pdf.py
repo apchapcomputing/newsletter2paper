@@ -3,13 +3,15 @@ PDF Router Module
 Handles PDF generation endpoints using Go-based PDF service.
 """
 
-from fastapi import APIRouter, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import RedirectResponse
 from typing import Optional, Dict, Any
 from datetime import datetime, timezone
 import logging
 from pathlib import Path
+from uuid import UUID
 
+from services.auth import IssueAccess, require_admin, require_issue_access
 from services.go_pdf_service import GoPDFService
 from services import analytics_service as analytics
 
@@ -77,7 +79,8 @@ class PDFGenerationError(Exception):
 @router.post("/generate/{issue_id}")
 async def generate_pdf_for_issue(
     request: Request,
-    issue_id: str,
+    issue_id: UUID,
+    access: IssueAccess = Depends(require_issue_access),
     days_back: int = Query(7, description="Number of days to look back for articles (ignored when start_date/end_date are provided)"),
     max_articles_per_publication: int = Query(5, description="Maximum articles per publication"),
     layout_type: Optional[str] = Query(None, description="Layout type: 'newspaper' or 'essay' (overrides DB value if provided)"),
@@ -90,7 +93,8 @@ async def generate_pdf_for_issue(
 ):
     """
     Generate a PDF from an issue's articles using the Go PDF service.
-    Available to all users (authenticated and guests).
+    Available to the issue's owner and to the holder of a guest issue's token. The PDF link
+    is emailed to the issue's `target_email` only when the caller is the signed-in owner.
     
     Args:
         issue_id: UUID of the issue
@@ -107,6 +111,7 @@ async def generate_pdf_for_issue(
     Returns:
         dict: Result with success status, file paths, and metadata
     """
+    issue_id = str(issue_id)
     try:
         user_identifier = f"user_{issue_id[:8]}"
         
@@ -196,7 +201,7 @@ async def generate_pdf_for_issue(
             "success": True,
             "message": "PDF generated successfully using Go service",
             "pdf_url": result['pdf_url'],
-            "issue_info": result['issue_info'],
+            "issue_info": {k: v for k, v in (result['issue_info'] or {}).items() if k != 'guest_token'},
             "articles_count": result['articles_count'],
             "layout_type": result.get('layout_type', effective_layout_type),
             "service": "go-pdf",
@@ -210,7 +215,7 @@ async def generate_pdf_for_issue(
 
         # Send email if the issue has a target_email configured
         target_email = issue_info.get('target_email')
-        if target_email and result.get('pdf_url'):
+        if access.is_owner and target_email and result.get('pdf_url'):
             # Email failure must not break the PDF response; report its cause instead.
             from services.email_service import EmailService
             sent = EmailService().send(
@@ -241,7 +246,8 @@ async def generate_pdf_for_issue(
 
 @router.get("/download/{issue_id}")
 async def download_pdf(
-    issue_id: str,
+    issue_id: UUID,
+    access: IssueAccess = Depends(require_issue_access),
     days_back: int = Query(7, description="Number of days to look back for articles"),
     max_articles_per_publication: int = Query(5, description="Maximum articles per publication"),
     layout_type: Optional[str] = Query(None, description="Layout type: 'newspaper' or 'essay' (overrides DB value if provided)"),
@@ -252,8 +258,9 @@ async def download_pdf(
 ):
     """
     Generate and download a PDF for an issue by redirecting to the Supabase storage URL.
-    Available to all users (authenticated and guests).
+    Available to the issue's owner and to the holder of a guest issue's token; never emails.
     """
+    issue_id = str(issue_id)
     try:
         from services.rss_service import RSSService
         from services.database_service import DatabaseService
@@ -328,7 +335,7 @@ async def download_pdf(
 
 
 @router.get("/status/{issue_id}")
-async def get_pdf_status(issue_id: str):
+async def get_pdf_status(issue_id: UUID, access: IssueAccess = Depends(require_issue_access)):
     """
     Check PDF generation status for an issue.
     
@@ -342,7 +349,7 @@ async def get_pdf_status(issue_id: str):
         # Since PDFs are now generated on-demand and stored in Supabase storage,
         # this endpoint provides information about the generation capability
         return {
-            "issue_id": issue_id,
+            "issue_id": str(issue_id),
             "storage_type": "supabase",
             "generation_available": True,
             "message": "PDFs are generated on-demand and stored in cloud storage",
@@ -357,7 +364,7 @@ async def get_pdf_status(issue_id: str):
         raise HTTPException(status_code=500, detail=f"Status check failed: {str(e)}")
 
 
-@router.get("/test-storage")
+@router.get("/test-storage", dependencies=[Depends(require_admin)])
 async def test_storage_access():
     """
     Test Supabase storage access for debugging.
@@ -395,7 +402,7 @@ async def test_storage_access():
         }
 
 
-@router.delete("/cleanup")
+@router.delete("/cleanup", dependencies=[Depends(require_admin)])
 async def cleanup_old_files(days_old: int = Query(7, description="Delete local files older than this many days")):
     """
     Clean up old local files (HTML and any remaining PDFs).
@@ -448,7 +455,7 @@ async def cleanup_old_files(days_old: int = Query(7, description="Delete local f
         raise HTTPException(status_code=500, detail=f"Cleanup failed: {str(e)}")
 
 
-@router.get("/memory/stats")
+@router.get("/memory/stats", dependencies=[Depends(require_admin)])
 async def get_memory_stats():
     """
     Get current service status (Go service replaces memory management).
@@ -468,33 +475,3 @@ async def get_memory_stats():
     except Exception as e:
         logging.error(f"Status check failed: {e}")
         raise HTTPException(status_code=500, detail=f"Status check failed: {str(e)}")
-
-
-@router.post("/memory/cleanup")
-async def force_memory_cleanup():
-    """
-    Cleanup endpoint (kept for API compatibility, but Go service manages its own memory).
-    
-    Returns:
-        dict: Cleanup results
-    """
-    return {
-        "success": True,
-        "message": "Go PDF service manages its own memory - no manual cleanup needed",
-        "service": "go-pdf"
-    }
-
-
-@router.delete("/memory/cache")
-async def clear_image_cache():
-    """
-    Clear cache endpoint (kept for API compatibility, but Go service manages its own cache).
-    
-    Returns:
-        dict: Cache clearing results
-    """
-    return {
-        "success": True,
-        "message": "Go PDF service manages its own image cache",
-        "service": "go-pdf"
-    }

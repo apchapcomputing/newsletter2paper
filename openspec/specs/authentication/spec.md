@@ -127,6 +127,39 @@ The system SHALL enforce Row Level Security on every table in the `public` schem
 
 ---
 
+### Requirement: Backend Route Authorization
+
+The FastAPI backend uses the service role, so RLS does not protect requests that go through it. Every route that reads or changes an issue SHALL authorize the caller itself (`services/auth.py`):
+
+- A signed-in owner sends `Authorization: Bearer <Supabase access token>` and owns an issue through a `user_issues` row.
+- A guest sends `x-guest-token`, which must match `issues.guest_token` of an issue with `status = 'guest'`.
+- Covered routes: `PUT/GET/DELETE /issues/{id}`, `POST/GET /issues/{id}/publications`, `POST /articles/fetch/{id}`, `GET /articles/issue/{id}/summary`, `POST /pdf/generate/{id}`, `GET /pdf/download/{id}`, `GET /pdf/status/{id}`. `POST /issues/{id}/send-now` is owner-only.
+- `POST /issues/` needs either credential; guests' issues are stored with `status = 'guest'` and their token, owners' issues get a `user_issues` row.
+- `guest_token` is never returned in a response.
+- `GET /pdf/test-storage`, `DELETE /pdf/cleanup` and `GET /pdf/memory/stats` are internal: they require an `X-Admin-Token` header equal to `ADMIN_API_TOKEN` and respond 404 while that variable is unset.
+- `publications` and `rss` lookups remain public.
+
+#### Scenario: No credentials
+
+- GIVEN a request without `Authorization` or `x-guest-token`
+- WHEN it targets a covered route
+- THEN the response is 401 and nothing is read or changed
+
+#### Scenario: Credentials that do not match the issue
+
+- GIVEN a valid session of another user, or a guest token that does not match the issue
+- WHEN the caller targets the issue
+- THEN the response is 404, the same as for an issue that does not exist
+
+#### Scenario: Guests cannot cause email to be sent
+
+- GIVEN a guest-token holder
+- WHEN they create or update an issue with a non-empty `target_email` or `auto_send = true`
+- THEN the response is 403 and nothing is stored
+- AND `POST /pdf/generate/{id}` for their issue generates the PDF without emailing it
+
+---
+
 ### Requirement: Account Ownership Integrity
 
 The system SHALL reference Supabase Auth users from `user_issues.user_id` with a foreign key to `auth.users(id)` that cascades on delete, so a user's links never outlive their account.

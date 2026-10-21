@@ -6,6 +6,10 @@ from typing import List, Optional
 from datetime import datetime, timezone
 from pydantic import BaseModel, field_validator, model_validator
 
+from services.auth import (
+    IssueAccess, get_current_user_id, get_db_service, require_issue_access, require_issue_owner,
+    resolve_new_issue_owner,
+)
 from services.database_service import DatabaseService
 from services.scheduler import SendNowCooldown
 from models.issue import Issue
@@ -15,6 +19,7 @@ router = APIRouter(prefix="/issues", tags=["issues"])
 
 _VALID_FREQUENCIES = {"daily", "weekly", "monthly", "once", "custom"}
 _NO_RECIPIENT = "Set target_email before enabling automatic delivery"
+_GUEST_NO_EMAIL = "Sign in to have newspapers emailed to you"
 
 # Pydantic models for requests
 class CreateIssueRequest(BaseModel):
@@ -91,31 +96,22 @@ class AddPublicationsRequest(BaseModel):
     publication_ids: List[UUID] = []  # Deprecated: use publications instead
     publications: Optional[List[PublicationSettings]] = None  # New format with settings
 
-# Dependency to get database service
-def get_db_service():
-    return DatabaseService()
-
-def get_current_user_id(request: Request, db_service: DatabaseService = Depends(get_db_service)) -> str:
-    """Resolve the caller's Supabase user from an `Authorization: Bearer <access token>` header."""
-    scheme, _, token = request.headers.get('Authorization', '').partition(' ')
-    if scheme.lower() != 'bearer' or not token:
-        raise HTTPException(status_code=401, detail="Sign in to continue")
-    try:
-        user = db_service.client.auth.get_user(token).user
-    except Exception:
-        user = None
-    if not user:
-        raise HTTPException(status_code=401, detail="Session is invalid or expired")
-    return str(user.id)
-
 @router.post("/", response_model=dict)
 async def create_issue(
     request: CreateIssueRequest,
+    http_request: Request,
     db_service: DatabaseService = Depends(get_db_service)
 ):
     """
     Create a new issue with the specified title and format.
+
+    Signed-in callers own the new issue (a `user_issues` row is created). Guests identify
+    themselves with `x-guest-token`; their issue is created with status 'guest' and can
+    never carry a recipient or automatic delivery.
     """
+    user_id, guest_token = resolve_new_issue_owner(http_request, db_service)
+    if user_id is None and ((request.target_email or '').strip() or request.auto_send):
+        raise HTTPException(status_code=403, detail=_GUEST_NO_EMAIL)
     try:
         # Create the issue in the database
         issue_data = {
@@ -130,15 +126,25 @@ async def create_issue(
             'created_at': datetime.now(timezone.utc).isoformat(),
             'updated_at': datetime.now(timezone.utc).isoformat()
         }
+        if user_id is None:
+            issue_data['status'] = 'guest'
+            issue_data['guest_token'] = guest_token
         
         result = db_service.client.table('issues').insert(issue_data).execute()
         
         if not result.data:
             raise HTTPException(status_code=500, detail="Failed to create issue")
+
+        if user_id is not None:
+            link = db_service.client.table('user_issues')\
+                .insert({'user_id': user_id, 'issue_id': result.data[0]['id']}).execute()
+            if not link.data:
+                db_service.client.table('issues').delete().eq('id', result.data[0]['id']).execute()
+                raise HTTPException(status_code=500, detail="Failed to create issue")
             
         return {
             "success": True,
-            "issue": result.data[0],
+            "issue": {k: v for k, v in result.data[0].items() if k != 'guest_token'},
             "message": "Issue created successfully"
         }
         
@@ -151,11 +157,17 @@ async def create_issue(
 async def update_issue(
     issue_id: UUID,
     request: UpdateIssueRequest,
+    access: IssueAccess = Depends(require_issue_access),
     db_service: DatabaseService = Depends(get_db_service)
 ):
     """
     Update an existing issue with new title and/or format.
+
+    Guests (holders of the issue's guest token) can't set a recipient or turn on
+    automatic delivery; that needs a signed-in owner.
     """
+    if not access.is_owner and ((request.target_email or '').strip() or request.auto_send):
+        raise HTTPException(status_code=403, detail=_GUEST_NO_EMAIL)
     try:
         # Prepare update data (only include non-None values)
         update_data = {
@@ -208,7 +220,7 @@ async def update_issue(
             
         return {
             "success": True,
-            "issue": result.data[0],
+            "issue": {k: v for k, v in result.data[0].items() if k != 'guest_token'},
             "message": "Issue updated successfully"
         }
         
@@ -220,6 +232,7 @@ async def update_issue(
 @router.get("/{issue_id}", response_model=dict)
 async def get_issue(
     issue_id: UUID,
+    access: IssueAccess = Depends(require_issue_access),
     db_service: DatabaseService = Depends(get_db_service)
 ):
     """
@@ -236,7 +249,7 @@ async def get_issue(
             
         return {
             "success": True,
-            "issue": result.data[0]
+            "issue": {k: v for k, v in result.data[0].items() if k != 'guest_token'}
         }
         
     except HTTPException:
@@ -250,7 +263,7 @@ def send_issue_now(
     request: Request,
     background_tasks: BackgroundTasks,
     db_service: DatabaseService = Depends(get_db_service),
-    user_id: str = Depends(get_current_user_id),
+    access: IssueAccess = Depends(require_issue_owner),
 ):
     """
     Generate the PDF and email it to the issue's target_email right now, without
@@ -263,12 +276,10 @@ def send_issue_now(
     Only the issue's owner may call it (the backend's service key bypasses RLS, so ownership
     is checked here), and each issue is rate-limited by SEND_NOW_COOLDOWN_MINUTES.
     """
-    owned = db_service.client.table('user_issues').select('issue_id')\
-        .eq('issue_id', str(issue_id)).eq('user_id', user_id).execute()
     result = db_service.client.table('issues').select('id, target_email')\
         .eq('id', str(issue_id)).execute()
     # Same 404 for "missing" and "not yours" so issue IDs can't be probed.
-    if not owned.data or not result.data:
+    if not result.data:
         raise HTTPException(status_code=404, detail="Issue not found")
     if not result.data[0].get('target_email'):
         raise HTTPException(status_code=400, detail="Issue has no target_email to send to")
@@ -302,6 +313,7 @@ def send_issue_now(
 async def add_publications_to_issue(
     issue_id: UUID,
     request: AddPublicationsRequest,
+    access: IssueAccess = Depends(require_issue_access),
     db_service: DatabaseService = Depends(get_db_service)
 ):
     """
@@ -369,6 +381,7 @@ async def add_publications_to_issue(
 @router.get("/{issue_id}/publications", response_model=dict)
 async def get_issue_publications(
     issue_id: UUID,
+    access: IssueAccess = Depends(require_issue_access),
     db_service: DatabaseService = Depends(get_db_service)
 ):
     """
@@ -408,6 +421,7 @@ async def get_issue_publications(
 @router.delete("/{issue_id}", response_model=dict)
 async def delete_issue(
     issue_id: UUID,
+    access: IssueAccess = Depends(require_issue_access),
     db_service: DatabaseService = Depends(get_db_service)
 ):
     """

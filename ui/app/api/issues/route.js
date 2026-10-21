@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { authHeaders } from '@/lib/authHeaders';
 
 const BACKEND_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
@@ -11,6 +12,7 @@ export async function POST(request) {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
+                ...authHeaders(request),
             },
             body: JSON.stringify(body)
         });
@@ -54,6 +56,7 @@ export async function PUT(request) {
             method: 'PUT',
             headers: {
                 'Content-Type': 'application/json',
+                ...authHeaders(request),
             },
             body: JSON.stringify(body)
         });
@@ -95,6 +98,7 @@ export async function GET(request) {
             method: 'GET',
             headers: {
                 'Content-Type': 'application/json',
+                ...authHeaders(request),
             }
         });
 

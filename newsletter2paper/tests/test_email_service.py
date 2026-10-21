@@ -9,6 +9,7 @@ from unittest.mock import MagicMock, patch
 # ---------------------------------------------------------------------------
 
 PDF_URL = "https://storage.example.com/newsletters/issue-123.pdf"
+ISSUE_ID = "11111111-2222-4333-8444-555555555555"
 EMAIL = "reader@example.com"
 ISSUE_TITLE = "Morning Digest"
 
@@ -199,6 +200,12 @@ class TestPdfRouterEmailWiring:
         mock_class = MagicMock(return_value=mock_instance)
         return mock_class
 
+    @staticmethod
+    def _sign_in_as_owner(app):
+        """These tests cover email wiring, not auth (see tests/unit/test_route_auth.py)."""
+        from services.auth import IssueAccess, require_issue_access
+        app.dependency_overrides[require_issue_access] = lambda: IssueAccess(ISSUE_ID, "user-1")
+
     def test_email_sent_when_target_email_set(self, mock_issue_with_email):
         """PDF router sends email when issue has a target_email."""
         from fastapi.testclient import TestClient
@@ -213,6 +220,7 @@ class TestPdfRouterEmailWiring:
             from routers import pdf as pdf_mod
             importlib.reload(pdf_mod)
             app.include_router(pdf_mod.router)
+            self._sign_in_as_owner(app)
 
         mock_pdf_result = {
             "success": True,
@@ -230,7 +238,7 @@ class TestPdfRouterEmailWiring:
             _patch("services.email_service.EmailService.send", return_value=em.SendResult.sent("msg-1")) as mock_email,
         ):
             client = TestClient(app)
-            response = client.post("/pdf/generate/issue-abc")
+            response = client.post(f"/pdf/generate/{ISSUE_ID}")
 
         assert response.status_code == 200
         data = response.json()
@@ -251,6 +259,7 @@ class TestPdfRouterEmailWiring:
             from routers import pdf as pdf_mod
             importlib.reload(pdf_mod)
             app.include_router(pdf_mod.router)
+            self._sign_in_as_owner(app)
 
         mock_pdf_result = {
             "success": True,
@@ -268,7 +277,7 @@ class TestPdfRouterEmailWiring:
             _patch("services.email_service.EmailService.send", return_value=em.SendResult.sent("msg-1")) as mock_email,
         ):
             client = TestClient(app)
-            response = client.post("/pdf/generate/issue-abc")
+            response = client.post(f"/pdf/generate/{ISSUE_ID}")
 
         assert response.status_code == 200
         data = response.json()
@@ -286,6 +295,7 @@ class TestPdfRouterEmailWiring:
         from routers import pdf as pdf_mod
         importlib.reload(pdf_mod)
         app.include_router(pdf_mod.router)
+        self._sign_in_as_owner(app)
 
         mock_pdf_result = {"success": True, "pdf_url": PDF_URL, "issue_info": mock_issue_with_email,
                            "articles_count": 1, "layout_type": "newspaper"}
@@ -297,7 +307,7 @@ class TestPdfRouterEmailWiring:
             _patch("services.go_pdf_service.GoPDFService.generate_pdf_from_issue", new=AsyncMock(return_value=mock_pdf_result)),
             _patch("services.email_service.EmailService.send", return_value=failed),
         ):
-            data = TestClient(app).post("/pdf/generate/issue-abc").json()
+            data = TestClient(app).post(f"/pdf/generate/{ISSUE_ID}").json()
 
         assert data["success"] is True and data["email_sent"] is False
         assert data["email_error"] == failed.error and data["email_error_kind"] == "permanent"
