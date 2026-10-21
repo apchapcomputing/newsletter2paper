@@ -39,6 +39,13 @@ PUBLIC_API_URL = os.environ.get('PUBLIC_API_URL', '').rstrip('/')
 ERROR_CATEGORIES = ('email', 'config', 'pdf', 'unexpected error')
 
 
+def unsubscribe_url(issue: dict) -> Optional[str]:
+    """One-click unsubscribe link for the issue's emails; None when the API's public URL is unknown
+    (a link to localhost would be useless to a recipient)."""
+    token = issue.get('unsubscribe_token')
+    return f"{PUBLIC_API_URL}/u/{token}" if PUBLIC_API_URL and token else None
+
+
 def check_lock_timeout(lock_timeout_minutes: int, render_timeout_seconds: int) -> None:
     worst_case = RSS_BUDGET_SECONDS + render_timeout_seconds + EMAIL_BUDGET_SECONDS
     if lock_timeout_minutes * 60 <= worst_case:
@@ -212,8 +219,15 @@ class SchedulerService:
                 error = "config: no recipient email address is set"
                 self._fail(claim, issue, delivery, error, now, force, error_kind=PERMANENT)
                 return {'success': False, 'error': error}
+            if not force and not self.store.recipient_verified(claim.issue_id):
+                # The database refuses to enable auto_send for an unverified address, so this
+                # means the address changed or was edited behind the API's back.
+                error = "config: the recipient address has not been confirmed"
+                self._fail(claim, issue, delivery, error, now, force, error_kind=PERMANENT)
+                return {'success': False, 'error': error}
 
             pdf_url = delivery.get('pdf_url')
+            window = None
             if pdf_url:
                 logger.info(f"Issue {claim.issue_id}: reusing PDF from delivery {delivery['id']}, retrying email only")
             else:
@@ -227,10 +241,12 @@ class SchedulerService:
                     self._fail(claim, issue, delivery, f"pdf: {err}", now, force)
                     return {'success': False, 'error': err}
                 pdf_url = result['pdf_url']
+                window = {k: result.get(k) for k in ('articles_from', 'articles_until', 'articles_count')
+                          if result.get(k) is not None}
 
             # A stored key belongs to a send whose outcome is unknown; otherwise start a new one.
             idempotency_key = delivery.get('idempotency_key') or f"delivery-{delivery['id']}-{delivery['attempts']}"
-            self.store.mark_sending(claim, delivery['id'], pdf_url, target_email, idempotency_key)
+            self.store.mark_sending(claim, delivery['id'], pdf_url, target_email, idempotency_key, window)
             in_flight = True
             sent = self._send_email(issue, target_email, self._email_link(delivery, pdf_url), idempotency_key)
             if not sent.ok:
@@ -258,12 +274,13 @@ class SchedulerService:
     async def _generate_pdf(self, issue: dict) -> Optional[dict]:
         """Fetch articles and render the PDF. Returns None when there are no articles."""
         issue_id = issue['id']
-        days_back = int(issue.get('article_window_days') or 7)
+        until = datetime.now(timezone.utc)
+        since = self.article_window_start(issue, until, self.store.last_articles_until(issue_id))
 
         from services.rss_service import RSSService
         rss = RSSService()
         articles_data = await rss.fetch_recent_articles_for_issue(
-            issue_id, days_back=days_back, max_articles_per_publication=5
+            issue_id, max_articles_per_publication=5, start_date=since, end_date=until
         )
         if not articles_data or articles_data.get('total_articles', 0) == 0:
             return None
@@ -272,7 +289,7 @@ class SchedulerService:
         for pub_list in articles_data.get('articles_by_publication', {}).values():
             all_articles.extend(pub_list)
 
-        return await self.pdf_service.generate_pdf_from_issue(
+        result = await self.pdf_service.generate_pdf_from_issue(
             issue_id=str(issue_id),
             articles=all_articles,
             issue_info=articles_data.get('issue', {}),
@@ -280,6 +297,20 @@ class SchedulerService:
             remove_images=issue.get('remove_images', False),
             verbose=False,
         )
+        # What this edition covers; recorded with the delivery so the next one starts after it.
+        return {**result, 'articles_from': since, 'articles_until': until,
+                'articles_count': articles_data.get('total_articles', len(all_articles))}
+
+    @staticmethod
+    def article_window_start(issue: dict, until: datetime, last_until: Optional[datetime]) -> datetime:
+        """Start of the article window: where the last sent edition ended (so consecutive editions
+        never overlap), but no earlier than `article_window_days` ago (so a long pause or the
+        first edition does not dump the whole feed)."""
+        floor = until - timedelta(days=int(issue.get('article_window_days') or 7))
+        if last_until is None:
+            return floor
+        # Strictly after the last edition's end, so an article stamped at that instant is not sent twice.
+        return max(last_until + timedelta(microseconds=1), floor)
 
     @staticmethod
     def _email_link(delivery: dict, pdf_url: str) -> str:
@@ -317,6 +348,7 @@ class SchedulerService:
                 subject=f"Your scheduled PDF: {issue.get('title')}",
                 issue_title=issue.get('title'),
                 idempotency_key=idempotency_key,
+                unsubscribe_url=unsubscribe_url(issue),
             )
         except Exception as e:
             logger.exception(f"Failed to send scheduled email for issue {issue['id']}")

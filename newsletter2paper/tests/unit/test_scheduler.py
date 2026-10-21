@@ -70,8 +70,18 @@ class FakeStore:
         self._call('manual')
         return delivery(id='m1', trigger='manual')
 
-    def mark_sending(self, claim, delivery_id, pdf_url, recipient, idempotency_key):
+    verified = True
+    last_until = None
+
+    def mark_sending(self, claim, delivery_id, pdf_url, recipient, idempotency_key, window=None):
         self._call('mark_sending', delivery_id, pdf_url, recipient, idempotency_key)
+        self.window = window
+
+    def recipient_verified(self, issue_id):
+        return self.verified
+
+    def last_articles_until(self, issue_id):
+        return self.last_until
 
     def finish(self, claim, issue_fields, delivery_id=None, delivery_fields=None, cadence=None):
         self._call('finish')
@@ -247,6 +257,33 @@ class TestScheduledRun:
         assert d['status'] == 'abandoned' and d['error_kind'] == 'permanent'
         assert issue_fields['last_run_error'] == 'config: no recipient email address is set'
         assert issue_fields['schedule_status'] == 'idle' and issue_fields['next_run_at'] is not None
+
+    async def test_unverified_recipient_is_a_permanent_config_failure_before_rendering(self, svc):
+        svc.store.verified = False
+        res = await svc._process_issue(CLAIM)
+        assert res == {'success': False, 'error': 'config: the recipient address has not been confirmed'}
+        svc.generate.assert_not_called()
+        d = svc.store.finished[0][2]
+        assert d['status'] == 'abandoned' and d['error_kind'] == 'permanent'
+
+    async def test_manual_send_does_not_need_a_confirmed_recipient(self, svc):
+        svc.store.verified = False
+        res = await svc._process_issue(CLAIM, force=True)
+        assert res['success'] is True
+
+    async def test_the_articles_window_is_recorded_when_sending(self, svc):
+        from datetime import datetime, timezone
+        a, b = datetime(2026, 10, 1, tzinfo=timezone.utc), datetime(2026, 10, 8, tzinfo=timezone.utc)
+        svc.generate.return_value = {'success': True, 'pdf_url': 'http://pdf', 'articles_from': a,
+                                     'articles_until': b, 'articles_count': 4}
+        await svc._process_issue(CLAIM)
+        assert svc.store.window == {'articles_from': a, 'articles_until': b, 'articles_count': 4}
+
+    async def test_a_retry_reusing_the_pdf_does_not_rewrite_the_window(self, svc):
+        svc.store.existing = delivery(status='failed', attempts=1, pdf_url='http://pdf-old')
+        await svc._process_issue(CLAIM)
+        svc.generate.assert_not_called()
+        assert svc.store.window is None
 
     async def test_permanent_send_failure_abandons_without_retrying(self, svc):
         svc.email.return_value = PERMANENT_FAILURE
@@ -784,3 +821,44 @@ class TestEmailLink:
     async def test_links_to_the_pdf_without_public_api_url(self, svc):
         await svc._process_issue(CLAIM)
         assert next(e for e in svc.store.log if e[0] == 'email')[2] == 'http://pdf'
+
+
+class TestArticleWindow:
+    """Editions cover what the last sent edition did not, capped by article_window_days."""
+    from datetime import datetime, timedelta, timezone
+    NOW = datetime(2026, 10, 14, 9, tzinfo=timezone.utc)
+
+    def start(self, last_until, days=7):
+        return SchedulerService.article_window_start({'article_window_days': days}, self.NOW, last_until)
+
+    def test_first_edition_uses_the_full_window(self):
+        assert self.start(None) == self.NOW - self.timedelta(days=7)
+
+    def test_starts_just_after_the_last_edition_ended(self):
+        last = self.NOW - self.timedelta(days=3)
+        assert self.start(last) == last + self.timedelta(microseconds=1)
+
+    def test_consecutive_editions_never_overlap(self):
+        first_end = self.NOW - self.timedelta(days=3)
+        second_start = self.start(first_end)
+        assert second_start > first_end
+
+    def test_a_long_pause_is_capped_by_the_window(self):
+        assert self.start(self.NOW - self.timedelta(days=60)) == self.NOW - self.timedelta(days=7)
+
+    def test_window_days_defaults_to_seven(self):
+        assert SchedulerService.article_window_start({}, self.NOW, None) == self.NOW - self.timedelta(days=7)
+
+
+class TestUnsubscribeUrl:
+    def test_built_from_the_public_api_url_and_the_issue_token(self, monkeypatch):
+        import services.scheduler as sched
+        monkeypatch.setattr(sched, 'PUBLIC_API_URL', 'https://api.example.com')
+        assert sched.unsubscribe_url({'unsubscribe_token': 'abc'}) == 'https://api.example.com/u/abc'
+
+    def test_absent_without_a_public_url_or_token(self, monkeypatch):
+        import services.scheduler as sched
+        monkeypatch.setattr(sched, 'PUBLIC_API_URL', '')
+        assert sched.unsubscribe_url({'unsubscribe_token': 'abc'}) is None
+        monkeypatch.setattr(sched, 'PUBLIC_API_URL', 'https://api.example.com')
+        assert sched.unsubscribe_url({}) is None

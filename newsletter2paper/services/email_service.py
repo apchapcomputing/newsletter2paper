@@ -142,6 +142,7 @@ class EmailService:
         subject: Optional[str] = None,
         issue_title: Optional[str] = None,
         idempotency_key: Optional[str] = None,
+        unsubscribe_url: Optional[str] = None,
     ) -> SendResult:
         """
         Send an email containing a link to a generated PDF.
@@ -159,6 +160,9 @@ class EmailService:
         idempotency_key : str, optional
             Resend treats repeated requests with the same key (within 24h) as one email,
             so a retry after a crash cannot deliver twice.
+        unsubscribe_url : str, optional
+            One-click unsubscribe endpoint. Adds the RFC 8058 List-Unsubscribe headers (mail
+            clients show an Unsubscribe button) and a footer link. Must be stable across retries.
 
         Returns:
         --------
@@ -177,10 +181,60 @@ class EmailService:
             "from": EMAIL_FROM,
             "to": [email_address],
             "subject": subject or "Your newsletter PDF is ready",
-            "html": self._build_html(pdf_url=pdf_url, issue_title=display_title),
-            "text": self._build_text(pdf_url=pdf_url, issue_title=display_title),
+            "html": self._build_html(pdf_url=pdf_url, issue_title=display_title, unsubscribe_url=unsubscribe_url),
+            "text": self._build_text(pdf_url=pdf_url, issue_title=display_title, unsubscribe_url=unsubscribe_url),
         }
+        if unsubscribe_url:
+            params["headers"] = {
+                "List-Unsubscribe": f"<{unsubscribe_url}>",
+                "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+            }
         return self._dispatch(params, email_address, idempotency_key)
+
+    def send_verification(
+        self,
+        to: Optional[str],
+        confirm_url: str,
+        issue_title: Optional[str] = None,
+        idempotency_key: Optional[str] = None,
+    ) -> SendResult:
+        """Ask the owner of `to` to confirm that newspapers may be emailed there.
+
+        The link opens a page with a confirm button; nothing is confirmed by opening it, so mail
+        scanners that prefetch links cannot verify an address on the recipient's behalf."""
+        to = (to or '').strip()
+        if not to:
+            return SendResult.failed(PERMANENT, "config: no recipient email address is set")
+        problem = self._config_error()
+        if problem:
+            return problem
+        title = issue_title or "a newspaper"
+        t, u = html.escape(title), html.escape(confirm_url, quote=True)
+        params: resend.Emails.SendParams = {
+            "from": EMAIL_FROM,
+            "to": [to],
+            "subject": "Confirm your email address for Newsletter2Paper",
+            "html": f"""
+        <!DOCTYPE html>
+        <html lang="en"><head><meta charset="UTF-8"><title>Confirm your email</title></head>
+        <body style="font-family: Georgia, serif; color: #222;">
+          <div style="max-width: 600px; margin: 40px auto; padding: 24px;">
+            <h1 style="font-size: 20px;">Confirm your email address</h1>
+            <p>Someone asked to have the newspaper &ldquo;{t}&rdquo; emailed to this address on a schedule.</p>
+            <p>If that was you, confirm below. If not, ignore this message and nothing will be sent.</p>
+            <p><a href="{u}" style="display:inline-block;padding:12px 24px;background:#111;color:#fff;text-decoration:none;border-radius:3px;">Review and confirm</a></p>
+            <p style="font-size: 12px; color: #999;">The link expires in 24 hours.</p>
+          </div>
+        </body></html>
+        """,
+            "text": (
+                "Confirm your email address\n\n"
+                f"Someone asked to have the newspaper \u201c{title}\u201d emailed to this address on a schedule.\n"
+                "If that was you, open this link and confirm. If not, ignore this message and nothing will be sent.\n\n"
+                f"{confirm_url}\n\nThe link expires in 24 hours.\n"
+            ),
+        }
+        return self._dispatch(params, to, idempotency_key)
 
     def send_owner_notice(
         self,
@@ -257,12 +311,15 @@ class EmailService:
     # Private helpers
     # ------------------------------------------------------------------
 
-    def _build_html(self, pdf_url: str, issue_title: str) -> str:
+    def _build_html(self, pdf_url: str, issue_title: str, unsubscribe_url: Optional[str] = None) -> str:
         """Return a minimal HTML email body with a prominent download link.
 
         Every interpolated value is escaped: the title is user-controlled."""
         issue_title = html.escape(issue_title)
         pdf_url = html.escape(pdf_url, quote=True)
+        unsubscribe = (
+            f' <a href="{html.escape(unsubscribe_url, quote=True)}">Stop these emails</a>.' if unsubscribe_url else ""
+        )
         return f"""
         <!DOCTYPE html>
         <html lang="en">
@@ -292,7 +349,7 @@ class EmailService:
             <p>The link is valid for <strong>30&nbsp;days</strong>.</p>
             <a class="btn" href="{pdf_url}">Download PDF</a>
             <p class="footer">You received this because you set up email
-              delivery in Newsletter2Paper.</p>
+              delivery in Newsletter2Paper.{unsubscribe}</p>
           </div>
         </body>
         </html>
@@ -328,12 +385,14 @@ class EmailService:
         return "\n".join(lines) + "\n"
 
     def _build_text(
-        self, pdf_url: str, issue_title: str
+        self, pdf_url: str, issue_title: str, unsubscribe_url: Optional[str] = None
     ) -> str:
         """Return a plain-text fallback email body."""
+        footer = f"\nStop these emails: {unsubscribe_url}\n" if unsubscribe_url else ""
         return (
             f"{issue_title}\n\n"
             "Your newsletter PDF is ready.\n\n"
             f"Download: {pdf_url}\n\n"
             "This link is valid for 30 days.\n"
+            f"{footer}"
         )

@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import os
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Depends, Request
 from uuid import UUID
 from typing import List, Optional
@@ -10,8 +11,11 @@ from services.auth import (
     IssueAccess, get_current_user_id, get_db_service, require_issue_access, require_issue_owner,
     resolve_new_issue_owner,
 )
+from services import verification
 from services.database_service import DatabaseService
 from services.scheduler import SendNowCooldown
+from services.scheduling import resolve_tz
+from zoneinfo import ZoneInfo
 from models.issue import Issue
 from models.issue_publication import IssuePublication
 
@@ -20,9 +24,84 @@ router = APIRouter(prefix="/issues", tags=["issues"])
 _VALID_FREQUENCIES = {"daily", "weekly", "monthly", "once", "custom"}
 _NO_RECIPIENT = "Set target_email before enabling automatic delivery"
 _GUEST_NO_EMAIL = "Sign in to have newspapers emailed to you"
+_NOT_VERIFIED = "Confirm the recipient address before turning on automatic delivery"
+# Columns the API never returns: guest_token is a credential, claim_token is scheduler state,
+# unsubscribe_token is the secret in delivery emails' unsubscribe link.
+_PRIVATE_COLUMNS = {'guest_token', 'claim_token', 'unsubscribe_token'}
+
+
+def _public_issue(row: dict) -> dict:
+    """An issue row as returned to clients, with a `recipient_verified` flag for the UI."""
+    issue = {k: v for k, v in row.items() if k not in _PRIVATE_COLUMNS}
+    issue['recipient_verified'] = bool(row.get('target_email_verified_at'))
+    return issue
+
+
+def _anchor_defaults(frequency: str, tz_name: Optional[str], weekday, day_of_month) -> dict:
+    """Pin a weekly issue to today's weekday and a monthly one to today's date when enabling, so the
+    stored schedule says what will happen (the scheduler would otherwise infer it)."""
+    local = datetime.now(timezone.utc).astimezone(resolve_tz(tz_name))
+    fields = {}
+    if frequency == 'weekly' and weekday is None:
+        fields['schedule_weekday'] = local.weekday()
+    if frequency == 'monthly' and day_of_month is None:
+        fields['schedule_day_of_month'] = local.day
+    return fields
+
+
+class ScheduleFields(BaseModel):
+    """When automatic delivery runs: local time of day, weekday (0 = Monday) or day of month, in a timezone."""
+    schedule_timezone: Optional[str] = None
+    schedule_time_local: Optional[str] = None
+    schedule_weekday: Optional[int] = None
+    schedule_day_of_month: Optional[int] = None
+
+    @field_validator("schedule_timezone")
+    @classmethod
+    def validate_timezone(cls, v: Optional[str]) -> Optional[str]:
+        if v is None:
+            return v
+        try:
+            ZoneInfo(v)
+        except Exception:
+            raise ValueError("schedule_timezone must be an IANA timezone such as 'Europe/Berlin'")
+        return v
+
+    @field_validator("schedule_time_local")
+    @classmethod
+    def validate_time_local(cls, v: Optional[str]) -> Optional[str]:
+        if v is None:
+            return v
+        try:
+            hour, minute = v.split(":")
+            if len(hour) != 2 or len(minute) != 2 or not (0 <= int(hour) <= 23 and 0 <= int(minute) <= 59):
+                raise ValueError
+        except ValueError:
+            raise ValueError("schedule_time_local must be HH:MM, 24-hour")
+        return v
+
+    @field_validator("schedule_weekday")
+    @classmethod
+    def validate_weekday(cls, v: Optional[int]) -> Optional[int]:
+        if v is not None and not 0 <= v <= 6:
+            raise ValueError("schedule_weekday must be 0 (Monday) to 6 (Sunday)")
+        return v
+
+    @field_validator("schedule_day_of_month")
+    @classmethod
+    def validate_day_of_month(cls, v: Optional[int]) -> Optional[int]:
+        if v is not None and not 1 <= v <= 31:
+            raise ValueError("schedule_day_of_month must be 1 to 31")
+        return v
+
+    def schedule_updates(self) -> dict:
+        """The schedule fields the caller sent (an explicit null clears weekday / day of month)."""
+        nullable = {'schedule_weekday', 'schedule_day_of_month'}
+        return {name: getattr(self, name) for name in self.model_fields_set
+                if name in ScheduleFields.model_fields and (getattr(self, name) is not None or name in nullable)}
 
 # Pydantic models for requests
-class CreateIssueRequest(BaseModel):
+class CreateIssueRequest(ScheduleFields):
     title: str = "Your Newspaper"
     format: str  # "newspaper" or "essay"
     frequency: str = "weekly"  # "daily", "weekly", "monthly", "custom"
@@ -54,7 +133,7 @@ class CreateIssueRequest(BaseModel):
             raise ValueError(_NO_RECIPIENT)
         return self
 
-class UpdateIssueRequest(BaseModel):
+class UpdateIssueRequest(ScheduleFields):
     title: Optional[str] = None
     format: Optional[str] = None
     frequency: Optional[str] = None
@@ -112,6 +191,10 @@ async def create_issue(
     user_id, guest_token = resolve_new_issue_owner(http_request, db_service)
     if user_id is None and ((request.target_email or '').strip() or request.auto_send):
         raise HTTPException(status_code=403, detail=_GUEST_NO_EMAIL)
+    # The owner's own address needs no confirmation; any other must be confirmed before auto_send.
+    own_address = user_id is not None and verification.is_account_email(db_service, user_id, request.target_email)
+    if request.auto_send and not own_address:
+        raise HTTPException(status_code=422, detail=_NOT_VERIFIED)
     try:
         # Create the issue in the database
         issue_data = {
@@ -126,6 +209,13 @@ async def create_issue(
             'created_at': datetime.now(timezone.utc).isoformat(),
             'updated_at': datetime.now(timezone.utc).isoformat()
         }
+        issue_data.update(request.schedule_updates())
+        if own_address:
+            issue_data['target_email_verified_at'] = datetime.now(timezone.utc).isoformat()
+        if request.auto_send:
+            issue_data.update(_anchor_defaults(
+                request.frequency, issue_data.get('schedule_timezone'),
+                issue_data.get('schedule_weekday'), issue_data.get('schedule_day_of_month')))
         if user_id is None:
             issue_data['status'] = 'guest'
             issue_data['guest_token'] = guest_token
@@ -144,7 +234,7 @@ async def create_issue(
             
         return {
             "success": True,
-            "issue": {k: v for k, v in result.data[0].items() if k != 'guest_token'},
+            "issue": _public_issue(result.data[0]),
             "message": "Issue created successfully"
         }
         
@@ -188,18 +278,39 @@ async def update_issue(
             update_data['target_email'] = request.target_email
         if request.auto_send is not None:
             update_data['auto_send'] = request.auto_send
-        if request.auto_send or (request.target_email is not None and not request.target_email.strip()):
-            # Automatic delivery needs somewhere to deliver to; check against the stored row
-            # for whichever of the two fields this request leaves unchanged.
-            current = db_service.client.table('issues').select('auto_send, target_email')\
-                .eq('id', str(issue_id)).execute()
+        update_data.update(request.schedule_updates())
+        notes = []
+        # Only enabling delivery or changing the address needs the stored row; a cadence change on a
+        # live schedule leaves weekday / day of month to the scheduler's own anchoring.
+        if request.auto_send or request.target_email is not None:
+            current = db_service.client.table('issues').select('*').eq('id', str(issue_id)).execute()
             if not current.data:
                 raise HTTPException(status_code=404, detail="Issue not found")
             row = current.data[0]
             auto_send = request.auto_send if request.auto_send is not None else row.get('auto_send')
             target_email = request.target_email if request.target_email is not None else row.get('target_email')
+            # Automatic delivery needs somewhere to deliver to...
             if auto_send and not (target_email or '').strip():
                 raise HTTPException(status_code=422, detail=_NO_RECIPIENT)
+            # ...and a recipient who agreed. A changed address starts out unconfirmed unless it is the owner's own.
+            email_changed = (request.target_email is not None
+                             and verification.normalize(request.target_email) != verification.normalize(row.get('target_email')))
+            verified = bool(row.get('target_email_verified_at'))
+            if email_changed:
+                verified = verification.is_account_email(db_service, access.user_id, request.target_email)
+                update_data['target_email_verified_at'] = datetime.now(timezone.utc).isoformat() if verified else None
+            if auto_send and not verified:
+                if request.auto_send:
+                    raise HTTPException(status_code=422, detail=_NOT_VERIFIED)
+                update_data['auto_send'] = False
+                notes.append("Automatic delivery was turned off until the new address is confirmed.")
+                auto_send = False
+            if auto_send and request.auto_send:
+                update_data.update(_anchor_defaults(
+                    request.frequency or row.get('frequency'),
+                    update_data.get('schedule_timezone', row.get('schedule_timezone')),
+                    update_data.get('schedule_weekday', row.get('schedule_weekday')),
+                    update_data.get('schedule_day_of_month', row.get('schedule_day_of_month'))))
         if request.article_window_days is not None:
             update_data['article_window_days'] = request.article_window_days
         # Write custom dates only when the caller sent the field (an explicit null clears it);
@@ -220,13 +331,15 @@ async def update_issue(
             
         return {
             "success": True,
-            "issue": {k: v for k, v in result.data[0].items() if k != 'guest_token'},
-            "message": "Issue updated successfully"
+            "issue": _public_issue(result.data[0]),
+            "message": " ".join(["Issue updated successfully", *notes])
         }
         
     except HTTPException:
         raise
     except Exception as e:
+        if 'recipient_not_verified' in str(e):  # raised by the database trigger
+            raise HTTPException(status_code=422, detail=_NOT_VERIFIED)
         raise HTTPException(status_code=500, detail=f"Failed to update issue: {str(e)}")
 
 @router.get("/{issue_id}", response_model=dict)
@@ -249,7 +362,7 @@ async def get_issue(
             
         return {
             "success": True,
-            "issue": {k: v for k, v in result.data[0].items() if k != 'guest_token'}
+            "issue": _public_issue(result.data[0])
         }
         
     except HTTPException:
@@ -308,6 +421,57 @@ def send_issue_now(
 
     background_tasks.add_task(_run)
     return {"success": True, "message": "Sending started"}
+
+@router.post("/{issue_id}/target-email/verify", response_model=dict)
+def request_recipient_verification(
+    issue_id: UUID,
+    request: Request,
+    db_service: DatabaseService = Depends(get_db_service),
+    access: IssueAccess = Depends(require_issue_owner),
+):
+    """
+    Email the issue's target_email a confirmation link. Nothing is sent to that address on a
+    schedule until the link is confirmed (the owner's own account address needs no confirmation).
+    At most 3 requests per issue per hour.
+    """
+    result = db_service.client.table('issues').select('id, title, target_email, target_email_verified_at')\
+        .eq('id', str(issue_id)).execute()
+    if not result.data:
+        raise HTTPException(status_code=404, detail="Issue not found")
+    row = result.data[0]
+    email = (row.get('target_email') or '').strip()
+    if not email:
+        raise HTTPException(status_code=400, detail="Set target_email first")
+    if row.get('target_email_verified_at'):
+        return {"success": True, "verified": True, "message": "This address is already confirmed"}
+
+    try:
+        token = verification.issue_token(db_service, str(issue_id), email)
+    except verification.RateLimited:
+        raise HTTPException(status_code=429, detail="Too many confirmation emails; try again in an hour",
+                            headers={"Retry-After": "3600"})
+    base = os.environ.get('PUBLIC_API_URL', '').rstrip('/') or str(request.base_url).rstrip('/')
+    from services.email_service import EmailService
+    sent = EmailService().send_verification(email, f"{base}/email/verify?token={token}", row.get('title'))
+    if not sent.ok:
+        logging.warning("Confirmation email for issue %s failed: %s", issue_id, sent.error)
+        raise HTTPException(status_code=502, detail="The confirmation email could not be sent; try again later")
+    return {"success": True, "verified": False, "message": "Confirmation email sent"}
+
+@router.get("/{issue_id}/deliveries", response_model=dict)
+def list_deliveries(
+    issue_id: UUID,
+    limit: int = 20,
+    db_service: DatabaseService = Depends(get_db_service),
+    access: IssueAccess = Depends(require_issue_owner),
+):
+    """The issue's most recent editions (scheduled and manual), newest first."""
+    limit = max(1, min(limit, 100))
+    result = db_service.client.table('issue_deliveries')\
+        .select('id, trigger, period_key, scheduled_for, status, attempts, next_attempt_at, error, '
+                'articles_from, articles_until, articles_count, sent_at, opened_at, created_at')\
+        .eq('issue_id', str(issue_id)).order('created_at', desc=True).limit(limit).execute()
+    return {"success": True, "deliveries": result.data or []}
 
 @router.post("/{issue_id}/publications", response_model=dict)
 async def add_publications_to_issue(

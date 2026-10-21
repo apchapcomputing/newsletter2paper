@@ -3,7 +3,7 @@ from fastapi.responses import PlainTextResponse
 from contextlib import asynccontextmanager
 from fastapi.middleware.cors import CORSMiddleware
 import os
-from routers import rss, issues, publications, articles, pdf, deliveries
+from routers import rss, issues, publications, articles, pdf, deliveries, email_links
 from services import analytics_service as analytics
 
 # Verify required environment variables
@@ -67,6 +67,7 @@ app.include_router(publications.router)
 app.include_router(articles.router)
 app.include_router(pdf.router)
 app.include_router(deliveries.router)
+app.include_router(email_links.router)
 
 
 @app.exception_handler(Exception)

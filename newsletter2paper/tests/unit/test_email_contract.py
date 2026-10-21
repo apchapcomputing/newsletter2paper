@@ -146,3 +146,37 @@ def test_text_body_keeps_values_literal(service):
     body = service._build_text(PDF_URL, HOSTILE_TITLE)
     assert HOSTILE_TITLE in body and PDF_URL in body
     check_snapshot("email_body.txt", body)
+
+
+@respx.mock
+def test_unsubscribe_url_adds_one_click_headers_and_a_footer_link(service):
+    route = respx.post(RESEND_EMAILS).mock(return_value=httpx.Response(200, json={"id": "m"}))
+    send(service, unsubscribe_url="https://api.example.com/u/tok")
+    body = json.loads(route.calls.last.request.content)
+    assert body["headers"] == {"List-Unsubscribe": "<https://api.example.com/u/tok>",
+                               "List-Unsubscribe-Post": "List-Unsubscribe=One-Click"}
+    assert "https://api.example.com/u/tok" in body["html"] and "https://api.example.com/u/tok" in body["text"]
+
+
+@respx.mock
+def test_without_an_unsubscribe_url_there_are_no_list_headers(service):
+    route = respx.post(RESEND_EMAILS).mock(return_value=httpx.Response(200, json={"id": "m"}))
+    send(service)
+    assert "headers" not in json.loads(route.calls.last.request.content)
+
+
+@respx.mock
+def test_verification_email_links_to_the_confirm_page_and_escapes_the_title(service):
+    route = respx.post(RESEND_EMAILS).mock(return_value=httpx.Response(200, json={"id": "m"}))
+    result = service.send_verification("reader@example.com", "https://api.example.com/email/verify?token=t&x=1",
+                                       "<script>x</script>", idempotency_key="verify-1")
+    assert result.ok
+    body = json.loads(route.calls.last.request.content)
+    assert body["to"] == ["reader@example.com"] and "<script>" not in body["html"]
+    assert "token=t&amp;x=1" in body["html"] and "token=t&x=1" in body["text"]
+    assert route.calls.last.request.headers["Idempotency-Key"] == "verify-1"
+
+
+def test_verification_email_needs_an_address(service):
+    result = service.send_verification("  ", "https://x")
+    assert not result.ok and result.error_kind == "permanent"

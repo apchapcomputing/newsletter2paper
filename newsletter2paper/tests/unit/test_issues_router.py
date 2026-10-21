@@ -15,6 +15,7 @@ ISSUE_ID = uuid4()
 
 
 OWNER = str(uuid4())
+ACCOUNT_EMAIL = "a@b.co"
 OWNER_HEADERS = {"Authorization": "Bearer good"}
 
 
@@ -31,6 +32,7 @@ def client_for(db, as_owner=True):
 def signed_in_db(responses=None):
     db = FakeSupabase({("user_issues", "insert"): [{"issue_id": str(ISSUE_ID)}], **(responses or {})})
     db.client.auth.get_user.return_value.user.id = OWNER
+    db.client.auth.admin.get_user_by_id.return_value.user.email = ACCOUNT_EMAIL
     return db
 
 
@@ -115,14 +117,32 @@ class TestAutoSendNeedsRecipient:
         resp = client_for(FakeSupabase()).post("/issues/", json={"format": "essay", "auto_send": True})
         assert resp.status_code == 422 and "target_email" in resp.text
 
-    def test_create_with_auto_send_and_email_is_accepted(self):
+    def test_create_with_auto_send_and_the_account_email_is_accepted_and_marked_verified(self):
         db = signed_in_db({("issues", "insert"): [{"id": str(ISSUE_ID)}]})
-        resp = client_for(db).post("/issues/", json={"format": "essay", "auto_send": True, "target_email": "a@b.co"},
+        resp = client_for(db).post("/issues/", json={"format": "essay", "auto_send": True, "target_email": "A@B.co"},
                                    headers=OWNER_HEADERS)
         assert resp.status_code == 200
+        (_, _, payload, _), = db.calls_for("issues", "insert")
+        assert payload["target_email_verified_at"]
+        assert payload["schedule_weekday"] is not None  # weekly is pinned to a weekday when enabled
+
+    def test_create_with_auto_send_and_another_address_is_rejected_as_unverified(self):
+        db = signed_in_db({("issues", "insert"): [{"id": str(ISSUE_ID)}]})
+        resp = client_for(db).post("/issues/", json={"format": "essay", "auto_send": True, "target_email": "other@x.co"},
+                                   headers=OWNER_HEADERS)
+        assert resp.status_code == 422 and resp.json()["detail"] == issues._NOT_VERIFIED
+        assert db.calls_for("issues", "insert") == []
+
+    def test_create_with_another_address_but_no_auto_send_is_stored_unverified(self):
+        db = signed_in_db({("issues", "insert"): [{"id": str(ISSUE_ID)}]})
+        resp = client_for(db).post("/issues/", json={"format": "essay", "target_email": "other@x.co"},
+                                   headers=OWNER_HEADERS)
+        assert resp.status_code == 200
+        (_, _, payload, _), = db.calls_for("issues", "insert")
+        assert "target_email_verified_at" not in payload
 
     def put(self, stored, body):
-        db = FakeSupabase({("issues", "select"): [stored], ("issues", "update"): [{"id": str(ISSUE_ID)}]})
+        db = signed_in_db({("issues", "select"): [stored], ("issues", "update"): [{"id": str(ISSUE_ID)}]})
         return db, client_for(db).put(f"/issues/{ISSUE_ID}", json=body)
 
     def test_enabling_without_a_stored_email_is_rejected(self):
@@ -130,13 +150,60 @@ class TestAutoSendNeedsRecipient:
         assert resp.status_code == 422 and resp.json()["detail"] == issues._NO_RECIPIENT
         assert db.calls_for("issues", "update") == []
 
-    def test_enabling_with_a_stored_email_is_accepted(self):
-        _, resp = self.put({"auto_send": False, "target_email": "a@b.co"}, {"auto_send": True})
+    def test_enabling_with_a_verified_stored_email_is_accepted(self):
+        _, resp = self.put({"auto_send": False, "target_email": "a@b.co", "target_email_verified_at": "2026-10-01T00:00:00Z"},
+                           {"auto_send": True})
         assert resp.status_code == 200
 
-    def test_enabling_and_setting_the_email_together_is_accepted(self):
-        _, resp = self.put({"auto_send": False, "target_email": None}, {"auto_send": True, "target_email": "a@b.co"})
+    def test_enabling_with_an_unverified_stored_email_is_rejected(self):
+        db, resp = self.put({"auto_send": False, "target_email": "other@x.co", "target_email_verified_at": None},
+                            {"auto_send": True})
+        assert resp.status_code == 422 and resp.json()["detail"] == issues._NOT_VERIFIED
+        assert db.calls_for("issues", "update") == []
+
+    def test_enabling_and_setting_the_account_email_together_is_accepted(self):
+        db, resp = self.put({"auto_send": False, "target_email": None}, {"auto_send": True, "target_email": "a@b.co"})
         assert resp.status_code == 200
+        (_, _, payload, _), = db.calls_for("issues", "update")
+        assert payload["target_email_verified_at"]
+
+    def test_enabling_and_setting_another_email_together_is_rejected(self):
+        _, resp = self.put({"auto_send": False, "target_email": None}, {"auto_send": True, "target_email": "other@x.co"})
+        assert resp.status_code == 422
+
+    def test_changing_the_address_on_a_live_schedule_turns_it_off_until_confirmed(self):
+        db, resp = self.put({"auto_send": True, "target_email": "a@b.co", "target_email_verified_at": "2026-10-01T00:00:00Z"},
+                            {"target_email": "other@x.co"})
+        assert resp.status_code == 200
+        (_, _, payload, _), = db.calls_for("issues", "update")
+        assert payload["auto_send"] is False and payload["target_email_verified_at"] is None
+        assert "turned off" in resp.json()["message"]
+
+    def test_resending_the_same_address_keeps_it_verified(self):
+        db, resp = self.put({"auto_send": True, "target_email": "other@x.co", "target_email_verified_at": "2026-10-01T00:00:00Z"},
+                            {"target_email": "OTHER@x.co "})
+        (_, _, payload, _), = db.calls_for("issues", "update")
+        assert "auto_send" not in payload and "target_email_verified_at" not in payload
+
+    def test_enabling_pins_a_weekly_issue_to_a_weekday(self):
+        db, _ = self.put({"auto_send": False, "target_email": "a@b.co", "target_email_verified_at": "2026-10-01T00:00:00Z",
+                          "frequency": "weekly"}, {"auto_send": True})
+        (_, _, payload, _), = db.calls_for("issues", "update")
+        assert 0 <= payload["schedule_weekday"] <= 6
+
+    def test_enabling_keeps_a_weekday_the_owner_chose(self):
+        db, _ = self.put({"auto_send": False, "target_email": "a@b.co", "target_email_verified_at": "2026-10-01T00:00:00Z",
+                          "frequency": "weekly", "schedule_weekday": 4}, {"auto_send": True})
+        (_, _, payload, _), = db.calls_for("issues", "update")
+        assert "schedule_weekday" not in payload
+
+    def test_the_database_trigger_is_reported_as_422(self):
+        db = signed_in_db({("issues", "select"): [{"auto_send": False, "target_email": "a@b.co",
+                                                  "target_email_verified_at": "x"}]})
+        db.client.table.side_effect = lambda name: (_ for _ in ()).throw(Exception("recipient_not_verified: x")) \
+            if name == "issues" and db.calls_for("issues", "select") else db._table(name)
+        resp = client_for(db).put(f"/issues/{ISSUE_ID}", json={"auto_send": True})
+        assert resp.status_code == 422
 
     def test_clearing_the_email_while_enabled_is_rejected(self):
         _, resp = self.put({"auto_send": True, "target_email": "a@b.co"}, {"target_email": "  "})
@@ -145,6 +212,111 @@ class TestAutoSendNeedsRecipient:
     def test_disabling_never_needs_an_email(self):
         db, resp = self.put({"auto_send": True, "target_email": None}, {"auto_send": False})
         assert resp.status_code == 200 and db.calls_for("issues", "select") == []
+
+
+class TestScheduleFields:
+    def put(self, body):
+        db = signed_in_db({("issues", "update"): [{"id": str(ISSUE_ID)}]})
+        return db, client_for(db).put(f"/issues/{ISSUE_ID}", json=body)
+
+    @pytest.mark.parametrize("body", [
+        {"schedule_timezone": "Mars/Olympus"}, {"schedule_time_local": "9:00"}, {"schedule_time_local": "25:00"},
+        {"schedule_weekday": 7}, {"schedule_weekday": -1}, {"schedule_day_of_month": 0}, {"schedule_day_of_month": 32},
+    ])
+    def test_invalid_values_are_rejected(self, body):
+        assert self.put(body)[1].status_code == 422
+
+    def test_valid_values_are_written(self):
+        db, resp = self.put({"schedule_timezone": "Europe/Berlin", "schedule_time_local": "07:30",
+                             "schedule_weekday": 0, "schedule_day_of_month": 31})
+        assert resp.status_code == 200
+        (_, _, payload, _), = db.calls_for("issues", "update")
+        assert (payload["schedule_timezone"], payload["schedule_time_local"], payload["schedule_weekday"],
+                payload["schedule_day_of_month"]) == ("Europe/Berlin", "07:30", 0, 31)
+
+    def test_explicit_null_clears_weekday(self):
+        db, _ = self.put({"schedule_weekday": None})
+        (_, _, payload, _), = db.calls_for("issues", "update")
+        assert payload["schedule_weekday"] is None
+
+    def test_unsent_fields_are_left_alone(self):
+        db, _ = self.put({"title": "x"})
+        (_, _, payload, _), = db.calls_for("issues", "update")
+        assert not any(k.startswith("schedule_") for k in payload)
+
+
+class TestResponsesHideInternals:
+    def test_get_strips_tokens_and_reports_verification(self):
+        row = {"id": str(ISSUE_ID), "guest_token": "g", "claim_token": "c", "unsubscribe_token": "u",
+               "target_email_verified_at": "2026-10-01T00:00:00Z"}
+        resp = client_for(FakeSupabase({("issues", "select"): [row]})).get(f"/issues/{ISSUE_ID}")
+        issue = resp.json()["issue"]
+        assert not {"guest_token", "claim_token", "unsubscribe_token"} & set(issue)
+        assert issue["recipient_verified"] is True
+
+
+class TestRecipientVerificationRequest:
+    def post(self, db, sent, monkeypatch):
+        import services.email_service as em
+        monkeypatch.setattr(em.EmailService, "send_verification", lambda self, to, url, title=None, idempotency_key=None: sent(to, url))
+        app = FastAPI()
+        app.include_router(issues.router)
+        app.dependency_overrides[issues.get_db_service] = lambda: db
+        app.dependency_overrides[issues.require_issue_owner] = lambda: IssueAccess(str(ISSUE_ID), OWNER)
+        return TestClient(app).post(f"/issues/{ISSUE_ID}/target-email/verify")
+
+    def row(self, **over):
+        return {"id": str(ISSUE_ID), "title": "T", "target_email": "other@x.co", "target_email_verified_at": None, **over}
+
+    def test_emails_a_link_and_stores_only_a_hash(self, monkeypatch):
+        import services.email_service as em
+        sent = []
+        db = FakeSupabase({("issues", "select"): [self.row()], ("email_verifications", "select"): []})
+        resp = self.post(db, lambda to, url: sent.append((to, url)) or em.SendResult.sent("m"), monkeypatch)
+        assert resp.status_code == 200 and resp.json()["verified"] is False
+        (to, url), = sent
+        token = url.split("token=")[1]
+        (_, _, stored, _), = db.calls_for("email_verifications", "insert")
+        assert to == "other@x.co" and "/email/verify?token=" in url
+        assert token not in str(stored) and stored["token_hash"] == verification_hash(token)
+
+    def test_already_verified_sends_nothing(self, monkeypatch):
+        db = FakeSupabase({("issues", "select"): [self.row(target_email_verified_at="2026-10-01T00:00:00Z")]})
+        resp = self.post(db, lambda *a: 1 / 0, monkeypatch)
+        assert resp.json()["verified"] is True and db.calls_for("email_verifications", "insert") == []
+
+    def test_no_address_is_a_400(self, monkeypatch):
+        db = FakeSupabase({("issues", "select"): [self.row(target_email=None)]})
+        assert self.post(db, lambda *a: 1 / 0, monkeypatch).status_code == 400
+
+    def test_rate_limited_after_three_requests_in_an_hour(self, monkeypatch):
+        db = FakeSupabase({("issues", "select"): [self.row()], ("email_verifications", "select"): [{}, {}, {}]})
+        resp = self.post(db, lambda *a: 1 / 0, monkeypatch)
+        assert resp.status_code == 429 and db.calls_for("email_verifications", "insert") == []
+
+    def test_a_failed_send_is_a_502(self, monkeypatch):
+        import services.email_service as em
+        db = FakeSupabase({("issues", "select"): [self.row()], ("email_verifications", "select"): []})
+        resp = self.post(db, lambda *a: em.SendResult.failed("permanent", "email: no"), monkeypatch)
+        assert resp.status_code == 502
+
+
+def verification_hash(token):
+    from services.verification import hash_token
+    return hash_token(token)
+
+
+class TestDeliveriesList:
+    def test_returns_the_issues_editions_newest_first_with_a_capped_limit(self):
+        db = FakeSupabase({("issue_deliveries", "select"): [{"id": "d1", "status": "sent"}]})
+        app = FastAPI()
+        app.include_router(issues.router)
+        app.dependency_overrides[issues.get_db_service] = lambda: db
+        app.dependency_overrides[issues.require_issue_owner] = lambda: IssueAccess(str(ISSUE_ID), OWNER)
+        resp = TestClient(app).get(f"/issues/{ISSUE_ID}/deliveries?limit=9999")
+        assert resp.json() == {"success": True, "deliveries": [{"id": "d1", "status": "sent"}]}
+        (_, _, _, filters), = db.calls_for("issue_deliveries", "select")
+        assert filters == (("issue_id", str(ISSUE_ID)),)
 
 
 class TestGetAndDelete:
