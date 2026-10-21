@@ -3,8 +3,8 @@
 ## Purpose
 
 Sending newspaper PDF links through Resend (`services/email_service.py`), for scheduled and manual
-deliveries and for on-demand generation. Recipient verification and unsubscribe are still proposed
-in `openspec/changes/scheduled-delivery-production` (tasks §7).
+deliveries and for on-demand generation, plus recipient verification and one-click unsubscribe
+(`services/verification.py`, `routers/email_links.py`).
 
 ---
 
@@ -112,3 +112,41 @@ send a plain-text alternative with the values as literal text.
 - GIVEN an issue titled `<img src=x onerror=alert(1)>`
 - WHEN its delivery email is rendered
 - THEN the title appears as literal text in the HTML body
+
+---
+
+### Requirement: Recipient Verification
+
+Scheduled mail SHALL go only to an address that is verified: confirmed through an emailed link, or equal
+to the issue owner's account email (checked by Supabase Auth). `issues.target_email_verified_at` records
+it and is cleared whenever `target_email` changes (unless the same statement sets it).
+
+- `POST /issues/{id}/target-email/verify` (owner only) emails a confirmation link. At most 3 per issue per hour (429 after).
+  It returns `verified: true` without sending when the address is already verified.
+- The link opens `GET /email/verify?token=`, which only shows a page. The page's button sends `POST /email/verify?token=`, which verifies the address. Opening the link never verifies, so mail scanners that prefetch links cannot.
+- Tokens are random, single-use, expire after 24 hours and are stored as SHA-256 hashes (`email_verifications`, backend-only). A token is refused when the address changed after it was issued.
+- A database trigger (`enforce_recipient_verification`) refuses `auto_send = true` for an unverified address when the write comes from a browser role (`anon`, `authenticated`; error `recipient_not_verified`), because the browser writes `issues` directly. The API answers 422 for the same case, and the scheduler records an unconfirmed address as a permanent `config:` failure.
+- Changing the address of an issue with `auto_send` on through the API turns `auto_send` off until the new address is confirmed. Manual Send now is not restricted.
+
+#### Scenario: Enabling delivery to a friend's address
+
+- GIVEN an owner whose issue's `target_email` is not their account email
+- WHEN they enable `auto_send` before confirming
+- THEN the API answers 422 and the issue is unchanged
+- AND after the friend confirms the link, enabling succeeds
+
+#### Scenario: A mail scanner opens the link
+
+- GIVEN a confirmation email whose link is opened by an automated scanner
+- WHEN the scanner issues `GET /email/verify?token=...`
+- THEN a page with a Confirm button is returned and the address stays unverified
+
+---
+
+### Requirement: Unsubscribe
+
+Scheduled delivery emails SHALL carry `List-Unsubscribe: <{PUBLIC_API_URL}/u/{unsubscribe_token}>` and
+`List-Unsubscribe-Post: List-Unsubscribe=One-Click` (RFC 8058) and a footer link, when `PUBLIC_API_URL` is set.
+`POST /u/{token}` turns `auto_send` off for that issue; `GET /u/{token}` only shows a confirmation button.
+`issues.unsubscribe_token` is a per-issue random secret that the API never returns.
+

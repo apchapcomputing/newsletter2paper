@@ -3,6 +3,8 @@ from datetime import datetime, timezone, timedelta
 from unittest.mock import MagicMock
 from zoneinfo import ZoneInfo
 
+import threading
+
 import pytest
 import time_machine
 
@@ -28,6 +30,15 @@ def test_lock_timeout_must_exceed_worst_case_run():
     check_lock_timeout(15, 120)  # 900s > 300 + 120 + 60
     with pytest.raises(RuntimeError, match='SCHEDULER_LOCK_TIMEOUT_MINUTES'):
         check_lock_timeout(8, 120)  # 480s == worst case
+
+
+def bare_scheduler():
+    """A SchedulerService without its database engine or APScheduler."""
+    s = SchedulerService.__new__(SchedulerService)
+    s._tick_lock = threading.Lock()
+    s._stopping = threading.Event()
+    s.scheduler = None
+    return s
 
 
 CLAIM = Claim('i1', 'tok-1')
@@ -107,7 +118,7 @@ class FakeStore:
 
 @pytest.fixture
 def svc(monkeypatch):
-    s = SchedulerService.__new__(SchedulerService)
+    s = bare_scheduler()
     s.store = FakeStore()
     s.batch_size = 5
     s._issue = issue()
@@ -399,7 +410,7 @@ class TestManualSend:
 
 class TestPolling:
     def test_claims_one_issue_at_a_time_until_none_are_due(self, monkeypatch):
-        s = SchedulerService.__new__(SchedulerService)
+        s = bare_scheduler()
         s.batch_size = 5
         s.store = MagicMock()
         s.store.initialize_unscheduled.return_value = []
@@ -414,7 +425,7 @@ class TestPolling:
         assert processed == ['a', 'b'] and s.store.claim_next_due.call_count == 3
 
     def test_unexpected_error_releases_the_claim(self, monkeypatch):
-        s = SchedulerService.__new__(SchedulerService)
+        s = bare_scheduler()
         s.batch_size = 1
         s.store = MagicMock()
         s.store.initialize_unscheduled.return_value = []
@@ -649,7 +660,7 @@ class TestSlotAnchoring:
         assert svc.store.finished[-1][0]['next_run_at'] == dt(2026, 10, 6, 9)
 
     def test_enabling_waits_for_the_next_configured_slot(self):
-        s = SchedulerService.__new__(SchedulerService)
+        s = bare_scheduler()
         s.store = MagicMock()
         seen = {}
 
@@ -664,7 +675,7 @@ class TestSlotAnchoring:
         assert seen['at'] == dt(2026, 10, 9, 9)
 
     def test_one_shot_issues_are_due_right_away(self):
-        s = SchedulerService.__new__(SchedulerService)
+        s = bare_scheduler()
         s.store = MagicMock()
         seen = {}
         s.store.initialize_unscheduled.side_effect = lambda cb: seen.setdefault('at', cb({'frequency': 'once'})) and []
@@ -749,7 +760,7 @@ class TestOwnerNotice:
         assert [e for e in svc.store.log if e[0] == 'claim_notice'] == [('claim_notice', 'd7'), ('claim_notice', 'd8')]
 
     def test_every_poll_ends_with_the_sweep(self, monkeypatch):
-        s = SchedulerService.__new__(SchedulerService)
+        s = bare_scheduler()
         s.batch_size = 5
         s.store = MagicMock()
         s.store.initialize_unscheduled.return_value = []
@@ -862,3 +873,54 @@ class TestUnsubscribeUrl:
         assert sched.unsubscribe_url({'unsubscribe_token': 'abc'}) is None
         monkeypatch.setattr(sched, 'PUBLIC_API_URL', 'https://api.example.com')
         assert sched.unsubscribe_url({}) is None
+
+
+class TestGracefulShutdown:
+    def test_waits_for_the_run_in_progress_then_stops(self):
+        s = bare_scheduler()
+        s._tick_lock.acquire()
+        done = []
+        t = threading.Thread(target=lambda: (s.shutdown(grace_seconds=5), done.append(True)))
+        t.start()
+        t.join(0.2)
+        assert not done and s._stopping.is_set()      # still waiting for the run
+        s._tick_lock.release()
+        t.join(2)
+        assert done                                   # returned as soon as the run ended
+
+    def test_gives_up_after_the_grace_period(self, caplog):
+        s = bare_scheduler()
+        s._tick_lock.acquire()
+        s.shutdown(grace_seconds=0.05)
+        assert 'still going' in caplog.text
+
+    def test_a_tick_after_shutdown_started_does_nothing(self, monkeypatch):
+        s = bare_scheduler()
+        s.batch_size = 5
+        s.store = MagicMock()
+        s._stopping.set()
+        s._job_check_and_process()
+        s.store.claim_next_due.assert_not_called()
+
+    def test_a_tick_does_not_start_while_another_runs(self):
+        s = bare_scheduler()
+        s.store = MagicMock()
+        s._tick_lock.acquire()
+        s._job_check_and_process()
+        s.store.claim_next_due.assert_not_called()
+
+    def test_stops_claiming_further_issues_once_shutdown_begins(self, monkeypatch):
+        s = bare_scheduler()
+        s.batch_size = 5
+        s.store = MagicMock()
+        s.store.initialize_unscheduled.return_value = []
+        s.store.unnotified_abandoned.return_value = []
+        s.store.claim_next_due.return_value = CLAIM
+
+        async def run(claim, force=False):
+            s._stopping.set()                         # shutdown arrives while the first issue runs
+            return {'success': True, 'error': None}
+
+        monkeypatch.setattr(s, '_process_issue', run)
+        s._job_check_and_process()
+        assert s.store.claim_next_due.call_count == 1

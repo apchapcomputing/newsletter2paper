@@ -25,7 +25,12 @@ services:
       - pdf-maker
     networks:
       - newsletter-network
-    command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+    # No --reload in production: a file change restarts the process, which would cut a scheduled
+    # run short. (docker-compose.dev.yml keeps it.)
+    command: uvicorn main:app --host 0.0.0.0 --port 8000
+    # On stop, the scheduler waits up to SCHEDULER_SHUTDOWN_GRACE_SECONDS (default 100) for the
+    # run in progress; Docker must not SIGKILL it first.
+    stop_grace_period: 120s
     restart: unless-stopped
 
   # Go PDF Maker Service

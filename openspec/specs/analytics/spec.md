@@ -168,6 +168,9 @@ Names follow `object_action`, snake_case. Never send emails, article text, feed 
 | `delivery_sent` | scheduler `_succeed` | `issue_id`, `delivery_id`, `trigger`, `frequency`, `attempts` |
 | `delivery_failed` | scheduler `_fail` | the above, plus `error_kind`, `error_category`, `final` |
 | `delivery_skipped` | scheduler `_skip` | the above, plus `reason`: `no_articles` |
+| `recipient_verification_requested` | `RecipientConfirmation` | |
+| `recipient_verified` | `POST /email/verify` (`routers/email_links.py`) | `issue_id` |
+| `delivery_unsubscribed` | `POST /u/{token}` (same router) | `issue_id` |
 | `edition_opened` | `GET /d/{delivery_id}` (`routers/deliveries.py`) | `issue_id`, `delivery_id`, `trigger`, `first_open`, `likely_scanner`, `hours_since_sent` |
 
 Server events use the issue owner's Supabase user id (`issue:<id>` for guest issues). People are identified by Supabase user id on sign-in. Guests are anonymous: a stored ID if they accepted the consent banner, cookieless otherwise.
