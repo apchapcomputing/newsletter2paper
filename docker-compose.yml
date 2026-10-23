@@ -5,8 +5,11 @@ services:
       context: ./newsletter2paper
       dockerfile: Dockerfile
     container_name: newsletter2paper-api
+    # Localhost only: Docker publishes ports straight past ufw, so "8000:8000" would expose the
+    # plain-HTTP API to the internet. The public entry point is the caddy service below, which
+    # terminates HTTPS. (The deploy health check runs on the droplet, so it still reaches this.)
     ports:
-      - "8000:8000"
+      - "127.0.0.1:8000:8000"
     environment:
       - SUPABASE_URL=${SUPABASE_URL}
       - SUPABASE_SECRET_KEY=${SUPABASE_SECRET_KEY}
@@ -33,6 +36,29 @@ services:
     stop_grace_period: 120s
     restart: unless-stopped
 
+  # HTTPS reverse proxy: gets and renews a Let's Encrypt certificate for API_DOMAIN and forwards
+  # to the API. Needs a DNS A record for API_DOMAIN pointing at this droplet, and ports 80 and 443
+  # open. Certificates live in the caddy_data volume; do not run `docker compose down -v`.
+  caddy:
+    image: caddy:2-alpine
+    container_name: newsletter2paper-caddy
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      # Falls back to localhost (a self-signed certificate nobody uses) so a missing value cannot
+      # stop the API from starting.
+      - API_DOMAIN=${API_DOMAIN:-localhost}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - fastapi
+    networks:
+      - newsletter-network
+    restart: unless-stopped
+
   # Go PDF Maker Service
   pdf-maker:
     build:
@@ -53,6 +79,10 @@ services:
 
 volumes:
   shared-images:
+    driver: local
+  caddy_data:
+    driver: local
+  caddy_config:
     driver: local
 
 networks:

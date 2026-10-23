@@ -8,6 +8,7 @@ on:
       - 'pdf-maker/**'
       - 'newsletter2paper/**'
       - 'docker-compose.yml'
+      - 'Caddyfile'
       - '.github/workflows/deploy.yml'
 
 jobs:
