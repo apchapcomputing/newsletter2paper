@@ -60,4 +60,4 @@ Full stack via Docker (from repo root): `docker compose up --build` (API + pdf-m
 
 ## Deploy
 
-Pushes to `main` touching `pdf-maker/**`, `newsletter2paper/**`, `docker-compose.yml`, or the workflow SSH into a DigitalOcean droplet, `git pull`, `docker compose down && up -d --build`, and poll `/health`. The UI is deployed separately (Vercel).
+Pushes to `main` touching `pdf-maker/**`, `newsletter2paper/**`, `docker-compose.yml`, `Caddyfile`, or the workflow SSH into a DigitalOcean droplet, `git pull`, `docker compose down && up -d --build` (with `COMPOSE_PROFILES=prod`), and poll `/health`. The `caddy` service (HTTPS via Let's Encrypt, hostname from `API_DOMAIN`) is in the `prod` profile, so a local `docker compose up` does not bind ports 80/443; the API itself is published on `127.0.0.1:8000` only. Setup steps are in `DEPLOY_HTTPS.md`. The UI is deployed separately (Vercel).
