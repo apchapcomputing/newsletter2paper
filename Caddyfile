@@ -1,0 +1,6 @@
+# Public HTTPS entry point for the API (see docker-compose.yml, service "caddy").
+# API_DOMAIN comes from .env, for example api.newsletter2paper.xyz.
+{$API_DOMAIN} {
+	encode gzip
+	reverse_proxy fastapi:8000
+}
