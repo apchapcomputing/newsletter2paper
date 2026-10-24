@@ -23,8 +23,12 @@ Replace `api.newsletter2paper.xyz` below if you pick another hostname. `138.197.
    API_DOMAIN=api.newsletter2paper.xyz
    PUBLIC_API_URL=https://api.newsletter2paper.xyz
    EMAIL_FROM="Newsletter2Paper <newsletters@newsletter2paper.xyz>"
+   COMPOSE_PROFILES=prod
    ```
-   (`RESEND_API_KEY` and the Supabase values stay as they are.)
+   (`RESEND_API_KEY` and the Supabase values stay as they are.) `COMPOSE_PROFILES=prod` makes your own
+   `docker compose` commands on the droplet include the Caddy container, which is behind the `prod`
+   profile so a local `docker compose up` does not try to bind ports 80/443. The deploy workflow sets
+   it itself, so HTTPS does not depend on this line; it only keeps your manual commands consistent.
 
 ## B. Deploy
 

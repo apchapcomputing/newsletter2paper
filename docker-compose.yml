@@ -46,9 +46,12 @@ services:
   # HTTPS reverse proxy: gets and renews a Let's Encrypt certificate for API_DOMAIN and forwards
   # to the API. Needs a DNS A record for API_DOMAIN pointing at this droplet, and ports 80 and 443
   # open. Certificates live in the caddy_data volume; do not run `docker compose down -v`.
+  # Only started with the "prod" profile (the deploy workflow sets COMPOSE_PROFILES=prod), so a
+  # local `docker compose up` does not bind host ports 80/443.
   caddy:
     image: caddy:2-alpine
     container_name: newsletter2paper-caddy
+    profiles: ["prod"]
     ports:
       - "80:80"
       - "443:443"

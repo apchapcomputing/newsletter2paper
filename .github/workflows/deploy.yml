@@ -28,7 +28,10 @@ jobs:
           key: ${{ secrets.DROPLET_SSH_KEY }}
           script: |
             set -e
-            
+
+            # The HTTPS proxy (caddy) only runs in production; this applies to every compose command below.
+            export COMPOSE_PROFILES=prod
+
             echo "📦 Navigating to project directory..."
             cd ~/newsletter2paper
             
