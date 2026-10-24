@@ -5,13 +5,13 @@ export default function Hero({ onCta, heroImage }) {
   return (
     <section className="lp-wrap lp-hero">
       <div>
-        <p className="lp-label lp-muted">Substack newsletters, printed</p>
+        <p className="lp-label lp-muted">Substack and RSS, printed</p>
         <h1 className="lp-h1">The reading you meant to do, on paper.</h1>
         <p className="lp-hero__sub">
-          Pick the newsletters you love. We lay them out as a printable newspaper or essay, and can deliver a fresh edition every week. No scrolling, no inbox, no screen.
+          Pick the newsletters you follow and we lay them out as a printable newspaper or essay. Read it at the kitchen table with a pen in your hand.
         </p>
         <div className="lp-hero__cta">
-          <Link href="/" onClick={() => onCta('hero')} className="lp-btn lp-btn--fill">Try it free</Link>
+          <Link href="/" onClick={() => onCta('hero')} className="lp-btn lp-btn--fill">Make my first PDF</Link>
           <a href="#how-it-works" className="lp-link">Continued below: how it works →</a>
         </div>
         <p className="lp-hero__note">Free for one-off PDFs. No account needed.</p>

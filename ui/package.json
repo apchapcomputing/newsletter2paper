@@ -15,6 +15,7 @@
     "@emotion/styled": "^11.14.1",
     "@mui/icons-material": "^7.3.2",
     "@mui/material": "^7.3.2",
+    "@mui/material-nextjs": "^7.3.10",
     "@posthog/nextjs-config": "^1.11.1",
     "@supabase/ssr": "^0.7.0",
     "@supabase/supabase-js": "^2.81.1",

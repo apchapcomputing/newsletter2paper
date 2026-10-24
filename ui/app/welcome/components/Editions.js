@@ -50,11 +50,11 @@ export function EmailCard() {
   return (
     <figure>
       <div className="lp-sheet" aria-hidden="true">
-        <div className="lp-sheet__name">Your edition is ready</div>
+        <div className="lp-sheet__name">Your issue is ready</div>
         <div className="lp-sheet__folio"><span>Every Sunday</span><span>New since last week</span></div>
         <div className="lp-mail">
           <div className="lp-bars"><i style={{ width: '55%' }} /><i /><i style={{ width: '85%' }} /></div>
-          <span className="lp-btn lp-btn--fill">Open this week&apos;s edition</span>
+          <span className="lp-btn lp-btn--fill">Open this week&apos;s issue</span>
         </div>
       </div>
       <figcaption className="lp-caption">Illustrative email</figcaption>

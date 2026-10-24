@@ -2,7 +2,7 @@ import Link from 'next/link'
 
 // No price is shown until one is decided.
 const FREE = ['As many one-off PDFs as you like', 'Newspaper and essay layouts', 'No account needed']
-const PAID = ['Everything in Free', 'Automated delivery to your inbox: daily, weekly or monthly', 'Send individual articles from your reading list into your PDF']
+const PAID = ['Everything in Free', 'Automated delivery to your inbox: daily, weekly or monthly', 'Coming soon: send individual articles from your reading list into your PDF']
 
 const List = ({ items }) => <ul>{items.map((f) => <li key={f}><b aria-hidden="true">✓</b>{f}</li>)}</ul>
 
@@ -11,7 +11,7 @@ export default function Pricing({ onFree, onPaid }) {
     <section id="pricing" className="lp-sunk">
       <div className="lp-wrap lp-section">
         <p className="lp-label lp-muted">Pricing</p>
-        <h2 className="lp-h2">Free to try. Paid to put on autopilot.</h2>
+        <h2 className="lp-h2">Free to try, paid to put on autopilot.</h2>
         <div className="lp-plans">
           <div className="lp-plan">
             <h3>Free</h3>

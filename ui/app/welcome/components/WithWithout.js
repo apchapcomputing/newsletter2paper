@@ -1,14 +1,14 @@
 // With/Without (ShipFast's pattern): the pain on the left, the fix on the right, line for line.
 const WITHOUT = [
-  'Read in the same app that sends everything else',
+  'Read in the same inbox as your bills and work email',
   'Skim, then lose the tab',
   'Cannot underline, circle or fold the corner',
-  'Fifteen newsletters, fifteen notifications',
+  'Every newsletter, another notification',
   'Eyes tired by the end of the day',
 ]
 const WITH = [
   'Read away from the device that distracts you',
-  'One edition, start to finish',
+  'One issue, start to finish',
   'Pen in hand, margins to write in',
   'One document, when you decide to read',
   'Paper, a chair and an hour',

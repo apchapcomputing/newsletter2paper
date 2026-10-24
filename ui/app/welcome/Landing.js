@@ -38,7 +38,7 @@ export default function Landing({ samples, photos, heroImage }) {
         <Features
           samples={samples}
           photos={photos}
-          onSampleDownload={(sample) => track('sample_pdf_downloaded', { sample })}
+          onSampleView={(sample) => track('sample_pdf_viewed', { sample })}
         />
         <WithWithout />
         <Pricing onFree={() => onCta('pricing_free')} onPaid={onPaid} />
