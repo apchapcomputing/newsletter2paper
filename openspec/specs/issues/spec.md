@@ -163,3 +163,35 @@ The system SHALL support exactly two format values: `newspaper` and `essay`.
 - GIVEN a request with `format: "magazine"`
 - WHEN the client sends `POST /issues/`
 - THEN a 422 validation error is returned
+
+---
+
+### Requirement: Automatic Delivery Settings
+
+The create and update endpoints SHALL accept `schedule_timezone` (an IANA name), `schedule_time_local`
+(`HH:MM`), `schedule_weekday` (0 = Monday to 6) and `schedule_day_of_month` (1 to 31), and answer 422 for
+anything else. Enabling `auto_send` requires a verified recipient (see email-delivery) and pins a weekly
+issue to today's weekday and a monthly one to today's date when none is set. Responses never include
+`guest_token`, `claim_token` or `unsubscribe_token`, and include `recipient_verified`.
+
+Scheduler-owned columns (`claim_token`, `locked_at`, `schedule_status`, `next_run_at`, `last_run_at`,
+`last_run_error`) and the verification columns are not writable by browser roles (column privileges). Columns
+added to `issues` later are not writable by browser roles until a migration grants them.
+
+---
+
+### Requirement: Delivery History
+
+`GET /issues/{id}/deliveries?limit=` (owner only, default 20, at most 100) SHALL return the issue's editions,
+newest first: `trigger`, `period_key`, `status`, `attempts`, `error`, the article window and count, and
+`sent_at` / `opened_at`.
+
+---
+
+### Requirement: Delivery Address
+
+An owner SHALL be able to set `target_email` to an address other than their own account email. The address
+starts unverified (see email-delivery, Recipient Verification); until it is confirmed, `auto_send`, Send now
+and on-demand emailing are refused for it. Only a linked owner may change the address of an existing issue;
+claiming a guest issue still requires the caller's own email.
+

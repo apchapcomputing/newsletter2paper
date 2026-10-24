@@ -1,0 +1,1 @@
+../../newsletter2paper/supabase/migrations/20261010000000_recipient_verification.sql

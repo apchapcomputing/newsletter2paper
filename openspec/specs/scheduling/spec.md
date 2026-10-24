@@ -199,3 +199,33 @@ The system SHALL expose `POST /issues/{issue_id}/send-now` to generate and email
 - GIVEN no or an invalid access token (401), the issue does not exist or belongs to another user (404, indistinguishable), it has no `target_email` (400), it is already `processing` (409), or its `locked_at` is within `SEND_NOW_COOLDOWN_MINUTES` (429 with `Retry-After`)
 - WHEN the client sends `POST /issues/{issue_id}/send-now`
 - THEN the corresponding error is returned and nothing is started
+
+---
+
+### Requirement: Article Selection
+
+Each edition SHALL cover the articles published since the last *sent* edition (scheduled or manual) ended,
+but no earlier than `article_window_days` before the run. The first edition uses the full window. The window
+is stored on the delivery as `articles_from`, `articles_until` and `articles_count` when the PDF is built; a
+retry that reuses the stored PDF keeps it. Each publication contributes at most its newest
+`SCHEDULER_MAX_ARTICLES_PER_PUBLICATION` (default 5) articles; older ones in the window are left out and are
+not carried into the next edition, because editions are newest-first and carrying them over would re-send
+what was already delivered. The cursor therefore guarantees editions do not overlap, not that every article
+appears. An edition with no articles in its window is `skipped`: no email,
+the issue moves to its next slot, and the next window still starts at the last sent edition.
+
+#### Scenario: Consecutive editions do not overlap
+
+- GIVEN a weekly edition that sent at 09:00 covering articles up to 09:00
+- WHEN the next edition runs a week later
+- THEN its window starts just after the previous `articles_until`
+
+---
+
+### Requirement: Graceful Shutdown
+
+On shutdown the scheduler SHALL stop claiming issues, wait up to `SCHEDULER_SHUTDOWN_GRACE_SECONDS` (default
+100) for the issue in progress, then stop. The production container's `stop_grace_period` is longer, and
+production runs without `--reload`. A run cut off anyway is safe: its delivery is recorded and sends reuse
+their idempotency key (see Claim Fencing).
+

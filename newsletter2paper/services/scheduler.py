@@ -1,6 +1,7 @@
 import os
 import logging
 import asyncio
+import threading
 from datetime import datetime, timezone, timedelta
 from typing import List, Optional
 
@@ -32,11 +33,26 @@ SEND_NOW_COOLDOWN_MINUTES = int(os.environ.get('SEND_NOW_COOLDOWN_MINUTES', '10'
 # stops the slower worker, but the edition is generated twice).
 RSS_BUDGET_SECONDS = int(os.environ.get('SCHEDULER_RSS_BUDGET_SECONDS', '300'))
 EMAIL_BUDGET_SECONDS = 60
+# On shutdown, how long to wait for the run in progress before giving up on it. Docker's
+# stop_grace_period must be longer. A run cut off here is safe: its delivery is recorded and the
+# stale lock is reclaimed (sends reuse their Resend idempotency key).
+SHUTDOWN_GRACE_SECONDS = int(os.environ.get('SCHEDULER_SHUTDOWN_GRACE_SECONDS', '100'))
+# Newest articles taken from each publication per edition. Older ones in the window are left out
+# for good: editions are newest-first, so carrying the surplus into the next window would mean
+# re-sending the articles already delivered.
+MAX_ARTICLES_PER_PUBLICATION = int(os.environ.get('SCHEDULER_MAX_ARTICLES_PER_PUBLICATION', '5'))
 # Delivery emails link to {PUBLIC_API_URL}/d/{delivery_id}, which records the open and redirects
 # to the PDF. Unset: the email links to the PDF directly.
 PUBLIC_API_URL = os.environ.get('PUBLIC_API_URL', '').rstrip('/')
 # error prefixes safe to report; the rest of an error message may contain the recipient address.
 ERROR_CATEGORIES = ('email', 'config', 'pdf', 'unexpected error')
+
+
+def unsubscribe_url(issue: dict) -> Optional[str]:
+    """One-click unsubscribe link for the issue's emails; None when the API's public URL is unknown
+    (a link to localhost would be useless to a recipient)."""
+    token = issue.get('unsubscribe_token')
+    return f"{PUBLIC_API_URL}/u/{token}" if PUBLIC_API_URL and token else None
 
 
 def check_lock_timeout(lock_timeout_minutes: int, render_timeout_seconds: int) -> None:
@@ -89,6 +105,10 @@ class SchedulerService:
         self.engine = create_engine(self.db_url, pool_pre_ping=True)
 
         self.store = DeliveryStore(self.engine)
+        # Held for the length of a tick, so shutdown can wait for it; _stopping stops a tick from
+        # claiming further issues once shutdown has begun.
+        self._tick_lock = threading.Lock()
+        self._stopping = threading.Event()
 
         # Reuse the Go PDF service instance
         self.pdf_service = GoPDFService(use_docker=True, shared_dir="/shared")
@@ -105,10 +125,27 @@ class SchedulerService:
         self.scheduler.add_job(self._job_check_and_process, 'interval', seconds=self.interval_seconds, id='scheduler_check')
         self.scheduler.start()
 
-    def shutdown(self) -> None:
+    def shutdown(self, grace_seconds: Optional[float] = None) -> None:
+        """Stop polling, let the run in progress finish (up to `grace_seconds`), then stop.
+
+        Between issues the tick checks _stopping, so at most the current issue completes."""
+        grace = SHUTDOWN_GRACE_SECONDS if grace_seconds is None else grace_seconds
         logger.info("Shutting down SchedulerService")
+        self._stopping.set()
         try:
-            if self.scheduler is not None:
+            if self.scheduler is not None and self.scheduler.running:
+                self.scheduler.pause()
+        except Exception:
+            logger.exception("Failed to pause the scheduler")
+        if self._tick_lock.acquire(timeout=grace):
+            self._tick_lock.release()
+        else:
+            logger.warning(
+                f"A scheduled run was still going after {grace}s; stopping anyway. "
+                "Its delivery is recorded and the next worker resumes it once the lock expires."
+            )
+        try:
+            if self.scheduler is not None and self.scheduler.running:
                 self.scheduler.shutdown(wait=False)
         except Exception:
             logger.exception("Failed to shutdown scheduler cleanly")
@@ -124,10 +161,20 @@ class SchedulerService:
         Issues are claimed one at a time, so a claim's lock age is its own run time and never
         includes time spent waiting behind other issues in the batch.
         """
+        if self._stopping.is_set() or not self._tick_lock.acquire(blocking=False):
+            return
+        try:
+            self._tick()
+        finally:
+            self._tick_lock.release()
+
+    def _tick(self) -> None:
         logger.debug("Scheduler tick: checking for due issues")
         try:
             self._initialize_unscheduled()
             for _ in range(self.batch_size):
+                if self._stopping.is_set():
+                    break
                 claim = self.store.claim_next_due(LOCK_TIMEOUT_MINUTES)
                 if claim is None:
                     break
@@ -212,8 +259,16 @@ class SchedulerService:
                 error = "config: no recipient email address is set"
                 self._fail(claim, issue, delivery, error, now, force, error_kind=PERMANENT)
                 return {'success': False, 'error': error}
+            if not self.store.recipient_verified(claim.issue_id):
+                # Scheduled and manual alike. The database refuses to enable auto_send for an unverified
+                # address, so for a scheduled run this means the address changed or was edited behind
+                # the API's back.
+                error = "config: the recipient address has not been confirmed"
+                self._fail(claim, issue, delivery, error, now, force, error_kind=PERMANENT)
+                return {'success': False, 'error': error}
 
             pdf_url = delivery.get('pdf_url')
+            window = None
             if pdf_url:
                 logger.info(f"Issue {claim.issue_id}: reusing PDF from delivery {delivery['id']}, retrying email only")
             else:
@@ -227,10 +282,12 @@ class SchedulerService:
                     self._fail(claim, issue, delivery, f"pdf: {err}", now, force)
                     return {'success': False, 'error': err}
                 pdf_url = result['pdf_url']
+                window = {k: result.get(k) for k in ('articles_from', 'articles_until', 'articles_count')
+                          if result.get(k) is not None}
 
             # A stored key belongs to a send whose outcome is unknown; otherwise start a new one.
             idempotency_key = delivery.get('idempotency_key') or f"delivery-{delivery['id']}-{delivery['attempts']}"
-            self.store.mark_sending(claim, delivery['id'], pdf_url, target_email, idempotency_key)
+            self.store.mark_sending(claim, delivery['id'], pdf_url, target_email, idempotency_key, window)
             in_flight = True
             sent = self._send_email(issue, target_email, self._email_link(delivery, pdf_url), idempotency_key)
             if not sent.ok:
@@ -258,21 +315,27 @@ class SchedulerService:
     async def _generate_pdf(self, issue: dict) -> Optional[dict]:
         """Fetch articles and render the PDF. Returns None when there are no articles."""
         issue_id = issue['id']
-        days_back = int(issue.get('article_window_days') or 7)
+        until = datetime.now(timezone.utc)
+        since = self.article_window_start(issue, until, self.store.last_articles_until(issue_id))
 
         from services.rss_service import RSSService
         rss = RSSService()
         articles_data = await rss.fetch_recent_articles_for_issue(
-            issue_id, days_back=days_back, max_articles_per_publication=5
+            issue_id, max_articles_per_publication=MAX_ARTICLES_PER_PUBLICATION, start_date=since, end_date=until
         )
         if not articles_data or articles_data.get('total_articles', 0) == 0:
             return None
+        capped = sum(1 for articles in articles_data.get('articles_by_publication', {}).values()
+                     if len(articles) >= MAX_ARTICLES_PER_PUBLICATION)
+        if capped:
+            logger.info(f"Issue {issue_id}: {capped} publication(s) hit the {MAX_ARTICLES_PER_PUBLICATION}-article "
+                        "cap; older articles in the window are not included")
 
         all_articles = []
         for pub_list in articles_data.get('articles_by_publication', {}).values():
             all_articles.extend(pub_list)
 
-        return await self.pdf_service.generate_pdf_from_issue(
+        result = await self.pdf_service.generate_pdf_from_issue(
             issue_id=str(issue_id),
             articles=all_articles,
             issue_info=articles_data.get('issue', {}),
@@ -280,6 +343,20 @@ class SchedulerService:
             remove_images=issue.get('remove_images', False),
             verbose=False,
         )
+        # What this edition covers; recorded with the delivery so the next one starts after it.
+        return {**result, 'articles_from': since, 'articles_until': until,
+                'articles_count': articles_data.get('total_articles', len(all_articles))}
+
+    @staticmethod
+    def article_window_start(issue: dict, until: datetime, last_until: Optional[datetime]) -> datetime:
+        """Start of the article window: where the last sent edition ended (so consecutive editions
+        never overlap), but no earlier than `article_window_days` ago (so a long pause or the
+        first edition does not dump the whole feed)."""
+        floor = until - timedelta(days=int(issue.get('article_window_days') or 7))
+        if last_until is None:
+            return floor
+        # Strictly after the last edition's end, so an article stamped at that instant is not sent twice.
+        return max(last_until + timedelta(microseconds=1), floor)
 
     @staticmethod
     def _email_link(delivery: dict, pdf_url: str) -> str:
@@ -317,6 +394,7 @@ class SchedulerService:
                 subject=f"Your scheduled PDF: {issue.get('title')}",
                 issue_title=issue.get('title'),
                 idempotency_key=idempotency_key,
+                unsubscribe_url=unsubscribe_url(issue),
             )
         except Exception as e:
             logger.exception(f"Failed to send scheduled email for issue {issue['id']}")

@@ -22,7 +22,7 @@ CADENCE_COLUMNS = {
     'schedule_time_local': 'text', 'schedule_weekday': 'integer', 'schedule_day_of_month': 'integer',
 }
 _DELIVERY_COLUMNS = {'status', 'attempts', 'next_attempt_at', 'error', 'error_kind', 'idempotency_key', 'pdf_url', 'recipient',
-                     'resend_message_id', 'sent_at'}
+                     'resend_message_id', 'sent_at', 'articles_from', 'articles_until', 'articles_count'}
 
 
 class ClaimLost(Exception):
@@ -192,19 +192,53 @@ class DeliveryStore:
                 {"issue_id": claim.issue_id},
             ).mappings().one())
 
-    def mark_sending(self, claim: Claim, delivery_id, pdf_url: str, recipient: str, idempotency_key: str) -> None:
+    def mark_sending(self, claim: Claim, delivery_id, pdf_url: str, recipient: str, idempotency_key: str,
+                     window: Optional[dict] = None) -> None:
         """Commit that the email is about to be sent, with the idempotency key it will use. A run
         that finds this status after a crash resends with the same key instead of risking a
-        second email."""
+        second email.
+
+        `window` ({'articles_from', 'articles_until', 'articles_count'}) records what the edition
+        covers, so the next edition can start where this one ended. It is omitted when a retry
+        reuses a stored PDF, which keeps the window written the first time."""
+        window = window or {}
+        _check_columns(window, {'articles_from', 'articles_until', 'articles_count'})
         with self.engine.begin() as conn:
             self._check_claim(conn, claim)
             conn.execute(
                 text(
-                    "UPDATE public.issue_deliveries SET status = 'sending', pdf_url = :pdf_url, "
-                    "recipient = :recipient, idempotency_key = :key, updated_at = now() WHERE id = :id"
+                    f"UPDATE public.issue_deliveries SET {_assignments(window)}status = 'sending', pdf_url = :pdf_url, "
+                    "recipient = :recipient, idempotency_key = :key, updated_at = now() WHERE id = :_id"
                 ),
-                {"id": delivery_id, "pdf_url": pdf_url, "recipient": recipient, "key": idempotency_key},
+                {**window, "_id": delivery_id, "pdf_url": pdf_url, "recipient": recipient, "key": idempotency_key},
             )
+
+    def last_articles_until(self, issue_id) -> Optional[datetime]:
+        """Where the last sent edition (scheduled or manual) stopped: the next edition starts there."""
+        with self.engine.connect() as conn:
+            row = conn.execute(
+                text(
+                    "SELECT max(articles_until) FROM public.issue_deliveries "
+                    "WHERE issue_id = :id AND status = 'sent'"
+                ),
+                {"id": str(issue_id)},
+            ).fetchone()
+        return row[0] if row else None
+
+    def recipient_verified(self, issue_id) -> bool:
+        """Whether scheduled mail may go to the issue's address: it was confirmed, or it is the
+        owner's account address. Mirrors the enforce_recipient_verification trigger."""
+        with self.engine.connect() as conn:
+            row = conn.execute(
+                text(
+                    "SELECT i.target_email_verified_at IS NOT NULL "
+                    "OR (btrim(coalesce(i.target_email, '')) <> '' "
+                    "    AND lower(btrim(i.target_email)) = lower(coalesce(public.issue_owner_email(i.id), ''))) "
+                    "FROM public.issues i WHERE i.id = :id"
+                ),
+                {"id": str(issue_id)},
+            ).fetchone()
+        return bool(row and row[0])
 
     def finish(self, claim: Claim, issue: dict, delivery_id=None, delivery: Optional[dict] = None,
                cadence: Optional[dict] = None) -> None:

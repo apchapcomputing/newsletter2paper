@@ -480,3 +480,62 @@ class TestAnalyticsLookups:
                 "VALUES (:i, 'manual', now()) RETURNING id"), {'i': issue_id}).scalar())
         assert store.record_open(pending, timedelta(seconds=30)) is None
         assert store.record_open(str(uuid.uuid4()), timedelta(seconds=30)) is None
+
+
+class TestArticleWindow:
+    def test_mark_sending_records_the_window(self, engine, store):
+        issue_id = make_issue(engine)
+        claim = store.claim_next_due(LOCK_TIMEOUT)
+        d = store.open_scheduled_delivery(claim, slot(), '2026-W40')
+        a, b = datetime(2026, 9, 25, tzinfo=timezone.utc), datetime(2026, 10, 2, tzinfo=timezone.utc)
+        store.mark_sending(claim, d['id'], 'http://pdf', 'a@b.co', 'key-1',
+                           {'articles_from': a, 'articles_until': b, 'articles_count': 3})
+        r = row(engine, "SELECT articles_from, articles_until, articles_count, status FROM public.issue_deliveries WHERE id = :id", id=d['id'])
+        assert (r['articles_from'], r['articles_until'], r['articles_count'], r['status']) == (a, b, 3, 'sending')
+
+    def test_mark_sending_without_a_window_keeps_the_stored_one(self, engine, store):
+        make_issue(engine)
+        claim = store.claim_next_due(LOCK_TIMEOUT)
+        d = store.open_scheduled_delivery(claim, slot(), '2026-W40')
+        b = datetime(2026, 10, 2, tzinfo=timezone.utc)
+        store.mark_sending(claim, d['id'], 'http://pdf', 'a@b.co', 'key-1', {'articles_until': b})
+        store.mark_sending(claim, d['id'], 'http://pdf', 'a@b.co', 'key-1')
+        assert row(engine, "SELECT articles_until FROM public.issue_deliveries WHERE id = :id", id=d['id'])['articles_until'] == b
+
+    def test_last_articles_until_is_the_latest_sent_edition_manual_included(self, engine, store):
+        issue_id = make_issue(engine)
+        assert store.last_articles_until(issue_id) is None
+        old, new = datetime(2026, 9, 1, tzinfo=timezone.utc), datetime(2026, 9, 20, tzinfo=timezone.utc)
+        with engine.begin() as conn:
+            for trig, key, until, status in [('scheduled', 'p1', old, 'sent'), ('manual', None, new, 'sent'),
+                                             ('scheduled', 'p2', datetime(2026, 10, 1, tzinfo=timezone.utc), 'failed')]:
+                conn.execute(text(
+                    "INSERT INTO public.issue_deliveries (issue_id, trigger, period_key, scheduled_for, status, articles_until) "
+                    "VALUES (:i, :t, :k, now(), :s, :u)"), {'i': issue_id, 't': trig, 'k': key, 's': status, 'u': until})
+        assert store.last_articles_until(issue_id) == new  # an unsent edition does not move the window
+
+
+class TestRecipientVerified:
+    def test_unverified_address_is_not_verified(self, engine, store):
+        issue_id = make_issue(engine, auto_send=False, target_email='friend@delivery-store.test')
+        assert store.recipient_verified(issue_id) is False
+
+    def test_a_confirmed_address_is_verified(self, engine, store):
+        issue_id = make_issue(engine, auto_send=False, target_email='friend@delivery-store.test',
+                              target_email_verified_at=datetime.now(timezone.utc))
+        assert store.recipient_verified(issue_id) is True
+
+    def test_the_owners_account_address_is_verified_without_a_confirmation(self, engine, store):
+        issue_id = make_issue(engine, auto_send=False, target_email='someone@delivery-store.test')
+        make_owner(engine, issue_id)
+        owner_email = row(engine, "SELECT public.issue_owner_email(:id) AS e", id=issue_id)['e']
+        with engine.begin() as conn:
+            conn.execute(text("UPDATE public.issues SET target_email = :e, target_email_verified_at = NULL WHERE id = :id"),
+                         {'e': owner_email.upper(), 'id': issue_id})
+        assert store.recipient_verified(issue_id) is True
+
+    def test_no_address_and_no_owner_is_never_verified(self, engine, store):
+        assert store.recipient_verified(make_issue(engine, auto_send=False, target_email='')) is False
+
+    def test_unknown_issue_is_not_verified(self, store):
+        assert store.recipient_verified(str(uuid.uuid4())) is False

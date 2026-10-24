@@ -5,8 +5,11 @@ services:
       context: ./newsletter2paper
       dockerfile: Dockerfile
     container_name: newsletter2paper-api
+    # Localhost only: Docker publishes ports straight past ufw, so "8000:8000" would expose the
+    # plain-HTTP API to the internet. The public entry point is the caddy service below, which
+    # terminates HTTPS. (The deploy health check runs on the droplet, so it still reaches this.)
     ports:
-      - "8000:8000"
+      - "127.0.0.1:8000:8000"
     environment:
       - SUPABASE_URL=${SUPABASE_URL}
       - SUPABASE_SECRET_KEY=${SUPABASE_SECRET_KEY}
@@ -17,6 +20,14 @@ services:
       - POSTHOG_API_KEY=${POSTHOG_API_KEY:-}
       - POSTHOG_HOST=${POSTHOG_HOST:-https://eu.i.posthog.com}
       - PUBLIC_API_URL=${PUBLIC_API_URL:-}
+      - ADMIN_API_TOKEN=${ADMIN_API_TOKEN:-}
+      # Scheduler tuning. The defaults match the code; see .env.example before changing them.
+      - SCHEDULER_LOCK_TIMEOUT_MINUTES=${SCHEDULER_LOCK_TIMEOUT_MINUTES:-15}
+      - SCHEDULER_MAX_ATTEMPTS=${SCHEDULER_MAX_ATTEMPTS:-5}
+      - SCHEDULER_RSS_BUDGET_SECONDS=${SCHEDULER_RSS_BUDGET_SECONDS:-300}
+      - SCHEDULER_SHUTDOWN_GRACE_SECONDS=${SCHEDULER_SHUTDOWN_GRACE_SECONDS:-100}
+      - SCHEDULER_MAX_ARTICLES_PER_PUBLICATION=${SCHEDULER_MAX_ARTICLES_PER_PUBLICATION:-5}
+      - SEND_NOW_COOLDOWN_MINUTES=${SEND_NOW_COOLDOWN_MINUTES:-10}
     volumes:
       - ./shared:/shared
       - ./newsletter2paper:/app
@@ -25,7 +36,38 @@ services:
       - pdf-maker
     networks:
       - newsletter-network
-    command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+    # No --reload in production: a file change restarts the process, which would cut a scheduled
+    # run short. (docker-compose.dev.yml keeps it.)
+    command: uvicorn main:app --host 0.0.0.0 --port 8000
+    # On stop, the scheduler waits up to SCHEDULER_SHUTDOWN_GRACE_SECONDS (default 100) for the
+    # run in progress; Docker must not SIGKILL it first.
+    stop_grace_period: 120s
+    restart: unless-stopped
+
+  # HTTPS reverse proxy: gets and renews a Let's Encrypt certificate for API_DOMAIN and forwards
+  # to the API. Needs a DNS A record for API_DOMAIN pointing at this droplet, and ports 80 and 443
+  # open. Certificates live in the caddy_data volume; do not run `docker compose down -v`.
+  # Only started with the "prod" profile (the deploy workflow sets COMPOSE_PROFILES=prod), so a
+  # local `docker compose up` does not bind host ports 80/443.
+  caddy:
+    image: caddy:2-alpine
+    container_name: newsletter2paper-caddy
+    profiles: ["prod"]
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      # Falls back to localhost (a self-signed certificate nobody uses) so a missing value cannot
+      # stop the API from starting.
+      - API_DOMAIN=${API_DOMAIN:-localhost}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - fastapi
+    networks:
+      - newsletter-network
     restart: unless-stopped
 
   # Go PDF Maker Service
@@ -48,6 +90,10 @@ services:
 
 volumes:
   shared-images:
+    driver: local
+  caddy_data:
+    driver: local
+  caddy_config:
     driver: local
 
 networks:

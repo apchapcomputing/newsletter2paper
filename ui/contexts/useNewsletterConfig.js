@@ -4,6 +4,7 @@ import { useAuth } from './useAuth';
 import { createClient } from '../lib/supabase';
 import logger from '../utils/logger';
 import { track } from '../lib/analytics';
+import { autoSendErrorMessage, scheduleOnEnable } from '../lib/schedule';
 
 const NewsletterConfigContext = createContext();
 
@@ -27,6 +28,7 @@ export const NewsletterConfigProvider = ({ children }) => {
     // Article window (days back) and auto-send toggle
     const [articleWindow, setArticleWindow] = useState('7');
     const [autoSend, setAutoSend] = useState(false);
+    const [autoSendError, setAutoSendError] = useState(null);
     const [currentIssueId, setCurrentIssueId] = useState(null);
     const [isLoaded, setIsLoaded] = useState(false);
     const [userIssues, setUserIssues] = useState([]);
@@ -297,21 +299,33 @@ export const NewsletterConfigProvider = ({ children }) => {
         // Automatic delivery needs a recipient (the API rejects it otherwise, and the scheduler
         // would fail every run with a config error).
         if (boolVal && !recipient) return;
+        setAutoSendError(null);
         setAutoSend(boolVal);
         track(boolVal ? 'auto_send_enabled' : 'auto_send_disabled', { frequency });
+
+        // The database refuses to enable delivery to an unconfirmed address; put the switch back.
+        const rejected = (error) => {
+            console.error('Error updating auto_send on issue:', error);
+            setAutoSend(!boolVal);
+            setAutoSendError(autoSendErrorMessage(error));
+        };
 
         // Persist auto_send to Supabase when user is authenticated.
         try {
             if (user && session && currentIssueId) {
-                const { error } = await supabase
-                    .from('issues')
-                    // Save the address with the flag so the stored row is never enabled without one.
-                    .update(boolVal ? { auto_send: true, target_email: recipient } : { auto_send: false })
-                    .eq('id', currentIssueId);
-
-                if (error) {
-                    console.error('Error updating auto_send on issue:', error);
+                let payload = { auto_send: false };
+                if (boolVal) {
+                    const { data: current } = await supabase
+                        .from('issues')
+                        .select('schedule_timezone, schedule_weekday, schedule_day_of_month')
+                        .eq('id', currentIssueId)
+                        .maybeSingle();
+                    // Save the address with the flag so the stored row is never enabled without one,
+                    // and pin the schedule (browser timezone, starting weekday / day of month).
+                    payload = { auto_send: true, target_email: recipient, ...scheduleOnEnable(frequency, current) };
                 }
+                const { error } = await supabase.from('issues').update(payload).eq('id', currentIssueId);
+                if (error) rejected(error);
             } else if (user && session && !currentIssueId) {
                 // If there's no current issue yet, create one so the setting is persisted.
                 try {
@@ -326,12 +340,15 @@ export const NewsletterConfigProvider = ({ children }) => {
                             remove_images: removeImages || false,
                             custom_start_date: dateFrom || null,
                             custom_end_date: dateTo || null,
-                            auto_send: boolVal
+                            auto_send: boolVal,
+                            ...(boolVal ? scheduleOnEnable(frequency || 'weekly', null) : {})
                         })
                         .select()
                         .single();
 
-                    if (!result.error && result.data) {
+                    if (result.error) {
+                        rejected(result.error);
+                    } else if (result.data) {
                         track('issue_created', { is_guest: false });
                         setCurrentIssueId(result.data.id);
                         // Ensure user-issue association exists
@@ -386,6 +403,23 @@ export const NewsletterConfigProvider = ({ children }) => {
                 custom_end_date: issueData.custom_end_date || null
             };
 
+            // A brand-new row is only visible to its creator through their own address (RLS), so it is
+            // inserted with the account email; the typed recipient, if different, is saved right after
+            // the owner link exists (see withRecipient).
+            const insertPayload = { ...issuePayload, target_email: user.email };
+            const withRecipient = async (issue) => {
+                const wanted = (issuePayload.target_email || '').trim();
+                if (!wanted || wanted.toLowerCase() === (issue.target_email || '').trim().toLowerCase()) return issue;
+                const { data, error } = await supabase
+                    .from('issues')
+                    .update({ target_email: wanted })
+                    .eq('id', issue.id)
+                    .select()
+                    .single();
+                if (error) throw error;
+                return data;
+            };
+
             let savedIssue;
             let result;
 
@@ -407,7 +441,7 @@ export const NewsletterConfigProvider = ({ children }) => {
                         // Create new issue instead
                         result = await supabase
                             .from('issues')
-                            .insert(issuePayload)
+                            .insert(insertPayload)
                             .select()
                             .single();
 
@@ -430,6 +464,7 @@ export const NewsletterConfigProvider = ({ children }) => {
                         if (userIssueResult.error) {
                             console.error('Error creating user-issue association:', userIssueResult.error);
                         }
+                        savedIssue = await withRecipient(savedIssue);
                     } else {
                         throw result.error;
                     }
@@ -463,7 +498,7 @@ export const NewsletterConfigProvider = ({ children }) => {
                 // Create new issue
                 result = await supabase
                     .from('issues')
-                    .insert(issuePayload)
+                    .insert(insertPayload)
                     .select()
                     .single();
 
@@ -487,6 +522,7 @@ export const NewsletterConfigProvider = ({ children }) => {
                     console.error('Error creating user-issue association:', userIssueResult.error);
                     // Don't throw here - the issue was created successfully, association failed
                 }
+                savedIssue = await withRecipient(savedIssue);
             }
 
             if (savedIssue.id !== currentIssueId) track('issue_created', { is_guest: false });
@@ -650,6 +686,7 @@ export const NewsletterConfigProvider = ({ children }) => {
             dateTo,
             articleWindow,
             autoSend,
+            autoSendError,
             targetEmail,
             currentIssueId,
             isLoaded,

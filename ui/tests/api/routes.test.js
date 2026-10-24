@@ -189,3 +189,56 @@ describe('POST /api/issues/[issueId]/send-now', () => {
         expect((await res.json()).error).toMatch(/sent recently/)
     })
 })
+
+
+describe('POST /api/issues/[issueId]/target-email/verify', () => {
+    const call = async (headers = {}) => {
+        const { POST } = await import('@/app/api/issues/[issueId]/target-email/verify/route.js')
+        return POST(req('http://app/api/issues/abc/target-email/verify', { method: 'POST', headers }), { params: Promise.resolve({ issueId: 'abc' }) })
+    }
+
+    it('rejects callers without a session before reaching the backend', async () => {
+        expect((await call()).status).toBe(401)
+        expect(fetchMock).not.toHaveBeenCalled()
+    })
+
+    it('forwards the bearer token and returns the backend’s answer', async () => {
+        fetchMock.mockResolvedValue(upstream({ success: true, verified: false }))
+        const res = await call({ Authorization: 'Bearer tok' })
+        expect(fetchMock.mock.calls[0][0]).toBe('http://backend.test/issues/abc/target-email/verify')
+        expect(fetchMock.mock.calls[0][1]).toMatchObject({ method: 'POST', headers: { Authorization: 'Bearer tok' } })
+        expect(await res.json()).toEqual({ success: true, verified: false })
+    })
+
+    it('passes the rate-limit refusal through', async () => {
+        fetchMock.mockResolvedValue(upstream({ detail: 'Too many confirmation emails; try again in an hour' }, { ok: false, status: 429 }))
+        const res = await call({ Authorization: 'Bearer tok' })
+        expect(res.status).toBe(429)
+        expect((await res.json()).error).toMatch(/Too many/)
+    })
+})
+
+describe('GET /api/issues/[issueId]/deliveries', () => {
+    const call = async (headers = {}, query = '') => {
+        const { GET } = await import('@/app/api/issues/[issueId]/deliveries/route.js')
+        return GET(req(`http://app/api/issues/abc/deliveries${query}`, { headers }), { params: Promise.resolve({ issueId: 'abc' }) })
+    }
+
+    it('rejects callers without a session', async () => {
+        expect((await call()).status).toBe(401)
+        expect(fetchMock).not.toHaveBeenCalled()
+    })
+
+    it('forwards the token and the limit', async () => {
+        fetchMock.mockResolvedValue(upstream({ success: true, deliveries: [{ id: 'd1' }] }))
+        const res = await call({ Authorization: 'Bearer tok' }, '?limit=10')
+        expect(fetchMock.mock.calls[0][0]).toBe('http://backend.test/issues/abc/deliveries?limit=10')
+        expect(fetchMock.mock.calls[0][1].headers).toEqual({ Authorization: 'Bearer tok' })
+        expect((await res.json()).deliveries).toEqual([{ id: 'd1' }])
+    })
+
+    it('hides someone else’s issue behind the backend’s 404', async () => {
+        fetchMock.mockResolvedValue(upstream({ detail: 'Issue not found' }, { ok: false, status: 404 }))
+        expect((await call({ Authorization: 'Bearer tok' })).status).toBe(404)
+    })
+})

@@ -3,6 +3,8 @@ from datetime import datetime, timezone, timedelta
 from unittest.mock import MagicMock
 from zoneinfo import ZoneInfo
 
+import threading
+
 import pytest
 import time_machine
 
@@ -28,6 +30,15 @@ def test_lock_timeout_must_exceed_worst_case_run():
     check_lock_timeout(15, 120)  # 900s > 300 + 120 + 60
     with pytest.raises(RuntimeError, match='SCHEDULER_LOCK_TIMEOUT_MINUTES'):
         check_lock_timeout(8, 120)  # 480s == worst case
+
+
+def bare_scheduler():
+    """A SchedulerService without its database engine or APScheduler."""
+    s = SchedulerService.__new__(SchedulerService)
+    s._tick_lock = threading.Lock()
+    s._stopping = threading.Event()
+    s.scheduler = None
+    return s
 
 
 CLAIM = Claim('i1', 'tok-1')
@@ -70,8 +81,18 @@ class FakeStore:
         self._call('manual')
         return delivery(id='m1', trigger='manual')
 
-    def mark_sending(self, claim, delivery_id, pdf_url, recipient, idempotency_key):
+    verified = True
+    last_until = None
+
+    def mark_sending(self, claim, delivery_id, pdf_url, recipient, idempotency_key, window=None):
         self._call('mark_sending', delivery_id, pdf_url, recipient, idempotency_key)
+        self.window = window
+
+    def recipient_verified(self, issue_id):
+        return self.verified
+
+    def last_articles_until(self, issue_id):
+        return self.last_until
 
     def finish(self, claim, issue_fields, delivery_id=None, delivery_fields=None, cadence=None):
         self._call('finish')
@@ -97,7 +118,7 @@ class FakeStore:
 
 @pytest.fixture
 def svc(monkeypatch):
-    s = SchedulerService.__new__(SchedulerService)
+    s = bare_scheduler()
     s.store = FakeStore()
     s.batch_size = 5
     s._issue = issue()
@@ -248,6 +269,34 @@ class TestScheduledRun:
         assert issue_fields['last_run_error'] == 'config: no recipient email address is set'
         assert issue_fields['schedule_status'] == 'idle' and issue_fields['next_run_at'] is not None
 
+    async def test_unverified_recipient_is_a_permanent_config_failure_before_rendering(self, svc):
+        svc.store.verified = False
+        res = await svc._process_issue(CLAIM)
+        assert res == {'success': False, 'error': 'config: the recipient address has not been confirmed'}
+        svc.generate.assert_not_called()
+        d = svc.store.finished[0][2]
+        assert d['status'] == 'abandoned' and d['error_kind'] == 'permanent'
+
+    async def test_manual_send_also_needs_a_confirmed_recipient(self, svc):
+        svc.store.verified = False
+        res = await svc._process_issue(CLAIM, force=True)
+        assert res == {'success': False, 'error': 'config: the recipient address has not been confirmed'}
+        svc.generate.assert_not_called()
+
+    async def test_the_articles_window_is_recorded_when_sending(self, svc):
+        from datetime import datetime, timezone
+        a, b = datetime(2026, 10, 1, tzinfo=timezone.utc), datetime(2026, 10, 8, tzinfo=timezone.utc)
+        svc.generate.return_value = {'success': True, 'pdf_url': 'http://pdf', 'articles_from': a,
+                                     'articles_until': b, 'articles_count': 4}
+        await svc._process_issue(CLAIM)
+        assert svc.store.window == {'articles_from': a, 'articles_until': b, 'articles_count': 4}
+
+    async def test_a_retry_reusing_the_pdf_does_not_rewrite_the_window(self, svc):
+        svc.store.existing = delivery(status='failed', attempts=1, pdf_url='http://pdf-old')
+        await svc._process_issue(CLAIM)
+        svc.generate.assert_not_called()
+        assert svc.store.window is None
+
     async def test_permanent_send_failure_abandons_without_retrying(self, svc):
         svc.email.return_value = PERMANENT_FAILURE
         res = await svc._process_issue(CLAIM)
@@ -362,7 +411,7 @@ class TestManualSend:
 
 class TestPolling:
     def test_claims_one_issue_at_a_time_until_none_are_due(self, monkeypatch):
-        s = SchedulerService.__new__(SchedulerService)
+        s = bare_scheduler()
         s.batch_size = 5
         s.store = MagicMock()
         s.store.initialize_unscheduled.return_value = []
@@ -377,7 +426,7 @@ class TestPolling:
         assert processed == ['a', 'b'] and s.store.claim_next_due.call_count == 3
 
     def test_unexpected_error_releases_the_claim(self, monkeypatch):
-        s = SchedulerService.__new__(SchedulerService)
+        s = bare_scheduler()
         s.batch_size = 1
         s.store = MagicMock()
         s.store.initialize_unscheduled.return_value = []
@@ -612,7 +661,7 @@ class TestSlotAnchoring:
         assert svc.store.finished[-1][0]['next_run_at'] == dt(2026, 10, 6, 9)
 
     def test_enabling_waits_for_the_next_configured_slot(self):
-        s = SchedulerService.__new__(SchedulerService)
+        s = bare_scheduler()
         s.store = MagicMock()
         seen = {}
 
@@ -627,7 +676,7 @@ class TestSlotAnchoring:
         assert seen['at'] == dt(2026, 10, 9, 9)
 
     def test_one_shot_issues_are_due_right_away(self):
-        s = SchedulerService.__new__(SchedulerService)
+        s = bare_scheduler()
         s.store = MagicMock()
         seen = {}
         s.store.initialize_unscheduled.side_effect = lambda cb: seen.setdefault('at', cb({'frequency': 'once'})) and []
@@ -712,7 +761,7 @@ class TestOwnerNotice:
         assert [e for e in svc.store.log if e[0] == 'claim_notice'] == [('claim_notice', 'd7'), ('claim_notice', 'd8')]
 
     def test_every_poll_ends_with_the_sweep(self, monkeypatch):
-        s = SchedulerService.__new__(SchedulerService)
+        s = bare_scheduler()
         s.batch_size = 5
         s.store = MagicMock()
         s.store.initialize_unscheduled.return_value = []
@@ -784,3 +833,141 @@ class TestEmailLink:
     async def test_links_to_the_pdf_without_public_api_url(self, svc):
         await svc._process_issue(CLAIM)
         assert next(e for e in svc.store.log if e[0] == 'email')[2] == 'http://pdf'
+
+
+class TestArticleWindow:
+    """Editions cover what the last sent edition did not, capped by article_window_days."""
+    from datetime import datetime, timedelta, timezone
+    NOW = datetime(2026, 10, 14, 9, tzinfo=timezone.utc)
+
+    def start(self, last_until, days=7):
+        return SchedulerService.article_window_start({'article_window_days': days}, self.NOW, last_until)
+
+    def test_first_edition_uses_the_full_window(self):
+        assert self.start(None) == self.NOW - self.timedelta(days=7)
+
+    def test_starts_just_after_the_last_edition_ended(self):
+        last = self.NOW - self.timedelta(days=3)
+        assert self.start(last) == last + self.timedelta(microseconds=1)
+
+    def test_consecutive_editions_never_overlap(self):
+        first_end = self.NOW - self.timedelta(days=3)
+        second_start = self.start(first_end)
+        assert second_start > first_end
+
+    def test_a_long_pause_is_capped_by_the_window(self):
+        assert self.start(self.NOW - self.timedelta(days=60)) == self.NOW - self.timedelta(days=7)
+
+    def test_window_days_defaults_to_seven(self):
+        assert SchedulerService.article_window_start({}, self.NOW, None) == self.NOW - self.timedelta(days=7)
+
+
+class TestUnsubscribeUrl:
+    def test_built_from_the_public_api_url_and_the_issue_token(self, monkeypatch):
+        import services.scheduler as sched
+        monkeypatch.setattr(sched, 'PUBLIC_API_URL', 'https://api.example.com')
+        assert sched.unsubscribe_url({'unsubscribe_token': 'abc'}) == 'https://api.example.com/u/abc'
+
+    def test_absent_without_a_public_url_or_token(self, monkeypatch):
+        import services.scheduler as sched
+        monkeypatch.setattr(sched, 'PUBLIC_API_URL', '')
+        assert sched.unsubscribe_url({'unsubscribe_token': 'abc'}) is None
+        monkeypatch.setattr(sched, 'PUBLIC_API_URL', 'https://api.example.com')
+        assert sched.unsubscribe_url({}) is None
+
+
+class TestGracefulShutdown:
+    def test_waits_for_the_run_in_progress_then_stops(self):
+        s = bare_scheduler()
+        s._tick_lock.acquire()
+        done = []
+        t = threading.Thread(target=lambda: (s.shutdown(grace_seconds=5), done.append(True)))
+        t.start()
+        t.join(0.2)
+        assert not done and s._stopping.is_set()      # still waiting for the run
+        s._tick_lock.release()
+        t.join(2)
+        assert done                                   # returned as soon as the run ended
+
+    def test_gives_up_after_the_grace_period(self, caplog):
+        s = bare_scheduler()
+        s._tick_lock.acquire()
+        s.shutdown(grace_seconds=0.05)
+        assert 'still going' in caplog.text
+
+    def test_a_tick_after_shutdown_started_does_nothing(self, monkeypatch):
+        s = bare_scheduler()
+        s.batch_size = 5
+        s.store = MagicMock()
+        s._stopping.set()
+        s._job_check_and_process()
+        s.store.claim_next_due.assert_not_called()
+
+    def test_a_tick_does_not_start_while_another_runs(self):
+        s = bare_scheduler()
+        s.store = MagicMock()
+        s._tick_lock.acquire()
+        s._job_check_and_process()
+        s.store.claim_next_due.assert_not_called()
+
+    def test_stops_claiming_further_issues_once_shutdown_begins(self, monkeypatch):
+        s = bare_scheduler()
+        s.batch_size = 5
+        s.store = MagicMock()
+        s.store.initialize_unscheduled.return_value = []
+        s.store.unnotified_abandoned.return_value = []
+        s.store.claim_next_due.return_value = CLAIM
+
+        async def run(claim, force=False):
+            s._stopping.set()                         # shutdown arrives while the first issue runs
+            return {'success': True, 'error': None}
+
+        monkeypatch.setattr(s, '_process_issue', run)
+        s._job_check_and_process()
+        assert s.store.claim_next_due.call_count == 1
+
+
+class TestArticleCap:
+    """_generate_pdf asks for the newest MAX_ARTICLES_PER_PUBLICATION per publication within the window."""
+
+    @pytest.fixture
+    def run(self, monkeypatch):
+        import services.rss_service as rss_mod
+        import services.scheduler as sched
+        calls = {}
+
+        class FakeRSS:
+            async def fetch_recent_articles_for_issue(self, issue_id, **kwargs):
+                calls.update(kwargs)
+                return {'total_articles': 3, 'issue': {},
+                        'articles_by_publication': {'p1': [{'id': 1}, {'id': 2}, {'id': 3}]}}
+
+        monkeypatch.setattr(rss_mod, 'RSSService', FakeRSS)
+        s = bare_scheduler()
+        s.store = FakeStore()
+        s.pdf_service = MagicMock()
+
+        async def render(**kw):
+            return {'success': True, 'pdf_url': 'http://pdf', 'articles_count': 3}
+
+        s.pdf_service.generate_pdf_from_issue = render
+        return s, calls, sched
+
+    async def test_uses_the_configured_cap_and_the_window_since_the_last_edition(self, run, monkeypatch):
+        s, calls, sched = run
+        monkeypatch.setattr(sched, 'MAX_ARTICLES_PER_PUBLICATION', 3)
+        last = datetime.now(timezone.utc) - timedelta(days=2)
+        s.store.last_until = last
+        result = await s._generate_pdf({'id': 'i1', 'article_window_days': 7})
+        assert calls['max_articles_per_publication'] == 3
+        assert calls['start_date'] == last + timedelta(microseconds=1)
+        assert result['articles_from'] == calls['start_date'] and result['articles_until'] == calls['end_date']
+        assert result['articles_count'] == 3
+
+    async def test_says_when_a_publication_hit_the_cap(self, run, monkeypatch, caplog):
+        import logging
+        s, _, sched = run
+        monkeypatch.setattr(sched, 'MAX_ARTICLES_PER_PUBLICATION', 3)
+        with caplog.at_level(logging.INFO):
+            await s._generate_pdf({'id': 'i1'})
+        assert '1 publication(s) hit the 3-article cap' in caplog.text

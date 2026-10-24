@@ -7,6 +7,11 @@ import { useAuth } from '../../contexts/useAuth'
 import { track } from '../../lib/analytics'
 import FakeDoor from './FakeDoor'
 import ScheduleStatus from './ScheduleStatus'
+import ScheduleSettings from './ScheduleSettings'
+import RecipientConfirmation from './RecipientConfirmation'
+import DeliveryHistory from './DeliveryHistory'
+import { useIssueSchedule } from '../../lib/useIssueSchedule'
+import { isRecipientConfirmed } from '../../lib/schedule'
 
 const FORMAT_OPTIONS = [
     { value: 'essay', label: 'Essay' },
@@ -47,13 +52,20 @@ export default function ConfigureNewspaper() {
         saveGuestIssue,
         articleWindow,
         autoSend,
+        autoSendError,
         updateArticleWindow,
         updateAutoSend
     } = useNewsletterConfig()
 
     const { session } = useAuth()
     const [sendNowState, setSendNowState] = useState({ status: 'idle', message: '' })
+    const [emailError, setEmailError] = useState(null)
     const hasRecipient = Boolean(targetEmail && targetEmail.trim())
+    // The stored schedule and recipient state; re-read after Send now so history and status follow.
+    const { issue, refresh, save: saveSchedule } = useIssueSchedule(currentIssueId, sendNowState.status)
+    const recipientConfirmed = isRecipientConfirmed(issue, targetEmail)
+    const recipientSaved = Boolean(issue?.target_email) &&
+        issue.target_email.trim().toLowerCase() === (targetEmail || '').trim().toLowerCase()
 
     const handleSendNow = async () => {
         track('send_now_clicked')
@@ -65,7 +77,11 @@ export default function ConfigureNewspaper() {
             })
             const data = await res.json().catch(() => ({}))
             if (!res.ok) {
-                setSendNowState({ status: 'error', message: data.error || 'Could not start sending' })
+                // 409: a run is already in progress; 429: sent moments ago (the message says when to retry).
+                const message = res.status === 409
+                    ? 'This newspaper is already being sent. Check back in a few minutes.'
+                    : data.error || 'Could not start sending'
+                setSendNowState({ status: 'error', message })
                 return
             }
             setSendNowState({ status: 'sent', message: `Sending started. It will arrive at ${targetEmail} shortly.` })
@@ -76,6 +92,7 @@ export default function ConfigureNewspaper() {
 
     // Persist the email change to the DB so it's available when PDF generation fires
     const handleEmailBlur = async () => {
+        setEmailError(null)
         try {
             if (isAuthenticated) {
                 await saveIssueToSupabase({
@@ -84,11 +101,21 @@ export default function ConfigureNewspaper() {
                     frequency,
                     remove_images: false,
                 })
+                refresh()
             }
         } catch (err) {
-            // Non-critical – silently ignore, the value is still in context state
+            // The value is still in context state. The one failure worth explaining is the database
+            // refusing to move a live schedule to an address nobody confirmed.
             console.warn('Could not persist email to DB:', err)
+            if (`${err?.message} ${err?.code}`.includes('recipient_not_verified')) {
+                setEmailError('Turn off automatic delivery to change the address, then confirm the new one.')
+            }
         }
+    }
+
+    const handleFrequencyChange = async (value) => {
+        updateFrequency(value)
+        if (currentIssueId) await saveSchedule({ frequency: value })
     }
 
     // Validation for custom date range
@@ -102,30 +129,6 @@ export default function ConfigureNewspaper() {
         : (dateFromMissing || dateToMissing)
             ? 'Both dates are required for a custom range'
             : null
-
-    // Compute a next scheduled Date for display based on frequency selection
-    const computeNextScheduled = (freq) => {
-        const now = new Date()
-        const d = new Date(now)
-        if (!freq) return d
-
-        switch (freq) {
-            case 'daily':
-                d.setDate(d.getDate() + 1)
-                break
-            case 'weekly':
-                d.setDate(d.getDate() + 7)
-                break
-            case 'monthly':
-                d.setMonth(d.getMonth() + 1)
-                break
-            default:
-                // Fallback to one week
-                d.setDate(d.getDate() + 7)
-        }
-
-        return d
-    }
 
     return (
         <Box sx={{
@@ -308,8 +311,8 @@ export default function ConfigureNewspaper() {
                                 <Switch
                                     checked={autoSend}
                                     onChange={(e) => updateAutoSend(e.target.checked)}
-                                    // Automatic delivery needs a recipient; turning it off is always allowed.
-                                    disabled={!autoSend && !hasRecipient}
+                                    // Automatic delivery needs a confirmed recipient; turning it off is always allowed.
+                                    disabled={!autoSend && (!hasRecipient || !recipientConfirmed)}
                                     color="primary"
                                 />
                             }
@@ -318,6 +321,16 @@ export default function ConfigureNewspaper() {
                         {!autoSend && !hasRecipient && (
                             <Typography variant="body2" sx={{ color: 'text.secondary' }}>
                                 Add a delivery email below to enable automatic delivery.
+                            </Typography>
+                        )}
+                        {!autoSend && hasRecipient && !recipientConfirmed && (
+                            <Typography variant="body2" sx={{ color: 'text.secondary' }}>
+                                Confirm your delivery email below to enable automatic delivery.
+                            </Typography>
+                        )}
+                        {autoSendError && (
+                            <Typography variant="body2" role="alert" sx={{ color: 'error.main' }}>
+                                {autoSendError}
                             </Typography>
                         )}
                         <FakeDoor
@@ -346,7 +359,7 @@ export default function ConfigureNewspaper() {
                             {FREQUENCY_OPTIONS.filter(opt => opt.value !== 'custom').map(({ value, label }) => (
                                 <Button
                                     key={value}
-                                    onClick={() => updateFrequency(value)}
+                                    onClick={() => handleFrequencyChange(value)}
                                     sx={{
                                         flex: 1,
                                         py: 1.5,
@@ -368,16 +381,17 @@ export default function ConfigureNewspaper() {
                             ))}
                         </Box>
 
+                        <ScheduleSettings frequency={frequency} issue={issue} onSave={saveSchedule} />
+
                         <ScheduleStatus
                             issueId={currentIssueId}
-                            refreshKey={sendNowState.status}
-                            fallbackNext={computeNextScheduled(frequency)}
+                            refreshKey={`${sendNowState.status}:${issue?.frequency}:${issue?.schedule_weekday}:${issue?.schedule_day_of_month}:${issue?.schedule_time_local}:${issue?.schedule_timezone}`}
                         />
 
                         <Button
                             variant="outlined"
                             onClick={handleSendNow}
-                            disabled={!currentIssueId || !targetEmail || sendNowState.status === 'sending'}
+                            disabled={!currentIssueId || !targetEmail || !recipientConfirmed || sendNowState.status === 'sending'}
                             sx={{ mt: 1.5, textTransform: 'none' }}
                         >
                             {sendNowState.status === 'sending' ? 'Sending…' : 'Send now'}
@@ -391,6 +405,8 @@ export default function ConfigureNewspaper() {
                                 {sendNowState.message}
                             </Typography>
                         )}
+
+                        <DeliveryHistory issueId={currentIssueId} refreshKey={sendNowState.status} />
                     </Box>
                 )}
 
@@ -415,13 +431,21 @@ export default function ConfigureNewspaper() {
                             onBlur={handleEmailBlur}
                             placeholder="e.g., you@example.com"
                             helperText={
-                                !hasRecipient ? 'Enter an email to enable automatic delivery' : ''
+                                emailError || (!hasRecipient ? 'Enter an email to enable automatic delivery' : '')
                             }
+                            error={Boolean(emailError)}
                             sx={{
                                 '& .MuiOutlinedInput-root': {
                                     backgroundColor: autoSend ? '#ffffff' : '#efefef'
                                 }
                             }}
+                        />
+                        <RecipientConfirmation
+                            issueId={currentIssueId}
+                            email={(targetEmail || '').trim()}
+                            saved={recipientSaved}
+                            confirmed={recipientConfirmed}
+                            onRequested={refresh}
                         />
                     </Box>
                 )}

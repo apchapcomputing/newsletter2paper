@@ -16,6 +16,14 @@ class FakeSupabase:
         self.calls = []
         self.client = MagicMock()
         self.client.table.side_effect = self._table
+        # Database functions called with client.rpc(name, params): results by name (None if unset).
+        self.rpc_results = {}
+        self.rpc_calls = []
+        self.client.rpc.side_effect = self._rpc
+
+    def _rpc(self, name, params=None):
+        self.rpc_calls.append((name, params))
+        return MagicMock(execute=lambda: MagicMock(data=self.rpc_results.get(name)))
 
     def _table(self, name):
         return _Query(self, name)
@@ -47,6 +55,20 @@ class _Query:
     def eq(self, col, val):
         self.filters.append((col, val))
         return self
+
+    def _filter(self, op):
+        def add(col, val):
+            self.filters.append((col, f"{op}:{val}"))
+            return self
+        return add
+
+    def __getattr__(self, name):
+        # gte/lt/is_/neq/in_ ...: recorded as filters; order/limit: no-ops.
+        if name in ("order", "limit", "range"):
+            return lambda *a, **k: self
+        if name in ("gte", "gt", "lte", "lt", "neq", "is_", "in_", "like", "ilike"):
+            return self._filter(name)
+        raise AttributeError(name)
 
     def execute(self):
         self.fake.calls.append((self.table, self.op, self.payload, tuple(self.filters)))
