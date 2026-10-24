@@ -472,11 +472,6 @@ export default function Home() {
     // Prevent the menu item click from firing
     event.stopPropagation();
 
-    // Confirm deletion
-    if (!window.confirm('Are you sure you want to delete this issue? This action cannot be undone.')) {
-      return;
-    }
-
     try {
       const response = await apiFetch(`/api/issues/${issueId}`, {
         method: 'DELETE',
