@@ -1,15 +1,9 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react';
-import Button from '@mui/material/Button';
-import Box from '@mui/material/Box';
-import Typography from '@mui/material/Typography';
-import Alert from '@mui/material/Alert';
-import Link from '@mui/material/Link';
 import Menu from '@mui/material/Menu';
 import MenuItem from '@mui/material/MenuItem';
 import IconButton from '@mui/material/IconButton';
-import ArrowDropDownIcon from '@mui/icons-material/ArrowDropDown';
 import DeleteIcon from '@mui/icons-material/Delete';
 
 import SearchModal from './components/SearchModal';
@@ -17,13 +11,14 @@ import AuthModal from './components/AuthModal';
 import AuthButton from './components/AuthButton';
 import ConfigureNewspaper from './components/ConfigureNewspaper';
 import AddPublications from './components/AddPublications';
-import ActionButtonsSection from './components/ActionButtonsSection';
-import DecorativeLine from './components/DecorativeLine';
+import PrintStep from './components/PrintStep';
+import Masthead from './components/Masthead';
+import Stepper from './components/Stepper';
+import StepWindow from './components/StepWindow';
 import Footer from './components/Footer';
 
 import { getRssFeedUrl } from '../utils/rssUtils';
 import { searchSubstack } from '../utils/substackUtils';
-import { apiPost } from '../utils/authApi';
 import logger from '../utils/logger';
 
 import { useSelectedPublications } from '../contexts/useSelectedPublications';
@@ -31,6 +26,19 @@ import { useNewsletterConfig } from '../contexts/useNewsletterConfig';
 import { useAuth } from '../contexts/useAuth';
 import { apiFetch } from '../lib/apiFetch';
 import { track, captureError } from '../lib/analytics';
+import { useArticlePreviews } from '../lib/useArticlePreviews';
+import {
+  STEPS,
+  clampStep,
+  stepFromHash,
+  hashForStep,
+  articleWindowError,
+  articleWindowQuery,
+  describeArticleWindow,
+  toQueryString,
+  sheetsFilled,
+  isStepDone,
+} from '../lib/createFlow';
 
 export default function Home() {
   const { selectedPublications, addPublication, removePublication, clearAllPublications, isLoaded } = useSelectedPublications();
@@ -39,6 +47,7 @@ export default function Home() {
     outputMode,
     removeImages,
     frequency,
+    articleWindow,
     dateFrom,
     dateTo,
     currentIssueId,
@@ -68,6 +77,11 @@ export default function Home() {
   const [isSaving, setIsSaving] = useState(false);
   const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
   const [pdfUrl, setPdfUrl] = useState(null);
+  const [printStatus, setPrintStatus] = useState('');
+  const printAbort = useRef(null);
+  const [step, setStep] = useState(0);
+  const [reached, setReached] = useState(0);
+  const previews = useArticlePreviews();
   const [isPopulatingPublications, setIsPopulatingPublications] = useState(false);
   const [selectAnchorEl, setSelectAnchorEl] = useState(null);
   const isSelectMenuOpen = Boolean(selectAnchorEl);
@@ -80,6 +94,24 @@ export default function Home() {
   // from localStorage (isLoaded/configLoaded are false on the client's first
   // render but the server may have rendered with them as true).
   useEffect(() => setMounted(true), []);
+
+  // The step lives in the URL hash (#add, #configure, #print): the browser's back button and
+  // deep links work, and the data itself comes back from the config contexts after a reload.
+  useEffect(() => {
+    const syncStep = () => {
+      const next = stepFromHash(window.location.hash);
+      setStep(next);
+      setReached(prev => Math.max(prev, next));
+    };
+    syncStep();
+    window.addEventListener('hashchange', syncStep);
+    return () => window.removeEventListener('hashchange', syncStep);
+  }, []);
+
+  const goToStep = (index) => {
+    const next = clampStep(index);
+    if (next !== step) window.location.hash = hashForStep(next);
+  };
 
   // Auto-save effect - triggers when title, outputMode, or publications change
   useEffect(() => {
@@ -339,6 +371,7 @@ export default function Home() {
 
     setIsGeneratingPdf(true);
     setPdfUrl(null);
+    setPrintStatus('');
 
     const startedAt = Date.now();
     const generateProps = {
@@ -374,38 +407,25 @@ export default function Home() {
 
       logger.log('✅ Issue saved, now generating PDF...');
 
-      // Build the PDF generation URL based on frequency
-      let pdfApiUrl;
-      if (frequency === 'custom') {
-        // Validate custom dates before proceeding
-        errorType = 'validation';
-        if (!dateFrom || !dateTo) {
-          throw new Error('Please select both a start and end date for a custom date range.');
-        }
-        if (dateFrom > dateTo) {
-          throw new Error('Start date must be before end date.');
-        }
-        pdfApiUrl = `/api/pdf/generate/${currentIssueId}?start_date=${dateFrom}&end_date=${dateTo}&layout_type=${outputMode}`;
-        logger.log(`📅 Custom date range: ${dateFrom} → ${dateTo}`);
-      } else {
-        // Map frequency to days_back parameter
-        const frequencyToDays = {
-          'daily': 1,
-          'weekly': 7,
-          'monthly': 30
-        };
-        const daysBack = frequencyToDays[frequency] || 7;
-        pdfApiUrl = `/api/pdf/generate/${currentIssueId}?days_back=${daysBack}&layout_type=${outputMode}`;
-        logger.log(`📅 Using frequency: ${frequency} (${daysBack} days back)`);
+      // Build the PDF generation URL from the article window
+      errorType = 'validation';
+      const windowQuery = articleWindowQuery({ articleWindow, frequency, dateFrom, dateTo });
+      if (!windowQuery) {
+        throw new Error(articleWindowError({ articleWindow, dateFrom, dateTo }));
       }
+      const pdfApiUrl = `/api/pdf/generate/${currentIssueId}?${toQueryString(windowQuery)}&layout_type=${outputMode}`;
+      logger.log(`📅 Article window: ${JSON.stringify(windowQuery)}`);
 
       // Call Next.js API route, which proxies to Python backend
       errorType = 'network';
+      const abort = new AbortController();
+      printAbort.current = abort;
       const response = await apiFetch(pdfApiUrl, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
+        signal: abort.signal,
       });
 
       errorType = response.status >= 500 ? 'backend_5xx' : response.ok ? 'bad_response' : 'backend_4xx';
@@ -423,13 +443,26 @@ export default function Home() {
       }
 
     } catch (error) {
+      if (error?.name === 'AbortError') {
+        // "Stop the presses": the reader cancelled, so this is neither a failure nor an event.
+        setPrintStatus('Presses stopped. Nothing was printed.');
+        return;
+      }
       console.error('Error generating PDF:', error);
       const failure = { ...generateProps, error_type: errorType, duration_ms: Date.now() - startedAt };
       track('pdf_generate_failed', failure);
       if (errorType !== 'validation') captureError(error, failure);
+      setPrintStatus(errorType === 'validation'
+        ? error.message
+        : 'Your paper could not be printed. Check your connection and try again.');
     } finally {
+      printAbort.current = null;
       setIsGeneratingPdf(false);
     }
+  };
+
+  const handleStopPrinting = () => {
+    printAbort.current?.abort();
   };
 
   const handleSearchModalClose = () => {
@@ -520,188 +553,138 @@ export default function Home() {
   // Don't render the form until mounted and both contexts are loaded
   if (!mounted || !isLoaded || !configLoaded) {
     return (
-      <div className="font-sans grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20" style={{ backgroundColor: 'var(--white)' }}>
-        <main className="flex flex-col gap-[32px] row-start-2 items-center sm:items-start">
-          <Typography variant="h4" component="h1" sx={{ textAlign: 'center' }}>
-            Loading your newsletter configuration...
-          </Typography>
+      <div className="n2p-page" style={{ minHeight: '100vh' }}>
+        <main className="n2p-wrap">
+          <p className="n2p-deck" role="status" style={{ paddingTop: 'var(--space-12)' }}>
+            Loading your newsletter configuration…
+          </p>
         </main>
       </div>
     );
   }
 
+  const now = new Date();
+  const weekday = now.toLocaleDateString('en-US', { weekday: 'long' });
+  const dateLabel = now.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  const paperName = newspaperTitle.trim() || 'Your Paper';
+
+  const flow = {
+    publicationCount: selectedPublications.length,
+    title: newspaperTitle,
+    format: outputMode,
+    articleWindow,
+    dateFrom,
+    dateTo,
+    isGenerating: isGeneratingPdf,
+    hasPdf: Boolean(pdfUrl),
+  };
+  const sheets = STEPS.map((_, i) => sheetsFilled(i, flow));
+  const done = STEPS.map((_, i) => isStepDone(i, step, reached, flow));
+
+  // Configure can only move on once the article window is usable; the field shows why.
+  const configureBlocked = step === 1 && Boolean(articleWindowError({ articleWindow, dateFrom, dateTo }));
+
+  const handleNext = () => {
+    if (configureBlocked) {
+      document.getElementById(dateFrom ? 'date-to' : 'date-from')?.focus();
+      return;
+    }
+    goToStep(step + 1);
+  };
+
   return (
-    <div className="font-sans min-h-screen" style={{ backgroundColor: 'var(--white)' }}>
-      {/* Header Section */}
-      <AuthButton />
-      <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: '100%', textAlign: 'center', mb: 4, mt: -4 }}>
-        <Typography
-          variant="h1"
-          component="h1"
-          className="font-unifraktur font-bold"
-          sx={{
-            fontFamily: '"UnifrakturCook", cursive',
-            fontWeight: 700,
-            letterSpacing: '0.05em',
-            fontSize: { xs: '2.5rem', sm: '3.5rem' },
-            lineHeight: 1.2,
-            mb: 1,
-            color: 'var(--black)'
-          }}
-        >
-          The Newsletter Printing Press
-        </Typography>
-        <Typography
-          variant="subtitle1"
-          sx={{
-            fontWeight: 400,
-            letterSpacing: '0.1em',
-            fontSize: { xs: '0.75rem', sm: '0.875rem' },
-            color: 'text.secondary',
-            opacity: 0.8,
-            px: { xs: 3, sm: 0 },
-            textAlign: 'center',
-            lineHeight: 1.6
-          }}
-        >
-          EST. 2025 • SUBSTACK RSS TO NEWSPAPER PDF • VOLUME 0
-        </Typography>
-      </Box>
-      <DecorativeLine sx={{ width: "95%", mb: 4, mx: 'auto' }} />
-
-      <main className="flex flex-col gap-[32px] items-center sm:items-start max-w-4xl w-full mx-auto px-8">
-
-        {/* Auto-save Status Indicator */}
-        <Box sx={{
-          width: '100%',
-          display: 'flex',
-          justifyContent: 'center',
-          mb: -2
-        }}>
-          <Typography
-            variant="body2"
-            sx={{
-              color: isSaving ? 'var(--primary)' : '#666',
-              fontStyle: 'italic',
-              fontSize: '0.85rem',
-              opacity: 0.8
-            }}
-          >
-            {isSaving ? '💾 Saving changes...' : ''}
-          </Typography>
-        </Box>
-
-        {/* Authentication Status Alert */}
-        {!user && (
-          <Alert
-            severity="info"
-            sx={{
-              width: '100%',
-              borderRadius: 0,
-              backgroundColor: 'var(--white)',
-              border: '1px solid var(--secondary-light)',
-              borderWidth: 2,
-              color: 'var(--black)',
-              '& .MuiAlert-icon': {
-                color: 'var(--secondary)'
-              },
-              '& .MuiAlert-message': {
-                fontSize: '0.9rem',
-                color: 'var(--black)'
-              }
-            }}
-          >
-            You&apos;re browsing as a guest.{' '}
-            <Link
-              component="button"
-              onClick={() => setIsAuthModalOpen(true)}
-              sx={{
-                textDecoration: 'none',
-                color: 'var(--primary-light)',
-                cursor: 'pointer',
-                fontWeight: 600,
-                '&:hover': {
-                  color: 'var(--primary-dark)'
-                }
-              }}
-            >
-              Sign in
-            </Link>
-            {' '}to save your newsletter configurations, access them later, and email your issue PDFs to yourself!
-          </Alert>
-        )}
-
-        {/* Select and Reset options */}
-        <Box sx={{ display: 'flex', width: '100%', justifyContent: 'space-between', gap: 3 }}>
-          <Button
-            variant="outlined"
+    <div className="n2p-page" style={{ minHeight: '100vh' }}>
+      <div className="n2p-wrap">
+        {/* Utility row: saving status, saved papers, new issue, account */}
+        <div className="n2p-toolbar">
+          <span className="n2p-toolbar__who" role="status">{isSaving ? 'Saving changes…' : ''}</span>
+          <button
+            type="button"
+            className="n2p-btn"
+            id="select-issue-button"
             onClick={handleSelectMenuOpen}
             disabled={!user || !userIssues || userIssues.length === 0}
-            endIcon={<ArrowDropDownIcon />}
-            sx={{
-              textTransform: 'none',
-              fontWeight: 500,
-              fontSize: '1rem',
-              color: 'var(--black)',
-              borderColor: 'var(--black)',
-              borderWidth: '2px',
-              width: '100%',
-              px: 4,
-              py: 1.5,
-              '&:hover': {
-                borderColor: 'var(--black)',
-                backgroundColor: 'rgba(0, 0, 0, 0.04)'
-              },
-              '&:disabled': {
-                color: '#bdbdbd',
-                borderColor: '#e0e0e0'
-              }
-            }}
+            aria-haspopup="menu"
+            aria-expanded={isSelectMenuOpen ? 'true' : undefined}
           >
-            SELECT
-          </Button>
-          <Button
-            variant="outlined"
+            Open saved paper
+          </button>
+          <button
+            type="button"
+            className="n2p-btn"
             onClick={handleClearAll}
             disabled={!newspaperTitle && selectedPublications.length === 0}
-            sx={{
-              textTransform: 'none',
-              fontWeight: 500,
-              fontSize: '1rem',
-              color: 'var(--black)',
-              borderColor: 'var(--black)',
-              borderWidth: '2px',
-              width: '100%',
-              px: 4,
-              py: 1.5,
-              '&:hover': {
-                borderColor: 'var(--black)',
-                backgroundColor: 'rgba(0, 0, 0, 0.04)'
-              },
-              '&:disabled': {
-                color: '#bdbdbd',
-                borderColor: '#e0e0e0'
-              }
-            }}
           >
-            NEW ISSUE
-          </Button>
-        </Box>
+            New issue
+          </button>
+          <AuthButton />
+        </div>
+
+        <Masthead
+          title={newspaperTitle}
+          weekday={weekday}
+          publicationCount={selectedPublications.length}
+          windowLabel={describeArticleWindow({ articleWindow, frequency, dateFrom, dateTo })}
+        />
+
+        <main>
+          {/* Authentication Status Notice */}
+          {!user && (
+            <div className="n2p-notice" style={{ marginTop: 'var(--space-4)' }}>
+              You&apos;re browsing as a guest.{' '}
+              <button type="button" onClick={() => setIsAuthModalOpen(true)}>Sign in</button>
+              {' '}to save your newsletter configurations, access them later, and email your issue PDFs to yourself.
+            </div>
+          )}
+
+          <div className="n2p-stepper-wrap">
+            <Stepper current={step} sheets={sheets} done={done} onSelect={goToStep} />
+          </div>
+
+          <div className="n2p-window-wrap">
+            <StepWindow
+              index={step}
+              onBack={() => goToStep(step - 1)}
+              onNext={handleNext}
+              nextBlocked={configureBlocked}
+              nextDescribedBy={configureBlocked ? 'date-error' : undefined}
+            >
+              {step === 0 && (
+                <AddPublications
+                  ref={addPublicationsRef}
+                  onOpenSearch={() => setIsSearchModalOpen(true)}
+                  onSaveIssue={handleSaveIssue}
+                  isSaving={isSaving}
+                  isPopulatingPublications={isPopulatingPublications}
+                  previews={previews}
+                />
+              )}
+              {step === 1 && <ConfigureNewspaper />}
+              {step === 2 && (
+                <PrintStep
+                  paperName={paperName}
+                  dateLabel={dateLabel}
+                  previewFor={previews.previewFor}
+                  isSaving={isSaving}
+                  isGeneratingPdf={isGeneratingPdf}
+                  pdfUrl={pdfUrl}
+                  printStatus={printStatus}
+                  onGeneratePdf={handleGeneratePdf}
+                  onStopPrinting={handleStopPrinting}
+                />
+              )}
+            </StepWindow>
+          </div>
+        </main>
 
         {/* Select Issue Dropdown Menu */}
         <Menu
           anchorEl={selectAnchorEl}
           open={isSelectMenuOpen}
           onClose={handleSelectMenuClose}
-          MenuListProps={{
-            'aria-labelledby': 'select-issue-button',
-          }}
-          PaperProps={{
-            sx: {
-              maxHeight: 300,
-              width: '300px',
-              border: '1px solid var(--black)'
-            }
+          slotProps={{
+            list: { 'aria-labelledby': 'select-issue-button' },
+            paper: { sx: { maxHeight: 300, width: '300px' } },
           }}
         >
           {userIssues && userIssues.length > 0 ? (
@@ -709,73 +692,32 @@ export default function Home() {
               <MenuItem
                 key={issue.id}
                 onClick={() => handleSelectIssue(issue)}
-                sx={{
-                  py: 1.5,
-                  px: 2,
-                  display: 'flex',
-                  alignItems: 'flex-start',
-                  '&:hover': {
-                    backgroundColor: 'rgba(0, 0, 0, 0.04)'
-                  }
-                }}
+                sx={{ py: 1.5, px: 2, display: 'flex', alignItems: 'flex-start' }}
               >
-                <Box sx={{ flexGrow: 1, minWidth: 0, mr: 1 }}>
-                  <Typography variant="body1" sx={{ fontWeight: 500 }}>
-                    {issue.title || 'Untitled Issue'}
-                  </Typography>
-                  <Typography variant="body2" color="text.secondary">
-                    {issue.frequency} • {issue.format} • updated {new Date(issue.updated_at || issue.created_at).toLocaleDateString()}
-                  </Typography>
-                </Box>
+                <div style={{ flexGrow: 1, minWidth: 0, marginRight: 8 }}>
+                  <div style={{ fontWeight: 700 }}>{issue.title || 'Untitled Issue'}</div>
+                  <div className="n2p-pub__dl">
+                    {issue.frequency} · {issue.format} · updated {new Date(issue.updated_at || issue.created_at).toLocaleDateString()}
+                  </div>
+                </div>
                 <IconButton
                   size="small"
+                  aria-label={`Delete ${issue.title || 'Untitled Issue'}`}
                   onClick={(e) => handleDeleteIssue(e, issue.id)}
-                  sx={{
-                    flexShrink: 0,
-                    mt: -0.5,
-                    '&:hover': {
-                      color: '#9E2A2B', // Error red
-                      backgroundColor: 'rgba(158, 42, 43, 0.04)'
-                    }
-                  }}
+                  sx={{ flexShrink: 0, mt: -0.5, '&:hover': { color: 'var(--error)' } }}
                 >
                   <DeleteIcon fontSize="small" />
                 </IconButton>
               </MenuItem>
             ))
           ) : (
-            <MenuItem disabled>
-              <Typography variant="body2" color="text.secondary">
-                No saved issues found
-              </Typography>
-            </MenuItem>
+            <MenuItem disabled>No saved issues found</MenuItem>
           )}
         </Menu>
 
-        {/* Configure Your Newspaper Section */}
-        <ConfigureNewspaper />
-
-        <DecorativeLine />
-
-        {/* Add Publications Section */}
-        <AddPublications
-          ref={addPublicationsRef}
-          onOpenSearch={() => setIsSearchModalOpen(true)}
-          onSaveIssue={handleSaveIssue}
-          isSaving={isSaving}
-          isPopulatingPublications={isPopulatingPublications}
-        />
-
-        <DecorativeLine />
-
-        {/* Action Buttons Section */}
-        <ActionButtonsSection
-          isSaving={isSaving}
-          isGeneratingPdf={isGeneratingPdf}
-          pdfUrl={pdfUrl}
-          onGeneratePdf={handleGeneratePdf}
-        />
-      </main>
+        {/* Footer */}
+        <Footer />
+      </div>
 
       {/* Search Modal */}
       <SearchModal
@@ -796,9 +738,6 @@ export default function Home() {
         trigger="guest_banner"
         onClose={() => setIsAuthModalOpen(false)}
       />
-
-      {/* Footer */}
-      <Footer />
-    </div >
+    </div>
   );
 }

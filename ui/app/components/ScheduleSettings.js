@@ -34,7 +34,7 @@ export default function ScheduleSettings({ frequency, issue, onSave }) {
                         size="small"
                         value={issue.schedule_weekday ?? ''}
                         onChange={(e) => change({ schedule_weekday: Number(e.target.value) })}
-                        sx={{ minWidth: 150, '& .MuiOutlinedInput-root': { backgroundColor: '#f5f5f5' } }}
+                        sx={{ minWidth: 150 }}
                     >
                         {issue.schedule_weekday == null && <MenuItem value="" disabled>Choose a day</MenuItem>}
                         {WEEKDAYS.map((name, index) => (
@@ -49,7 +49,7 @@ export default function ScheduleSettings({ frequency, issue, onSave }) {
                         size="small"
                         value={issue.schedule_day_of_month ?? ''}
                         onChange={(e) => change({ schedule_day_of_month: Number(e.target.value) })}
-                        sx={{ minWidth: 150, '& .MuiOutlinedInput-root': { backgroundColor: '#f5f5f5' } }}
+                        sx={{ minWidth: 150 }}
                     >
                         {issue.schedule_day_of_month == null && <MenuItem value="" disabled>Choose a day</MenuItem>}
                         {DAYS_OF_MONTH.map((day) => (
@@ -64,7 +64,7 @@ export default function ScheduleSettings({ frequency, issue, onSave }) {
                     value={time}
                     onChange={(e) => e.target.value && change({ schedule_time_local: e.target.value })}
                     slotProps={{ inputLabel: { shrink: true } }}
-                    sx={{ minWidth: 130, '& .MuiOutlinedInput-root': { backgroundColor: '#f5f5f5' } }}
+                    sx={{ minWidth: 130 }}
                 />
                 <TextField
                     select
@@ -72,7 +72,7 @@ export default function ScheduleSettings({ frequency, issue, onSave }) {
                     size="small"
                     value={timezone}
                     onChange={(e) => change({ schedule_timezone: e.target.value })}
-                    sx={{ minWidth: 220, '& .MuiOutlinedInput-root': { backgroundColor: '#f5f5f5' } }}
+                    sx={{ minWidth: 220 }}
                 >
                     {timezoneOptions(timezone).map((zone) => (
                         <MenuItem key={zone} value={zone}>{zone}</MenuItem>

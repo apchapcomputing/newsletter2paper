@@ -1,82 +1,91 @@
-@import url('https://fonts.googleapis.com/css2?family=UnifrakturCook:wght@700&display=swap');
 @import "tailwindcss";
+@import "./n2p.css";
 
+/* Design tokens come from the newsletter2paper design system ("paper and ink":
+   cornflower fills, burnt-orange marks, square corners, stamped windows).
+   The short names below are what MUI `sx` and the n2p-* classes in n2p.css read.
+   Hex values live once, in @theme inline further down. */
 :root {
-  /* Short-name aliases for use in MUI sx and inline CSS, e.g. var(--primary).
-     Hex values live once in @theme inline below. */
-  --background: var(--color-background);
-  --foreground: var(--color-foreground);
+  --paper: var(--color-paper);
+  --paper-raised: var(--color-paper-raised);
+  --paper-sunk: var(--color-paper-sunk);
+  --ink: var(--color-ink);
+  --ink-muted: var(--color-ink-muted);
+  --line: var(--color-ink);
 
+  /* Cornflower: the big fills. Orange (secondary): the marks and links. */
   --primary: var(--color-primary);
-  --primary-dark: var(--color-primary-dark);
-  --primary-light: var(--color-primary-light);
-  --orange-light: var(--color-orange-light);
-  --orange-lighter: var(--color-orange-lighter);
-
+  --on-primary: var(--color-on-primary);
+  --primary-deep: var(--color-primary-deep);
+  --primary-soft: var(--color-primary-soft);
   --secondary: var(--color-secondary);
-  --secondary-dark: var(--color-secondary-dark);
-  --secondary-light: var(--color-secondary-light);
+  --on-secondary: var(--color-on-secondary);
+  --secondary-soft: var(--color-secondary-soft);
 
   --error: var(--color-error);
-  --error-dark: var(--color-error-dark);
-  --error-light: var(--color-error-light);
-
   --success: var(--color-success);
-  --success-dark: var(--color-success-dark);
-  --success-light: var(--color-success-light);
 
-  --grey: var(--color-grey);
-  --white: var(--color-white);
-  --black: var(--color-black);
+  /* Older names, kept so code not yet moved to the tokens above still renders on paper and ink. */
+  --background: var(--paper);
+  --foreground: var(--ink);
+  --white: var(--paper);
+  --black: var(--ink);
+  --grey: var(--ink-muted);
+
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-12: 48px;
+
+  --border: 2px;
+  --rule: 2px;
+  --content-max: 880px;
+  --touch-min: 44px;
+  --print-button-max: 440px;
+
+  /* Hard stamp shadows and inset bevels, never blurred. */
+  --shadow-stamp: 4px 4px 0 #2a1820;
+  --shadow-stamp-sm: 2px 2px 0 #2a1820;
+  --shadow-bevel: inset 3px 3px 0 #ffffff99, inset -3px -3px 0 #2a182044;
+  --shadow-bevel-sm: inset 2px 2px 0 #ffffff99, inset -2px -2px 0 #2a182044;
+  --shadow-bevel-sunk: inset 3px 3px 0 #2a182044, inset -3px -3px 0 #ffffff99;
+
+  /* The next/font variables are set on <body> in layout.js. */
+  --font-blackletter: var(--font-unifraktur), Georgia, serif;
+  --font-display: var(--font-unbounded), "Arial Black", Verdana, sans-serif;
+  --font-sans: var(--font-atkinson), "Trebuchet MS", system-ui, sans-serif;
+  --font-typewriter: var(--font-courier), "Courier New", monospace;
 }
 
-/* Single source of truth for all design tokens.
-   @theme inline registers each as a Tailwind utility (text-*, bg-*, border-*, etc.)
-   and emits var(--color-*) references so dark-mode overrides work at runtime. */
 @theme inline {
-  --color-background: #ECECEC;
-  --color-foreground: #291D18;
+  --color-paper: #fbf4ea;
+  --color-paper-raised: #fffaf2;
+  --color-paper-sunk: #f2e6d4;
+  --color-ink: #2a1820;
+  --color-ink-muted: #67505c;
 
-  /* Primary - Orange */
-  --color-primary: #A44200;
-  --color-primary-dark: #A44200;
-  --color-primary-light: #c5541b;
-  --color-orange-light: #c5541b;
-  --color-orange-lighter: #D58936;
+  --color-primary: #6f98f2;
+  --color-on-primary: #2a1820;
+  --color-primary-deep: #2f53b5;
+  --color-primary-soft: #dde7fd;
 
-  /* Secondary - Blue */
-  --color-secondary: #355C7D;
-  --color-secondary-dark: #355C7D;
-  --color-secondary-light: #4A6274;
+  --color-secondary: #a44200;
+  --color-on-secondary: #fbf4ea;
+  --color-secondary-soft: #fff4e6;
 
-  /* Error - Red */
-  --color-error: #9E2A2B;
-  --color-error-dark: #9E2A2B;
-  --color-error-light: #B23A3A;
-
-  /* Success - Green */
-  --color-success: #3F5F43;
-  --color-success-dark: #3F5F43;
-  --color-success-light: #4F6F52;
-
-  /* Neutrals */
-  --color-grey: #504f4e;
-  --color-white: #ECECEC;
-  --color-black: #291D18;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --color-background: #291D18;
-    --color-foreground: #ECECEC;
-  }
+  --color-error: #9e2a2b;
+  --color-success: #3f5f43;
 }
 
 html {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: var(--font-geist-sans), Arial, Helvetica, sans-serif;
-  scrollbar-color: #504f4e #ECECEC;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  color-scheme: light;
+  scrollbar-color: var(--ink-muted) var(--paper-sunk);
 }
 
 /* Custom scrollbar styling for webkit browsers */
@@ -85,21 +94,21 @@ html {
 }
 
 ::-webkit-scrollbar-track {
-  background: #ECECEC;
+  background: var(--paper-sunk);
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #504f4e;
+  background: var(--ink-muted);
   border-radius: 0;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #A44200;
+  background: var(--secondary);
 }
 
 /* UnifrakturCook font for titles */
 .unifrakturcook-bold {
-  font-family: "UnifrakturCook", cursive;
+  font-family: var(--font-blackletter);
   font-weight: 700;
   font-style: normal;
 }

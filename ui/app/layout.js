@@ -1,16 +1,33 @@
-import { Geist, Geist_Mono } from "next/font/google";
+import { Atkinson_Hyperlegible, Courier_Prime, Unbounded, UnifrakturCook } from "next/font/google";
 import "./globals.css";
 import { AppRouterCacheProvider } from '@mui/material-nextjs/v15-appRouter';
 import Providers from '../contexts/providers';
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
+// The four faces of the design system, one job each: blackletter masthead, display headings
+// and buttons, sans reading text, typewriter labels. globals.css maps these variables to --font-*.
+const atkinson = Atkinson_Hyperlegible({
+  variable: "--font-atkinson",
   subsets: ["latin"],
+  weight: ["400", "700"],
+  style: ["normal", "italic"],
 });
 
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
+const courier = Courier_Prime({
+  variable: "--font-courier",
   subsets: ["latin"],
+  weight: ["400", "700"],
+});
+
+const unbounded = Unbounded({
+  variable: "--font-unbounded",
+  subsets: ["latin"],
+  weight: ["600", "700", "800"],
+});
+
+const unifraktur = UnifrakturCook({
+  variable: "--font-unifraktur",
+  subsets: ["latin"],
+  weight: "700",
 });
 
 export const metadata = {
@@ -28,7 +45,7 @@ export default function RootLayout({ children }) {
   return (
     <html lang="en">
       <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
+        className={`${atkinson.variable} ${courier.variable} ${unbounded.variable} ${unifraktur.variable} antialiased`}
       >
         <AppRouterCacheProvider>
           <Providers>

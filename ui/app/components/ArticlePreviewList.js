@@ -105,7 +105,7 @@ export default function ArticlePreviewList({ publication, articles, isLoading, e
                             key={article.id || index}
                             sx={{
                                 py: 1,
-                                borderBottom: index < articles.length - 1 ? '1px solid #e0e0e0' : 'none'
+                                borderBottom: index < articles.length - 1 ? '2px solid var(--paper-sunk)' : 'none'
                             }}
                         >
                             {/* Article title with link */}
@@ -121,7 +121,7 @@ export default function ArticlePreviewList({ publication, articles, isLoading, e
                                     color: 'text.primary',
                                     mb: 0.5,
                                     '&:hover': {
-                                        color: 'primary.main'
+                                        color: 'secondary.main'
                                     }
                                 }}
                             >

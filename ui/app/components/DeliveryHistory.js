@@ -69,7 +69,7 @@ export default function DeliveryHistory({ issueId, refreshKey }) {
                 {state.deliveries.map((delivery) => {
                     const line = describeDelivery(delivery)
                     return (
-                        <Box component="li" key={line.id} sx={{ py: 0.5, borderTop: '1px solid #e0e0e0' }}>
+                        <Box component="li" key={line.id} sx={{ py: 0.5, borderTop: '2px solid var(--paper-sunk)' }}>
                             <Typography variant="caption" sx={{ display: 'block' }}>
                                 {line.when} · {line.kind}
                             </Typography>

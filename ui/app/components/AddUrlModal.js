@@ -249,9 +249,9 @@ export default function AddUrlModal({ open, onClose, onPublicationAdded }) {
                 width: { xs: '90%', sm: '600px' },
                 maxWidth: '90vw',
                 maxHeight: '90vh',
-                bgcolor: 'var(--white)',
-                border: '2px solid var(--black)',
-                boxShadow: 24,
+                bgcolor: 'var(--paper-raised)',
+                border: '2px solid var(--ink)',
+                boxShadow: 'var(--shadow-stamp)',
                 p: 4,
                 overflow: 'auto'
             }}>
@@ -268,7 +268,7 @@ export default function AddUrlModal({ open, onClose, onPublicationAdded }) {
                     Add Publications via URL
                 </Typography>
 
-                <Typography variant="body2" sx={{ mb: 3, color: '#504f4e' }}>
+                <Typography variant="body2" sx={{ mb: 3, color: 'var(--ink-muted)' }}>
                     Paste Substack publication URLs below. You can separate multiple URLs with commas, spaces, or new lines.
                 </Typography>
 
@@ -280,22 +280,7 @@ export default function AddUrlModal({ open, onClose, onPublicationAdded }) {
                     value={urlInput}
                     onChange={(e) => setUrlInput(e.target.value)}
                     disabled={isProcessing}
-                    sx={{
-                        mb: 2,
-                        '& .MuiOutlinedInput-root': {
-                            backgroundColor: '#fff',
-                            '& fieldset': {
-                                borderColor: 'var(--black)',
-                                borderWidth: '2px'
-                            },
-                            '&:hover fieldset': {
-                                borderColor: 'var(--primary)'
-                            },
-                            '&.Mui-focused fieldset': {
-                                borderColor: 'var(--primary)'
-                            }
-                        }
-                    }}
+                    sx={{ mb: 2 }}
                 />
 
                 {error && (
@@ -361,20 +346,6 @@ export default function AddUrlModal({ open, onClose, onPublicationAdded }) {
                         variant="outlined"
                         onClick={handleClose}
                         disabled={isProcessing}
-                        sx={{
-                            textTransform: 'none',
-                            fontWeight: 500,
-                            fontSize: '1rem',
-                            color: 'var(--black)',
-                            borderColor: 'var(--black)',
-                            borderWidth: '2px',
-                            px: 3,
-                            '&:hover': {
-                                borderColor: 'var(--black)',
-                                backgroundColor: 'rgba(0, 0, 0, 0.04)',
-                                borderWidth: '2px'
-                            }
-                        }}
                     >
                         Cancel
                     </Button>
@@ -382,25 +353,10 @@ export default function AddUrlModal({ open, onClose, onPublicationAdded }) {
                         variant="contained"
                         onClick={handleAdd}
                         disabled={isProcessing || !urlInput.trim()}
-                        sx={{
-                            textTransform: 'none',
-                            fontWeight: 500,
-                            fontSize: '1rem',
-                            backgroundColor: 'var(--primary)',
-                            color: 'var(--white)',
-                            px: 3,
-                            '&:hover': {
-                                backgroundColor: '#8B3500'
-                            },
-                            '&:disabled': {
-                                backgroundColor: '#bdbdbd',
-                                color: '#fff'
-                            }
-                        }}
                     >
                         {isProcessing ? (
                             <>
-                                <CircularProgress size={20} sx={{ mr: 1, color: '#fff' }} />
+                                <CircularProgress size={20} sx={{ mr: 1, color: 'inherit' }} />
                                 Processing...
                             </>
                         ) : (

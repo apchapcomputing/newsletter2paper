@@ -1,37 +1,40 @@
 'use client'
 
 import { useState } from 'react'
-import { Box, Button, Typography, TextField, Switch, FormControlLabel } from '@mui/material'
+import { Switch, FormControlLabel } from '@mui/material'
 import { useNewsletterConfig } from '../../contexts/useNewsletterConfig'
 import { useAuth } from '../../contexts/useAuth'
 import { track } from '../../lib/analytics'
 import FakeDoor from './FakeDoor'
+import OptionButtons from './OptionButtons'
 import ScheduleStatus from './ScheduleStatus'
 import ScheduleSettings from './ScheduleSettings'
 import RecipientConfirmation from './RecipientConfirmation'
 import DeliveryHistory from './DeliveryHistory'
 import { useIssueSchedule } from '../../lib/useIssueSchedule'
 import { isRecipientConfirmed } from '../../lib/schedule'
+import { articleWindowError } from '../../lib/createFlow'
 
 const FORMAT_OPTIONS = [
-    { value: 'essay', label: 'Essay' },
     { value: 'newspaper', label: 'Newspaper' },
+    { value: 'essay', label: 'Essay' },
 ]
 
 const FREQUENCY_OPTIONS = [
     { value: 'daily', label: 'Daily' },
     { value: 'weekly', label: 'Weekly' },
     { value: 'monthly', label: 'Monthly' },
-    { value: 'custom', label: 'Custom' },
 ]
 
 const ARTICLE_WINDOW_OPTIONS = [
-    { value: '1', label: '1 day' },
-    { value: '7', label: '7 days' },
-    { value: '30', label: '30 days' },
+    { value: '1', label: 'Last day' },
+    { value: '7', label: 'Last week' },
+    { value: '30', label: 'Last month' },
     { value: 'custom', label: 'Custom' }
 ]
 
+// Step 2: format, title and article window for everyone; delivery (address, schedule, send now)
+// for signed-in users.
 export default function ConfigureNewspaper() {
     const {
         newspaperTitle,
@@ -49,7 +52,6 @@ export default function ConfigureNewspaper() {
         updateDateTo,
         updateTargetEmail,
         saveIssueToSupabase,
-        saveGuestIssue,
         articleWindow,
         autoSend,
         autoSendError,
@@ -119,193 +121,113 @@ export default function ConfigureNewspaper() {
     }
 
     // Validation for custom date range
-    const isCustom = frequency === 'custom'
-    const dateFromMissing = isCustom && !dateFrom
-    const dateToMissing = isCustom && !dateTo
-    const datesReversed = isCustom && dateFrom && dateTo && dateFrom > dateTo
-
-    const dateError = datesReversed
-        ? 'Start date must be before end date'
-        : (dateFromMissing || dateToMissing)
-            ? 'Both dates are required for a custom range'
-            : null
+    const dateError = articleWindowError({ articleWindow, dateFrom, dateTo })
+    const datesReversed = articleWindow === 'custom' && dateFrom && dateTo && dateFrom > dateTo
 
     return (
-        <Box sx={{
-            width: '100%',
-            border: '2px solid black',
-            p: 3,
-            mb: 2
-        }}>
-            <Typography
-                variant="h4"
-                component="h2"
-                sx={{
-                    textAlign: 'center',
-                    fontWeight: 600,
-                    mb: 1,
-                    fontSize: { xs: '1.5rem', sm: '2rem' }
-                }}
-            >
-                Configure Your Newspaper
-            </Typography>
-            <Typography
-                variant="body2"
-                sx={{
-                    textAlign: 'center',
-                    fontStyle: 'italic',
-                    color: 'text.secondary',
-                    mb: 2
-                }}
-            >
-                Configure the details for your newspaper
-            </Typography>
+        <>
+            <div className="n2p-field">
+                <span className="n2p-label" id="format-label">Format</span>
+                <div style={{ marginTop: 'var(--space-2)' }}>
+                    <OptionButtons labelId="format-label" options={FORMAT_OPTIONS} value={outputMode} onChange={updateOutputMode} />
+                </div>
+            </div>
 
-            <Box sx={{
-                width: '100%',
-                height: '2px',
-                backgroundColor: 'var(--black)',
-                mb: 3
-            }} />
+            <div className="n2p-field">
+                <label className="n2p-label" htmlFor="paper-title">Title</label>
+                <input
+                    id="paper-title"
+                    className="n2p-input"
+                    type="text"
+                    value={newspaperTitle}
+                    onChange={(e) => updateTitle(e.target.value)}
+                    placeholder="e.g., Morning News, Weekly Digest"
+                    maxLength={40}
+                    autoComplete="off"
+                    style={{ marginTop: 'var(--space-2)' }}
+                />
+            </div>
 
-            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-                {/* Format Toggle */}
-                <Box>
-                    <Typography variant="body1" sx={{ mb: 1, fontWeight: 500 }}>
-                        FORMAT
-                    </Typography>
-                    <Box sx={{ display: 'flex', gap: 1 }}>
-                        {FORMAT_OPTIONS.map(({ value, label }) => (
-                            <Button
-                                key={value}
-                                onClick={() => updateOutputMode(value)}
-                                sx={{
-                                    flex: 1,
-                                    py: 1.5,
-                                    fontWeight: 'medium',
-                                    textTransform: 'none',
-                                    fontSize: '1rem',
-                                    backgroundColor: '#f5f5f5',
-                                    color: outputMode === value ? 'var(--primary-light)' : 'var(--black)',
-                                    border: '1px solid',
-                                    borderColor: outputMode === value ? 'var(--primary-dark)' : '#ccc',
-                                    '&:hover': {
-                                        backgroundColor: '#f5f5f5',
-                                        borderColor: 'var(--black)',
-                                    },
-                                }}
-                            >
-                                {label}
-                            </Button>
-                        ))}
-                    </Box>
-                </Box>
+            <div className="n2p-field" style={{ marginBottom: 0 }}>
+                <span className="n2p-label" id="window-label">Article window</span>
+                <p className="n2p-help">Choose the time period to retrieve articles from</p>
+                <OptionButtons labelId="window-label" options={ARTICLE_WINDOW_OPTIONS} value={articleWindow} onChange={updateArticleWindow} />
 
-                {/* Title Input */}
-                <Box>
-                    <Typography variant="body1" sx={{ mb: 1, fontWeight: 500 }}>
-                        TITLE
-                    </Typography>
-                    <TextField
-                        variant="outlined"
-                        fullWidth
-                        value={newspaperTitle}
-                        onChange={(e) => updateTitle(e.target.value)}
-                        placeholder="e.g., Morning News, Weekly Digest"
-                        sx={{ '& .MuiOutlinedInput-root': { backgroundColor: '#f5f5f5' } }}
-                    />
-                </Box>
-
-                {/* Article Window */}
-                <Box>
-                    <Typography variant="body1" sx={{ mb: 1, fontWeight: 500 }}>
-                        ARTICLE WINDOW
-                    </Typography>
-                    <Typography
-                        variant="body2"
-                        sx={{ fontStyle: 'italic', color: 'text.secondary', mb: 2 }}
-                    >
-                        Choose the time period to retrieve articles from
-                    </Typography>
-
-                    {/* Article window toggle buttons */}
-                    <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
-                        {ARTICLE_WINDOW_OPTIONS.map(({ value, label }) => (
-                            <Button
-                                key={value}
-                                onClick={() => updateArticleWindow(value)}
-                                sx={{
-                                    flex: 1,
-                                    py: 1.5,
-                                    fontWeight: 'medium',
-                                    textTransform: 'none',
-                                    fontSize: '1rem',
-                                    backgroundColor: '#f5f5f5',
-                                    color: articleWindow === value ? 'var(--primary-light)' : 'var(--black)',
-                                    border: '1px solid',
-                                    borderColor: articleWindow === value ? 'var(--primary-dark)' : '#ccc',
-                                    '&:hover': {
-                                        backgroundColor: '#f5f5f5',
-                                        borderColor: 'var(--black)',
-                                    },
-                                }}
-                            >
-                                {label}
-                            </Button>
-                        ))}
-                    </Box>
-
-                    {/* Custom date range inputs for ARTICLE_WINDOW when 'custom' */}
-                    {articleWindow === 'custom' && (
-                        <div className="mt-4">
-                            <div className="flex flex-col sm:flex-row gap-4">
-                                <div className="flex-1">
-                                    <label htmlFor="date-from" className="block text-sm font-medium text-gray-700 mb-1">
-                                        From
-                                    </label>
-                                    <input
-                                        id="date-from"
-                                        type="date"
-                                        value={dateFrom}
-                                        max={dateTo || undefined}
-                                        onChange={(e) => updateDateFrom(e.target.value)}
-                                        className={[
-                                            'w-full px-3 py-2 border-1 bg-[#f5f5f5] text-sm focus:outline-none focus:border-black',
-                                            (dateFromMissing || datesReversed) ? 'border-error' : 'border-black'
-                                        ].join(' ')}
-                                    />
-                                </div>
-                                <div className="flex-1">
-                                    <label htmlFor="date-to" className="block text-sm font-medium text-gray-700 mb-1">
-                                        To
-                                    </label>
-                                    <input
-                                        id="date-to"
-                                        type="date"
-                                        value={dateTo}
-                                        min={dateFrom || undefined}
-                                        onChange={(e) => updateDateTo(e.target.value)}
-                                        className={[
-                                            'w-full px-3 py-2 border-1 bg-[#f5f5f5] text-sm focus:outline-none focus:border-black',
-                                            (dateToMissing || datesReversed) ? 'border-error' : 'border-black'
-                                        ].join(' ')}
-                                    />
-                                </div>
+                {/* Custom date range inputs for the article window */}
+                {articleWindow === 'custom' && (
+                    <>
+                        <div className="n2p-dates">
+                            <div className="n2p-field">
+                                <label className="n2p-label" htmlFor="date-from">From</label>
+                                <input
+                                    id="date-from"
+                                    className="n2p-input"
+                                    type="date"
+                                    value={dateFrom}
+                                    max={dateTo || undefined}
+                                    onChange={(e) => updateDateFrom(e.target.value)}
+                                    aria-invalid={(!dateFrom || datesReversed) ? 'true' : undefined}
+                                    aria-describedby={dateError ? 'date-error' : undefined}
+                                    style={{ marginTop: 'var(--space-2)' }}
+                                />
                             </div>
-
-                            {/* Validation error message */}
-                            {dateError && (
-                                <p className="mt-2 text-sm text-error-light font-medium" role="alert">
-                                    {dateError}
-                                </p>
-                            )}
+                            <div className="n2p-field">
+                                <label className="n2p-label" htmlFor="date-to">To</label>
+                                <input
+                                    id="date-to"
+                                    className="n2p-input"
+                                    type="date"
+                                    value={dateTo}
+                                    min={dateFrom || undefined}
+                                    onChange={(e) => updateDateTo(e.target.value)}
+                                    aria-invalid={(!dateTo || datesReversed) ? 'true' : undefined}
+                                    aria-describedby={dateError ? 'date-error' : undefined}
+                                    style={{ marginTop: 'var(--space-2)' }}
+                                />
+                            </div>
                         </div>
-                    )}
-                </Box>
+                        {dateError && (
+                            <p className="n2p-error" id="date-error" role="alert">{dateError}</p>
+                        )}
+                    </>
+                )}
+            </div>
 
-                {/* Auto-send toggle (authenticated users only) */}
-                {isAuthenticated && (
-                    <Box>
+            {isAuthenticated && (
+                <section className="n2p-section" aria-labelledby="delivery-title">
+                    <h3 className="n2p-section__title" id="delivery-title">Email delivery</h3>
+
+                    {/* Email delivery. Shown before automatic delivery is enabled, since enabling it needs an address. */}
+                    <div className="n2p-field">
+                        <label className="n2p-label" htmlFor="target-email">Send the PDF to</label>
+                        <p className="n2p-help">Send the PDF to this address after generation (optional)</p>
+                        <input
+                            id="target-email"
+                            className="n2p-input"
+                            type="email"
+                            value={targetEmail}
+                            onChange={(e) => updateTargetEmail(e.target.value)}
+                            onBlur={handleEmailBlur}
+                            placeholder="e.g., you@example.com"
+                            aria-invalid={emailError ? 'true' : undefined}
+                            aria-describedby="target-email-note"
+                        />
+                        <div id="target-email-note">
+                            {emailError
+                                ? <p className="n2p-error">{emailError}</p>
+                                : !hasRecipient && <p className="n2p-help">Enter an email to enable automatic delivery</p>}
+                        </div>
+                        <RecipientConfirmation
+                            issueId={currentIssueId}
+                            email={(targetEmail || '').trim()}
+                            saved={recipientSaved}
+                            confirmed={recipientConfirmed}
+                            onRequested={refresh}
+                        />
+                    </div>
+
+                    {/* Auto-send toggle (authenticated users only) */}
+                    <div className="n2p-field">
                         <FormControlLabel
                             control={
                                 <Switch
@@ -319,19 +241,13 @@ export default function ConfigureNewspaper() {
                             label="Enable automatic delivery"
                         />
                         {!autoSend && !hasRecipient && (
-                            <Typography variant="body2" sx={{ color: 'text.secondary' }}>
-                                Add a delivery email below to enable automatic delivery.
-                            </Typography>
+                            <p className="n2p-help">Add a delivery email above to enable automatic delivery.</p>
                         )}
                         {!autoSend && hasRecipient && !recipientConfirmed && (
-                            <Typography variant="body2" sx={{ color: 'text.secondary' }}>
-                                Confirm your delivery email below to enable automatic delivery.
-                            </Typography>
+                            <p className="n2p-help">Confirm your delivery email above to enable automatic delivery.</p>
                         )}
                         {autoSendError && (
-                            <Typography variant="body2" role="alert" sx={{ color: 'error.main' }}>
-                                {autoSendError}
-                            </Typography>
+                            <p className="n2p-error" role="alert">{autoSendError}</p>
                         )}
                         <FakeDoor
                             feature="upgrade_auto_send"
@@ -339,117 +255,46 @@ export default function ConfigureNewspaper() {
                             description="Automatic delivery is free while we're in beta and will become part of a paid plan. Want founder pricing when it launches?"
                             sx={{ px: 0 }}
                         />
-                    </Box>
-                )}
+                    </div>
 
-                {/* Send Schedule shown when authenticated and autoSend enabled */}
-                {isAuthenticated && autoSend && (
-                    <Box>
-                        <Typography variant="body1" sx={{ mb: 1, fontWeight: 500 }}>
-                            SEND SCHEDULE
-                        </Typography>
-                        <Typography
-                            variant="body2"
-                            sx={{ fontStyle: 'italic', color: 'text.secondary', mb: 2 }}
-                        >
-                            Choose how often to automatically send the PDF
-                        </Typography>
+                    {/* Send Schedule shown when authenticated and autoSend enabled */}
+                    {autoSend && (
+                        <div className="n2p-field" style={{ marginBottom: 0 }}>
+                            <span className="n2p-label" id="schedule-label">Send schedule</span>
+                            <p className="n2p-help">Choose how often to automatically send the PDF</p>
 
-                        <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
-                            {FREQUENCY_OPTIONS.filter(opt => opt.value !== 'custom').map(({ value, label }) => (
-                                <Button
-                                    key={value}
-                                    onClick={() => handleFrequencyChange(value)}
-                                    sx={{
-                                        flex: 1,
-                                        py: 1.5,
-                                        fontWeight: 'medium',
-                                        textTransform: 'none',
-                                        fontSize: '1rem',
-                                        backgroundColor: '#f5f5f5',
-                                        color: frequency === value ? 'var(--primary-light)' : 'var(--black)',
-                                        border: '1px solid',
-                                        borderColor: frequency === value ? 'var(--primary-dark)' : '#ccc',
-                                        '&:hover': {
-                                            backgroundColor: '#f5f5f5',
-                                            borderColor: 'var(--black)',
-                                        },
-                                    }}
-                                >
-                                    {label}
-                                </Button>
-                            ))}
-                        </Box>
+                            <OptionButtons labelId="schedule-label" options={FREQUENCY_OPTIONS} value={frequency} onChange={handleFrequencyChange} />
 
-                        <ScheduleSettings frequency={frequency} issue={issue} onSave={saveSchedule} />
+                            <ScheduleSettings frequency={frequency} issue={issue} onSave={saveSchedule} />
 
-                        <ScheduleStatus
-                            issueId={currentIssueId}
-                            refreshKey={`${sendNowState.status}:${issue?.frequency}:${issue?.schedule_weekday}:${issue?.schedule_day_of_month}:${issue?.schedule_time_local}:${issue?.schedule_timezone}`}
-                        />
+                            <ScheduleStatus
+                                issueId={currentIssueId}
+                                refreshKey={`${sendNowState.status}:${issue?.frequency}:${issue?.schedule_weekday}:${issue?.schedule_day_of_month}:${issue?.schedule_time_local}:${issue?.schedule_timezone}`}
+                            />
 
-                        <Button
-                            variant="outlined"
-                            onClick={handleSendNow}
-                            disabled={!currentIssueId || !targetEmail || !recipientConfirmed || sendNowState.status === 'sending'}
-                            sx={{ mt: 1.5, textTransform: 'none' }}
-                        >
-                            {sendNowState.status === 'sending' ? 'Sending…' : 'Send now'}
-                        </Button>
-                        {sendNowState.message && (
-                            <Typography
-                                variant="caption"
-                                role={sendNowState.status === 'error' ? 'alert' : 'status'}
-                                sx={{ display: 'block', mt: 0.5, color: sendNowState.status === 'error' ? 'error.main' : 'text.secondary' }}
+                            <button
+                                type="button"
+                                className="n2p-btn"
+                                style={{ marginTop: 'var(--space-3)' }}
+                                onClick={handleSendNow}
+                                disabled={!currentIssueId || !targetEmail || !recipientConfirmed || sendNowState.status === 'sending'}
                             >
-                                {sendNowState.message}
-                            </Typography>
-                        )}
+                                {sendNowState.status === 'sending' ? 'Sending…' : 'Send now'}
+                            </button>
+                            {sendNowState.message && (
+                                <p
+                                    className={sendNowState.status === 'error' ? 'n2p-error' : 'n2p-help'}
+                                    role={sendNowState.status === 'error' ? 'alert' : 'status'}
+                                >
+                                    {sendNowState.message}
+                                </p>
+                            )}
 
-                        <DeliveryHistory issueId={currentIssueId} refreshKey={sendNowState.status} />
-                    </Box>
-                )}
-
-                {/* Email delivery (only when authenticated). Shown before automatic delivery is enabled, since enabling it needs an address. */}
-                {isAuthenticated && (
-                    <Box>
-                        <Typography variant="body1" sx={{ mb: 1, fontWeight: 500 }}>
-                            EMAIL DELIVERY
-                        </Typography>
-                        <Typography
-                            variant="body2"
-                            sx={{ fontStyle: 'italic', color: 'text.secondary', mb: 2 }}
-                        >
-                            Send the PDF to this address after generation (optional)
-                        </Typography>
-                        <TextField
-                            variant="outlined"
-                            fullWidth
-                            type="email"
-                            value={targetEmail}
-                            onChange={(e) => updateTargetEmail(e.target.value)}
-                            onBlur={handleEmailBlur}
-                            placeholder="e.g., you@example.com"
-                            helperText={
-                                emailError || (!hasRecipient ? 'Enter an email to enable automatic delivery' : '')
-                            }
-                            error={Boolean(emailError)}
-                            sx={{
-                                '& .MuiOutlinedInput-root': {
-                                    backgroundColor: autoSend ? '#ffffff' : '#efefef'
-                                }
-                            }}
-                        />
-                        <RecipientConfirmation
-                            issueId={currentIssueId}
-                            email={(targetEmail || '').trim()}
-                            saved={recipientSaved}
-                            confirmed={recipientConfirmed}
-                            onRequested={refresh}
-                        />
-                    </Box>
-                )}
-            </Box>
-        </Box>
+                            <DeliveryHistory issueId={currentIssueId} refreshKey={sendNowState.status} />
+                        </div>
+                    )}
+                </section>
+            )}
+        </>
     )
 }

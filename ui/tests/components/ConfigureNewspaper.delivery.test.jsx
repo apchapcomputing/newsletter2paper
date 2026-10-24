@@ -52,7 +52,7 @@ describe('automatic delivery needs a confirmed address', () => {
         mocks.schedule.issue = row({ target_email_verified_at: null })
         render(<ConfigureNewspaper />)
         expect(toggle()).toBeDisabled()
-        expect(screen.getByText(/Confirm your delivery email below/)).toBeInTheDocument()
+        expect(screen.getByText(/Confirm your delivery email above/)).toBeInTheDocument()
         expect(screen.getByRole('button', { name: 'Send confirmation email' })).toBeInTheDocument()
     })
 

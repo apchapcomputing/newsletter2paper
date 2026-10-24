@@ -36,7 +36,7 @@ export default function PublicationsList({
                                         href={publication.feed_url}
                                         target="_blank"
                                         rel="noopener noreferrer"
-                                        style={{ color: 'var(--primary)', textDecoration: 'none' }}
+                                        style={{ color: 'var(--secondary)', textDecoration: 'underline' }}
                                     >
                                         {publication.title}
                                     </a>
