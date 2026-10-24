@@ -200,10 +200,20 @@ BEGIN
     RAISE NOTICE 'ok: auto_send needs a verified address';
   END;
 
-  -- Changing the address clears verification...
+  -- Existing RLS policy: from the browser an owner can only set target_email to their own address
+  -- (issues_owner_update WITH CHECK). Third-party recipients are saved by the backend (service role).
   PERFORM pg_temp.ctx('authenticated', a, 'owner@sched.test');
+  BEGIN
+    UPDATE public.issues SET target_email = 'friend@sched.test', auto_send = false WHERE id = i;
+    RESET ROLE;
+    RAISE EXCEPTION 'FAIL: a browser role saved a third-party target_email';
+  EXCEPTION WHEN insufficient_privilege THEN   -- row-level security violations use this SQLSTATE
+    RESET ROLE;
+    RAISE NOTICE 'ok: browser roles can only save their own address as target_email';
+  END;
+
+  -- Changing the address (as the backend does) clears verification.
   UPDATE public.issues SET target_email = 'friend@sched.test', auto_send = false WHERE id = i;
-  RESET ROLE;
   PERFORM pg_temp.expect('changed address is unverified', (SELECT target_email_verified_at IS NULL FROM public.issues WHERE id = i), true);
 
   -- ...and a browser role cannot supply the timestamp itself, on insert or update.
