@@ -924,3 +924,49 @@ class TestGracefulShutdown:
         monkeypatch.setattr(s, '_process_issue', run)
         s._job_check_and_process()
         assert s.store.claim_next_due.call_count == 1
+
+
+class TestArticleCap:
+    """_generate_pdf asks for the newest MAX_ARTICLES_PER_PUBLICATION per publication within the window."""
+
+    @pytest.fixture
+    def run(self, monkeypatch):
+        import services.rss_service as rss_mod
+        import services.scheduler as sched
+        calls = {}
+
+        class FakeRSS:
+            async def fetch_recent_articles_for_issue(self, issue_id, **kwargs):
+                calls.update(kwargs)
+                return {'total_articles': 3, 'issue': {},
+                        'articles_by_publication': {'p1': [{'id': 1}, {'id': 2}, {'id': 3}]}}
+
+        monkeypatch.setattr(rss_mod, 'RSSService', FakeRSS)
+        s = bare_scheduler()
+        s.store = FakeStore()
+        s.pdf_service = MagicMock()
+
+        async def render(**kw):
+            return {'success': True, 'pdf_url': 'http://pdf', 'articles_count': 3}
+
+        s.pdf_service.generate_pdf_from_issue = render
+        return s, calls, sched
+
+    async def test_uses_the_configured_cap_and_the_window_since_the_last_edition(self, run, monkeypatch):
+        s, calls, sched = run
+        monkeypatch.setattr(sched, 'MAX_ARTICLES_PER_PUBLICATION', 3)
+        last = datetime.now(timezone.utc) - timedelta(days=2)
+        s.store.last_until = last
+        result = await s._generate_pdf({'id': 'i1', 'article_window_days': 7})
+        assert calls['max_articles_per_publication'] == 3
+        assert calls['start_date'] == last + timedelta(microseconds=1)
+        assert result['articles_from'] == calls['start_date'] and result['articles_until'] == calls['end_date']
+        assert result['articles_count'] == 3
+
+    async def test_says_when_a_publication_hit_the_cap(self, run, monkeypatch, caplog):
+        import logging
+        s, _, sched = run
+        monkeypatch.setattr(sched, 'MAX_ARTICLES_PER_PUBLICATION', 3)
+        with caplog.at_level(logging.INFO):
+            await s._generate_pdf({'id': 'i1'})
+        assert '1 publication(s) hit the 3-article cap' in caplog.text

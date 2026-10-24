@@ -263,4 +263,85 @@ BEGIN
   END;
 END $$;
 
+-- ---------------------------------------------------------------------------
+-- Unsubscribe tokens are only visible to people who can see the issue row at all
+-- ---------------------------------------------------------------------------
+DO $$
+DECLARE
+  b constant uuid := 'bbbbbbbb-1111-0000-0000-00000000000b';
+  n bigint;
+BEGIN
+  -- Another signed-in user cannot see the owner's issue, so cannot read its token.
+  PERFORM pg_temp.ctx('authenticated', b, 'other@sched.test');
+  SELECT count(*) INTO n FROM public.issues WHERE id = '11111111-1111-0000-0000-00000000000a';
+  RESET ROLE;
+  PERFORM pg_temp.expect('another user cannot read an issue (or its unsubscribe token)', n, 0::bigint);
+
+  -- The anon key sees no non-guest issue at all.
+  PERFORM pg_temp.ctx('anon');
+  SELECT count(*) INTO n FROM public.issues WHERE unsubscribe_token IS NOT NULL;
+  RESET ROLE;
+  PERFORM pg_temp.expect('anon can read no unsubscribe tokens', n, 0::bigint);
+
+  -- A guest holding a token for another guest issue sees only their own row.
+  INSERT INTO public.issues(id, format, frequency, status, guest_token)
+    VALUES ('44444444-1111-0000-0000-00000000000d', 'essay', 'once', 'guest', 'tok-guest-1');
+  PERFORM set_config('request.headers', '{"x-guest-token":"tok-other"}', true);
+  EXECUTE 'SET LOCAL ROLE anon';
+  SELECT count(*) INTO n FROM public.issues WHERE id = '44444444-1111-0000-0000-00000000000d';
+  RESET ROLE;
+  PERFORM pg_temp.expect('a different guest token cannot read a guest issue', n, 0::bigint);
+END $$;
+
+-- ---------------------------------------------------------------------------
+-- issue_email_verification: caps per issue, per address and per account
+-- ---------------------------------------------------------------------------
+DO $$
+DECLARE
+  a constant uuid := 'aaaaaaaa-1111-0000-0000-00000000000a';
+  i1 constant uuid := '11111111-1111-0000-0000-00000000000a';
+  i2 constant uuid := '22222222-1111-0000-0000-00000000000b';
+  ok boolean; k int; extra uuid;
+  fn constant text := 'select public.issue_email_verification($1, $2, $3, $4, now() + interval ''24 hours'')';
+BEGIN
+  -- per issue: the fourth request in the hour is refused
+  FOR k IN 1..3 LOOP
+    EXECUTE fn INTO ok USING i1, 'one@cap.test', a, 'h-issue-' || k;
+    PERFORM pg_temp.expect('request ' || k || ' for one issue is allowed', ok, true);
+  END LOOP;
+  EXECUTE fn INTO ok USING i1, 'two@cap.test', a, 'h-issue-4';
+  PERFORM pg_temp.expect('a fourth request for the same issue is refused', ok, false);
+  PERFORM pg_temp.expect('a refused request stores nothing',
+    (SELECT count(*) FROM public.email_verifications WHERE token_hash = 'h-issue-4'), 0::bigint);
+
+  -- per address: the same address on other issues shares one cap, whatever the case or spacing
+  EXECUTE fn INTO ok USING i2, ' ONE@cap.test ', a, 'h-addr-1';
+  PERFORM pg_temp.expect('the address cap spans issues (3 already sent to it)', ok, false);
+  EXECUTE fn INTO ok USING i2, 'fresh@cap.test', a, 'h-addr-2';
+  PERFORM pg_temp.expect('a different address on another issue is allowed', ok, true);
+
+  -- per account: ten requests an hour across issues and addresses. This account already has 4
+  -- (3 on issue 1, 1 to fresh@), so the first six requests below are allowed and the rest refused.
+  FOR k IN 1..9 LOOP
+    INSERT INTO public.issues(id, format, frequency, title) VALUES (gen_random_uuid(), 'essay', 'weekly', 'cap issue') RETURNING id INTO extra;
+    EXECUTE fn INTO ok USING extra, 'user' || k || '@cap.test', a, 'h-user-' || k;
+    PERFORM pg_temp.expect('account request ' || (k + 4) || (CASE WHEN k <= 6 THEN ' is allowed' ELSE ' is refused' END), ok, k <= 6);
+  END LOOP;
+
+  -- a request with no account (user id NULL) is limited only per issue and per address
+  EXECUTE fn INTO ok USING i2, 'solo@cap.test', NULL::uuid, 'h-null-1';
+  PERFORM pg_temp.expect('no account: still allowed under the issue and address caps', ok, true);
+
+  -- only the backend may call it
+  PERFORM pg_temp.ctx('authenticated', a, 'owner@sched.test');
+  BEGIN
+    PERFORM public.issue_email_verification(i1, 'x@cap.test', a, 'h-nope', now());
+    RESET ROLE;
+    RAISE EXCEPTION 'FAIL: authenticated can call issue_email_verification';
+  EXCEPTION WHEN insufficient_privilege THEN
+    RESET ROLE;
+    RAISE NOTICE 'ok: issue_email_verification is not callable by browser roles';
+  END;
+END $$;
+
 ROLLBACK;

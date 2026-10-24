@@ -22,24 +22,37 @@ def stored(token="tok", **over):
 
 
 class TestIssueToken:
-    def test_stores_a_hash_and_a_24_hour_expiry(self):
-        db = FakeSupabase({("email_verifications", "select"): []})
-        token = verification.issue_token(db, "i1", " Reader@Example.com ", NOW)
-        (_, _, row, _), = db.calls_for("email_verifications", "insert")
-        assert row["token_hash"] == verification.hash_token(token) and token not in str(row)
-        assert row["email"] == "Reader@Example.com"
-        assert row["expires_at"] == (NOW + timedelta(hours=24)).isoformat()
+    FN = "issue_email_verification"
+
+    def db(self, allowed=True):
+        db = FakeSupabase()
+        db.rpc_results = {self.FN: allowed}
+        return db
+
+    def test_sends_only_a_hash_and_a_24_hour_expiry_to_the_database(self):
+        db = self.db()
+        token = verification.issue_token(db, "i1", " Reader@Example.com ", "u1", NOW)
+        (name, params), = db.rpc_calls
+        assert name == self.FN
+        assert params["p_token_hash"] == verification.hash_token(token) and token not in str(params)
+        assert (params["p_issue_id"], params["p_user_id"]) == ("i1", "u1")
+        assert params["p_email"] == " Reader@Example.com "  # the function trims and lower-cases for its caps
+        assert params["p_expires_at"] == (NOW + timedelta(hours=24)).isoformat()
 
     def test_tokens_are_unguessable_and_distinct(self):
-        db = FakeSupabase({("email_verifications", "select"): []})
-        a, b = (verification.issue_token(db, "i1", "a@b.co", NOW) for _ in range(2))
+        db = self.db()
+        a, b = (verification.issue_token(db, "i1", "a@b.co", "u1", NOW) for _ in range(2))
         assert a != b and len(a) >= 40
 
-    def test_the_fourth_request_in_an_hour_is_refused(self):
-        db = FakeSupabase({("email_verifications", "select"): [{}, {}, {}]})
+    @pytest.mark.parametrize("answer", [False, None])
+    def test_a_refusal_from_the_database_is_a_rate_limit(self, answer):
         with pytest.raises(verification.RateLimited):
-            verification.issue_token(db, "i1", "a@b.co", NOW)
-        assert db.calls_for("email_verifications", "insert") == []
+            verification.issue_token(self.db(answer), "i1", "a@b.co", "u1", NOW)
+
+    def test_the_caps_live_in_the_database_not_in_a_count_then_insert(self):
+        db = self.db()
+        verification.issue_token(db, "i1", "a@b.co", "u1", NOW)
+        assert db.calls_for("email_verifications") == []  # no separate select / insert to race
 
 
 class TestPeek:

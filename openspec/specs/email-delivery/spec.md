@@ -121,7 +121,7 @@ Scheduled mail SHALL go only to an address that is verified: confirmed through a
 to the issue owner's account email (checked by Supabase Auth). `issues.target_email_verified_at` records
 it and is cleared whenever `target_email` changes (unless the same statement sets it).
 
-- `POST /issues/{id}/target-email/verify` (owner only) emails a confirmation link. At most 3 per issue per hour (429 after).
+- `POST /issues/{id}/target-email/verify` (owner only) emails a confirmation link. Capped per issue (3 an hour), per address (3 an hour across all issues) and per account (10 an hour), atomically with the insert (`issue_email_verification`); 429 beyond that.
   It returns `verified: true` without sending when the address is already verified.
 - The link opens `GET /email/verify?token=`, which only shows a page. The page's button sends `POST /email/verify?token=`, which verifies the address. Opening the link never verifies, so mail scanners that prefetch links cannot.
 - Tokens are random, single-use, expire after 24 hours and are stored as SHA-256 hashes (`email_verifications`, backend-only). A token is refused when the address changed after it was issued.

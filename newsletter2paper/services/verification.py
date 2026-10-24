@@ -12,8 +12,9 @@ from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 TOKEN_TTL = timedelta(hours=24)
-# Each request sends an email to an address nobody has vouched for.
-MAX_REQUESTS_PER_HOUR = 3
+# Each request sends an email to an address nobody has vouched for. The caps (3 per issue, 3 per
+# address, 10 per account, each per hour) are enforced inside the database function
+# issue_email_verification, atomically with the insert.
 
 
 class RateLimited(Exception):
@@ -44,20 +45,21 @@ def is_account_email(db_service, user_id: Optional[str], email: Optional[str]) -
     return bool(mine) and mine == normalize(email)
 
 
-def issue_token(db_service, issue_id: str, email: str, now: Optional[datetime] = None) -> str:
-    """Create a verification token for `email` on the issue; raises RateLimited after too many."""
+def issue_token(db_service, issue_id: str, email: str, user_id: Optional[str] = None,
+                now: Optional[datetime] = None) -> str:
+    """Create a verification token for `email` on the issue; raises RateLimited when the issue, the
+    address or the account has asked for too many confirmation emails in the last hour."""
     now = now or datetime.now(timezone.utc)
-    recent = db_service.client.table('email_verifications').select('id')\
-        .eq('issue_id', issue_id).gte('created_at', (now - timedelta(hours=1)).isoformat()).execute()
-    if len(recent.data or []) >= MAX_REQUESTS_PER_HOUR:
-        raise RateLimited()
     token = secrets.token_urlsafe(32)
-    db_service.client.table('email_verifications').insert({
-        'issue_id': issue_id,
-        'email': email.strip(),
-        'token_hash': hash_token(token),
-        'expires_at': (now + TOKEN_TTL).isoformat(),
+    issued = db_service.client.rpc('issue_email_verification', {
+        'p_issue_id': issue_id,
+        'p_email': email,
+        'p_user_id': user_id,
+        'p_token_hash': hash_token(token),
+        'p_expires_at': (now + TOKEN_TTL).isoformat(),
     }).execute()
+    if issued.data is not True:
+        raise RateLimited()
     return token
 
 

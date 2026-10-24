@@ -432,7 +432,8 @@ def request_recipient_verification(
     """
     Email the issue's target_email a confirmation link. Nothing is sent to that address on a
     schedule until the link is confirmed (the owner's own account address needs no confirmation).
-    At most 3 requests per issue per hour.
+    Capped per issue (3 an hour), per address (3 an hour across all issues) and per account (10 an hour);
+    429 beyond that.
     """
     result = db_service.client.table('issues').select('id, title, target_email, target_email_verified_at')\
         .eq('id', str(issue_id)).execute()
@@ -446,7 +447,7 @@ def request_recipient_verification(
         return {"success": True, "verified": True, "message": "This address is already confirmed"}
 
     try:
-        token = verification.issue_token(db_service, str(issue_id), email)
+        token = verification.issue_token(db_service, str(issue_id), email, access.user_id)
     except verification.RateLimited:
         raise HTTPException(status_code=429, detail="Too many confirmation emails; try again in an hour",
                             headers={"Retry-After": "3600"})

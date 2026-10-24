@@ -271,32 +271,36 @@ class TestRecipientVerificationRequest:
     def test_emails_a_link_and_stores_only_a_hash(self, monkeypatch):
         import services.email_service as em
         sent = []
-        db = FakeSupabase({("issues", "select"): [self.row()], ("email_verifications", "select"): []})
+        db = FakeSupabase({("issues", "select"): [self.row()]})
+        db.rpc_results = {"issue_email_verification": True}
         resp = self.post(db, lambda to, url: sent.append((to, url)) or em.SendResult.sent("m"), monkeypatch)
         assert resp.status_code == 200 and resp.json()["verified"] is False
         (to, url), = sent
         token = url.split("token=")[1]
-        (_, _, stored, _), = db.calls_for("email_verifications", "insert")
+        (_, stored), = db.rpc_calls
         assert to == "other@x.co" and "/email/verify?token=" in url
-        assert token not in str(stored) and stored["token_hash"] == verification_hash(token)
+        assert token not in str(stored) and stored["p_token_hash"] == verification_hash(token)
+        assert stored["p_user_id"] == OWNER and stored["p_issue_id"] == str(ISSUE_ID)
 
     def test_already_verified_sends_nothing(self, monkeypatch):
         db = FakeSupabase({("issues", "select"): [self.row(target_email_verified_at="2026-10-01T00:00:00Z")]})
         resp = self.post(db, lambda *a: 1 / 0, monkeypatch)
-        assert resp.json()["verified"] is True and db.calls_for("email_verifications", "insert") == []
+        assert resp.json()["verified"] is True and db.rpc_calls == []
 
     def test_no_address_is_a_400(self, monkeypatch):
         db = FakeSupabase({("issues", "select"): [self.row(target_email=None)]})
         assert self.post(db, lambda *a: 1 / 0, monkeypatch).status_code == 400
 
-    def test_rate_limited_after_three_requests_in_an_hour(self, monkeypatch):
-        db = FakeSupabase({("issues", "select"): [self.row()], ("email_verifications", "select"): [{}, {}, {}]})
-        resp = self.post(db, lambda *a: 1 / 0, monkeypatch)
-        assert resp.status_code == 429 and db.calls_for("email_verifications", "insert") == []
+    def test_rate_limited_when_the_database_refuses(self, monkeypatch):
+        db = FakeSupabase({("issues", "select"): [self.row()]})
+        db.rpc_results = {"issue_email_verification": False}
+        resp = self.post(db, lambda *a: 1 / 0, monkeypatch)   # no email is sent
+        assert resp.status_code == 429 and resp.headers["Retry-After"] == "3600"
 
     def test_a_failed_send_is_a_502(self, monkeypatch):
         import services.email_service as em
-        db = FakeSupabase({("issues", "select"): [self.row()], ("email_verifications", "select"): []})
+        db = FakeSupabase({("issues", "select"): [self.row()]})
+        db.rpc_results = {"issue_email_verification": True}
         resp = self.post(db, lambda *a: em.SendResult.failed("permanent", "email: no"), monkeypatch)
         assert resp.status_code == 502
 

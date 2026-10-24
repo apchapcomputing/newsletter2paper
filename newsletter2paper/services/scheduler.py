@@ -37,6 +37,10 @@ EMAIL_BUDGET_SECONDS = 60
 # stop_grace_period must be longer. A run cut off here is safe: its delivery is recorded and the
 # stale lock is reclaimed (sends reuse their Resend idempotency key).
 SHUTDOWN_GRACE_SECONDS = int(os.environ.get('SCHEDULER_SHUTDOWN_GRACE_SECONDS', '100'))
+# Newest articles taken from each publication per edition. Older ones in the window are left out
+# for good: editions are newest-first, so carrying the surplus into the next window would mean
+# re-sending the articles already delivered.
+MAX_ARTICLES_PER_PUBLICATION = int(os.environ.get('SCHEDULER_MAX_ARTICLES_PER_PUBLICATION', '5'))
 # Delivery emails link to {PUBLIC_API_URL}/d/{delivery_id}, which records the open and redirects
 # to the PDF. Unset: the email links to the PDF directly.
 PUBLIC_API_URL = os.environ.get('PUBLIC_API_URL', '').rstrip('/')
@@ -316,10 +320,15 @@ class SchedulerService:
         from services.rss_service import RSSService
         rss = RSSService()
         articles_data = await rss.fetch_recent_articles_for_issue(
-            issue_id, max_articles_per_publication=5, start_date=since, end_date=until
+            issue_id, max_articles_per_publication=MAX_ARTICLES_PER_PUBLICATION, start_date=since, end_date=until
         )
         if not articles_data or articles_data.get('total_articles', 0) == 0:
             return None
+        capped = sum(1 for articles in articles_data.get('articles_by_publication', {}).values()
+                     if len(articles) >= MAX_ARTICLES_PER_PUBLICATION)
+        if capped:
+            logger.info(f"Issue {issue_id}: {capped} publication(s) hit the {MAX_ARTICLES_PER_PUBLICATION}-article "
+                        "cap; older articles in the window are not included")
 
         all_articles = []
         for pub_list in articles_data.get('articles_by_publication', {}).values():

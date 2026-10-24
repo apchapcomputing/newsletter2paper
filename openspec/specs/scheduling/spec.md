@@ -207,7 +207,11 @@ The system SHALL expose `POST /issues/{issue_id}/send-now` to generate and email
 Each edition SHALL cover the articles published since the last *sent* edition (scheduled or manual) ended,
 but no earlier than `article_window_days` before the run. The first edition uses the full window. The window
 is stored on the delivery as `articles_from`, `articles_until` and `articles_count` when the PDF is built; a
-retry that reuses the stored PDF keeps it. An edition with no articles in its window is `skipped`: no email,
+retry that reuses the stored PDF keeps it. Each publication contributes at most its newest
+`SCHEDULER_MAX_ARTICLES_PER_PUBLICATION` (default 5) articles; older ones in the window are left out and are
+not carried into the next edition, because editions are newest-first and carrying them over would re-send
+what was already delivered. The cursor therefore guarantees editions do not overlap, not that every article
+appears. An edition with no articles in its window is `skipped`: no email,
 the issue moves to its next slot, and the next window still starts at the last sent edition.
 
 #### Scenario: Consecutive editions do not overlap

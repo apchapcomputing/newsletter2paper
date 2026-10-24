@@ -26,15 +26,59 @@ CREATE TABLE IF NOT EXISTS public.email_verifications (
   issue_id uuid NOT NULL REFERENCES public.issues(id) ON DELETE CASCADE,
   email text NOT NULL,
   token_hash text NOT NULL UNIQUE,
+  requested_by uuid REFERENCES auth.users(id) ON DELETE SET NULL,
   created_at timestamptz NOT NULL DEFAULT now(),
   expires_at timestamptz NOT NULL,
   consumed_at timestamptz
 );
 CREATE INDEX IF NOT EXISTS email_verifications_issue_created ON public.email_verifications (issue_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS email_verifications_email_created ON public.email_verifications (lower(email), created_at DESC);
+CREATE INDEX IF NOT EXISTS email_verifications_user_created ON public.email_verifications (requested_by, created_at DESC);
 
 -- Only the backend (service role) touches this table.
 ALTER TABLE public.email_verifications ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON public.email_verifications FROM anon, authenticated;
+
+-- Issue a confirmation token, or refuse when the request would send too much mail. Each confirmation
+-- email goes to an address nobody has vouched for, so the cap is applied three ways, in the same
+-- transaction as the insert (advisory locks make count-then-insert atomic):
+--   * per issue:   3 per hour
+--   * per address: 3 per hour across all issues (stops mail-bombing one victim via many issues)
+--   * per account: 10 per hour (stops mail-bombing many victims via one account)
+-- Returns false when a cap is hit. Backend only (service role).
+CREATE OR REPLACE FUNCTION public.issue_email_verification(
+  p_issue_id uuid, p_email text, p_user_id uuid, p_token_hash text, p_expires_at timestamptz
+) RETURNS boolean
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  e constant text := lower(btrim(p_email));
+  since constant timestamptz := now() - interval '1 hour';
+BEGIN
+  -- Always taken in this order, so concurrent calls cannot deadlock.
+  PERFORM pg_advisory_xact_lock(hashtext('verify-address:' || e));
+  PERFORM pg_advisory_xact_lock(hashtext('verify-issue:' || p_issue_id::text));
+  IF p_user_id IS NOT NULL THEN
+    PERFORM pg_advisory_xact_lock(hashtext('verify-user:' || p_user_id::text));
+  END IF;
+
+  IF (SELECT count(*) FROM public.email_verifications WHERE issue_id = p_issue_id AND created_at > since) >= 3
+     OR (SELECT count(*) FROM public.email_verifications WHERE lower(email) = e AND created_at > since) >= 3
+     OR (p_user_id IS NOT NULL
+         AND (SELECT count(*) FROM public.email_verifications WHERE requested_by = p_user_id AND created_at > since) >= 10)
+  THEN
+    RETURN false;
+  END IF;
+
+  INSERT INTO public.email_verifications (issue_id, email, token_hash, requested_by, expires_at)
+  VALUES (p_issue_id, btrim(p_email), p_token_hash, p_user_id, p_expires_at);
+  RETURN true;
+END;
+$$;
+REVOKE ALL ON FUNCTION public.issue_email_verification(uuid, text, uuid, text, timestamptz) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.issue_email_verification(uuid, text, uuid, text, timestamptz) TO service_role;
 
 -- The email of the account that owns an issue (NULL for guest issues). SECURITY DEFINER because
 -- browser roles cannot read auth.users.
@@ -140,6 +184,7 @@ COMMIT;
 -- DROP TRIGGER IF EXISTS trg_enforce_recipient_verification ON public.issues;
 -- DROP FUNCTION IF EXISTS public.enforce_recipient_verification();
 -- DROP FUNCTION IF EXISTS public.issue_owner_email(uuid);
+-- DROP FUNCTION IF EXISTS public.issue_email_verification(uuid, text, uuid, text, timestamptz);
 -- DROP TABLE IF EXISTS public.email_verifications;
 -- GRANT INSERT, UPDATE ON public.issues TO anon, authenticated;
 -- ALTER TABLE public.issues DROP COLUMN IF EXISTS target_email_verified_at, DROP COLUMN IF EXISTS unsubscribe_token;

@@ -16,6 +16,14 @@ class FakeSupabase:
         self.calls = []
         self.client = MagicMock()
         self.client.table.side_effect = self._table
+        # Database functions called with client.rpc(name, params): results by name (None if unset).
+        self.rpc_results = {}
+        self.rpc_calls = []
+        self.client.rpc.side_effect = self._rpc
+
+    def _rpc(self, name, params=None):
+        self.rpc_calls.append((name, params))
+        return MagicMock(execute=lambda: MagicMock(data=self.rpc_results.get(name)))
 
     def _table(self, name):
         return _Query(self, name)
