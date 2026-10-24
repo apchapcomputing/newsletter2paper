@@ -20,6 +20,13 @@ services:
       - POSTHOG_API_KEY=${POSTHOG_API_KEY:-}
       - POSTHOG_HOST=${POSTHOG_HOST:-https://eu.i.posthog.com}
       - PUBLIC_API_URL=${PUBLIC_API_URL:-}
+      - ADMIN_API_TOKEN=${ADMIN_API_TOKEN:-}
+      # Scheduler tuning. The defaults match the code; see .env.example before changing them.
+      - SCHEDULER_LOCK_TIMEOUT_MINUTES=${SCHEDULER_LOCK_TIMEOUT_MINUTES:-15}
+      - SCHEDULER_MAX_ATTEMPTS=${SCHEDULER_MAX_ATTEMPTS:-5}
+      - SCHEDULER_RSS_BUDGET_SECONDS=${SCHEDULER_RSS_BUDGET_SECONDS:-300}
+      - SCHEDULER_SHUTDOWN_GRACE_SECONDS=${SCHEDULER_SHUTDOWN_GRACE_SECONDS:-100}
+      - SEND_NOW_COOLDOWN_MINUTES=${SEND_NOW_COOLDOWN_MINUTES:-10}
     volumes:
       - ./shared:/shared
       - ./newsletter2paper:/app
