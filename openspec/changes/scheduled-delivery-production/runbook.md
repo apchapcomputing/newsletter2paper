@@ -59,6 +59,9 @@ Goal: stopping the API mid-run must produce exactly one email.
 `20261010000000_recipient_verification.sql` is applied by `deploy-db-migrations.yml` on merge. Before merging:
 
 - Check that nothing else writes `issues` as `anon` / `authenticated` with scheduler columns (the UI does not).
+- It replaces the `issues_owner_update` RLS policy: a linked owner may now set `target_email` to any address
+  (previously only their own), which is what lets customers send to someone else. Everything else in the policy
+  is unchanged, and `auto_send` still needs a confirmed address.
 - It revokes table-wide INSERT / UPDATE on `issues` from browser roles and re-grants every other column. A column
   added later needs its own `GRANT UPDATE (col) ... TO anon, authenticated` or the UI cannot write it.
 - Issues that already have `auto_send` on for an address nobody confirmed keep running, but the scheduler now

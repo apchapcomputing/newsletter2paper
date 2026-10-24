@@ -391,7 +391,7 @@ export default function ConfigureNewspaper() {
                         <Button
                             variant="outlined"
                             onClick={handleSendNow}
-                            disabled={!currentIssueId || !targetEmail || sendNowState.status === 'sending'}
+                            disabled={!currentIssueId || !targetEmail || !recipientConfirmed || sendNowState.status === 'sending'}
                             sx={{ mt: 1.5, textTransform: 'none' }}
                         >
                             {sendNowState.status === 'sending' ? 'Sending…' : 'Send now'}

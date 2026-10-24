@@ -387,15 +387,18 @@ def send_issue_now(
     endpoint and its background task run in the threadpool instead of the event loop.
 
     Only the issue's owner may call it (the backend's service key bypasses RLS, so ownership
-    is checked here), and each issue is rate-limited by SEND_NOW_COOLDOWN_MINUTES.
+    is checked here), only to a confirmed address, and each issue is rate-limited by
+    SEND_NOW_COOLDOWN_MINUTES.
     """
-    result = db_service.client.table('issues').select('id, target_email')\
+    result = db_service.client.table('issues').select('id, target_email, target_email_verified_at')\
         .eq('id', str(issue_id)).execute()
     # Same 404 for "missing" and "not yours" so issue IDs can't be probed.
     if not result.data:
         raise HTTPException(status_code=404, detail="Issue not found")
     if not result.data[0].get('target_email'):
         raise HTTPException(status_code=400, detail="Issue has no target_email to send to")
+    if not result.data[0].get('target_email_verified_at'):
+        raise HTTPException(status_code=422, detail="Confirm the delivery address before sending")
 
     svc = getattr(request.app.state, 'scheduler', None)
     if svc is None:

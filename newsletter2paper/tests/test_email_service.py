@@ -160,6 +160,7 @@ class TestPdfRouterEmailWiring:
             "frequency": "weekly",
             "remove_images": False,
             "target_email": EMAIL,
+            "target_email_verified_at": "2026-10-01T00:00:00Z",
             "custom_start_date": None,
             "custom_end_date": None,
         }
@@ -244,6 +245,30 @@ class TestPdfRouterEmailWiring:
         data = response.json()
         assert data["email_sent"] is True
         mock_email.assert_called_once()
+
+    def test_email_not_sent_to_an_unconfirmed_address(self, mock_issue_with_email):
+        """On-demand generation still returns the PDF, but only a confirmed address is emailed."""
+        from fastapi.testclient import TestClient
+        from fastapi import FastAPI
+        from unittest.mock import AsyncMock, patch as _patch
+        import importlib, services.email_service as em
+        from routers import pdf as pdf_mod
+        importlib.reload(pdf_mod)
+        app = FastAPI()
+        app.include_router(pdf_mod.router)
+        self._sign_in_as_owner(app)
+        issue = {**mock_issue_with_email, "target_email_verified_at": None}
+        result = {"success": True, "pdf_url": PDF_URL, "issue_info": issue, "articles_count": 1, "layout_type": "newspaper"}
+        with (
+            _patch("services.rss_service.RSSService.fetch_recent_articles_for_issue", new=AsyncMock(return_value=self._build_articles_data(issue))),
+            _patch("services.database_service.DatabaseService", new=self._make_mock_db(issue)),
+            _patch("services.go_pdf_service.GoPDFService.generate_pdf_from_issue", new=AsyncMock(return_value=result)),
+            _patch("services.email_service.EmailService.send", return_value=em.SendResult.sent("m")) as mock_email,
+        ):
+            data = TestClient(app).post(f"/pdf/generate/{ISSUE_ID}").json()
+        assert data["success"] is True and data["pdf_url"] == PDF_URL
+        assert data["email_sent"] is False and "not been confirmed" in data["email_error"]
+        mock_email.assert_not_called()
 
     def test_email_not_sent_when_no_target_email(self, mock_issue_without_email):
         """PDF router skips email when issue has no target_email."""

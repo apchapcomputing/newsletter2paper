@@ -158,6 +158,22 @@ WHERE i.target_email_verified_at IS NULL
 -- Issues that already had auto_send on for an address nobody verified would trip the trigger the
 -- next time the owner edits them; leave them running (their owner was the one who set them up).
 
+-- Owners may send newspapers to someone other than themselves. The owner-update policy from
+-- 20261003000000 required the *new* row's target_email to equal the caller's own email, which made
+-- that impossible from the browser. Now a linked owner (user_issues) may set any address; the
+-- rest of the check is unchanged, so claiming a guest issue (not yet linked) still requires the
+-- caller's own email. A third-party address starts unverified, and auto_send stays refused for it
+-- (enforce_recipient_verification). INSERT keeps its own-email rule: a brand-new unlinked row is
+-- only visible to its creator through that address, so the UI inserts with the account email and
+-- then updates to the typed one.
+DROP POLICY IF EXISTS issues_owner_update ON public.issues;
+CREATE POLICY issues_owner_update ON public.issues
+  FOR UPDATE TO authenticated
+  USING (public.is_issue_owner(id)
+         OR target_email = (auth.jwt() ->> 'email')
+         OR (status = 'guest' AND guest_token = public.request_guest_token()))
+  WITH CHECK (public.is_issue_owner(id) OR target_email = (auth.jwt() ->> 'email'));
+
 -- Scheduler-owned columns: browser roles lose write access. Column privileges only take effect when
 -- the table-level grant is gone, so re-grant every other column. Columns added later are NOT
 -- writable by browser roles until a migration grants them.

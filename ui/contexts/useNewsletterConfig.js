@@ -403,6 +403,23 @@ export const NewsletterConfigProvider = ({ children }) => {
                 custom_end_date: issueData.custom_end_date || null
             };
 
+            // A brand-new row is only visible to its creator through their own address (RLS), so it is
+            // inserted with the account email; the typed recipient, if different, is saved right after
+            // the owner link exists (see withRecipient).
+            const insertPayload = { ...issuePayload, target_email: user.email };
+            const withRecipient = async (issue) => {
+                const wanted = (issuePayload.target_email || '').trim();
+                if (!wanted || wanted.toLowerCase() === (issue.target_email || '').trim().toLowerCase()) return issue;
+                const { data, error } = await supabase
+                    .from('issues')
+                    .update({ target_email: wanted })
+                    .eq('id', issue.id)
+                    .select()
+                    .single();
+                if (error) throw error;
+                return data;
+            };
+
             let savedIssue;
             let result;
 
@@ -424,7 +441,7 @@ export const NewsletterConfigProvider = ({ children }) => {
                         // Create new issue instead
                         result = await supabase
                             .from('issues')
-                            .insert(issuePayload)
+                            .insert(insertPayload)
                             .select()
                             .single();
 
@@ -447,6 +464,7 @@ export const NewsletterConfigProvider = ({ children }) => {
                         if (userIssueResult.error) {
                             console.error('Error creating user-issue association:', userIssueResult.error);
                         }
+                        savedIssue = await withRecipient(savedIssue);
                     } else {
                         throw result.error;
                     }
@@ -480,7 +498,7 @@ export const NewsletterConfigProvider = ({ children }) => {
                 // Create new issue
                 result = await supabase
                     .from('issues')
-                    .insert(issuePayload)
+                    .insert(insertPayload)
                     .select()
                     .single();
 
@@ -504,6 +522,7 @@ export const NewsletterConfigProvider = ({ children }) => {
                     console.error('Error creating user-issue association:', userIssueResult.error);
                     // Don't throw here - the issue was created successfully, association failed
                 }
+                savedIssue = await withRecipient(savedIssue);
             }
 
             if (savedIssue.id !== currentIssueId) track('issue_created', { is_guest: false });

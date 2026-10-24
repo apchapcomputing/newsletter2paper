@@ -200,16 +200,31 @@ BEGIN
     RAISE NOTICE 'ok: auto_send needs a verified address';
   END;
 
-  -- Existing RLS policy: from the browser an owner can only set target_email to their own address
-  -- (issues_owner_update WITH CHECK). Third-party recipients are saved by the backend (service role).
+  -- A linked owner can send to someone else, from the browser (issues_owner_update); it starts unverified.
+  PERFORM pg_temp.ctx('authenticated', a, 'owner@sched.test');
+  UPDATE public.issues SET target_email = 'friend@sched.test', auto_send = false WHERE id = i;
+  RESET ROLE;
+  PERFORM pg_temp.expect('an owner can set a third-party address',
+    (SELECT target_email FROM public.issues WHERE id = i), 'friend@sched.test');
+  PERFORM pg_temp.expect('a third-party address starts unverified',
+    (SELECT target_email_verified_at IS NULL FROM public.issues WHERE id = i), true);
+
+  -- Someone who is not the owner cannot move the address (nor read the row).
+  PERFORM pg_temp.ctx('authenticated', 'bbbbbbbb-1111-0000-0000-00000000000b', 'other@sched.test');
+  UPDATE public.issues SET target_email = 'attacker@sched.test' WHERE id = i;
+  RESET ROLE;
+  PERFORM pg_temp.expect('a non-owner cannot change the address',
+    (SELECT target_email FROM public.issues WHERE id = i), 'friend@sched.test');
+
+  -- A new (unlinked) issue can still only be inserted with the creator's own address.
   PERFORM pg_temp.ctx('authenticated', a, 'owner@sched.test');
   BEGIN
-    UPDATE public.issues SET target_email = 'friend@sched.test', auto_send = false WHERE id = i;
+    INSERT INTO public.issues(format, frequency, target_email) VALUES ('essay', 'weekly', 'friend@sched.test');
     RESET ROLE;
-    RAISE EXCEPTION 'FAIL: a browser role saved a third-party target_email';
+    RAISE EXCEPTION 'FAIL: a browser role inserted an issue for a third-party address';
   EXCEPTION WHEN insufficient_privilege THEN   -- row-level security violations use this SQLSTATE
     RESET ROLE;
-    RAISE NOTICE 'ok: browser roles can only save their own address as target_email';
+    RAISE NOTICE 'ok: new issues are inserted with the creator''s own address';
   END;
 
   -- Changing the address (as the backend does) clears verification.
@@ -240,7 +255,8 @@ BEGIN
   END;
 
   -- The backend (superuser here) can confirm: same statement sets the timestamp.
-  UPDATE public.issues SET target_email = 'friend@sched.test', target_email_verified_at = now(), auto_send = true WHERE id = i;
+  -- (clock_timestamp(), not now(): the trigger spots "set by this statement" as a value different from the old one.)
+  UPDATE public.issues SET target_email = 'friend@sched.test', target_email_verified_at = clock_timestamp(), auto_send = true WHERE id = i;
   PERFORM pg_temp.expect('backend can set a verified address', (SELECT target_email_verified_at IS NOT NULL FROM public.issues WHERE id = i), true);
 
   -- Scheduler bookkeeping on an auto_send row is not blocked.

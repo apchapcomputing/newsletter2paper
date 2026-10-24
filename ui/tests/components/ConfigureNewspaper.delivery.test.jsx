@@ -77,6 +77,21 @@ describe('automatic delivery needs a confirmed address', () => {
     })
 })
 
+describe('Send now', () => {
+    beforeEach(() => { mocks.config.autoSend = true })
+
+    it('is available once the address is confirmed', () => {
+        render(<ConfigureNewspaper />)
+        expect(screen.getByRole('button', { name: 'Send now' })).toBeEnabled()
+    })
+
+    it('waits for the address to be confirmed', () => {
+        mocks.schedule.issue = row({ target_email_verified_at: null })
+        render(<ConfigureNewspaper />)
+        expect(screen.getByRole('button', { name: 'Send now' })).toBeDisabled()
+    })
+})
+
 describe('schedule controls', () => {
     beforeEach(() => { mocks.config.autoSend = true })
 

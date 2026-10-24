@@ -277,10 +277,11 @@ class TestScheduledRun:
         d = svc.store.finished[0][2]
         assert d['status'] == 'abandoned' and d['error_kind'] == 'permanent'
 
-    async def test_manual_send_does_not_need_a_confirmed_recipient(self, svc):
+    async def test_manual_send_also_needs_a_confirmed_recipient(self, svc):
         svc.store.verified = False
         res = await svc._process_issue(CLAIM, force=True)
-        assert res['success'] is True
+        assert res == {'success': False, 'error': 'config: the recipient address has not been confirmed'}
+        svc.generate.assert_not_called()
 
     async def test_the_articles_window_is_recorded_when_sending(self, svc):
         from datetime import datetime, timezone

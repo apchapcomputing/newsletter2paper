@@ -215,7 +215,12 @@ async def generate_pdf_for_issue(
 
         # Send email if the issue has a target_email configured
         target_email = issue_info.get('target_email')
-        if access.is_owner and target_email and result.get('pdf_url'):
+        if access.is_owner and target_email and result.get('pdf_url') and not issue_info.get('target_email_verified_at'):
+            # Only an address that confirmed (or the owner's own) gets mail; the PDF itself is unaffected.
+            response['email_sent'] = False
+            response['email_error'] = 'config: the delivery address has not been confirmed'
+            response['email_error_kind'] = 'permanent'
+        elif access.is_owner and target_email and result.get('pdf_url'):
             # Email failure must not break the PDF response; report its cause instead.
             from services.email_service import EmailService
             sent = EmailService().send(

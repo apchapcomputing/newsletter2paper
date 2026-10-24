@@ -259,9 +259,10 @@ class SchedulerService:
                 error = "config: no recipient email address is set"
                 self._fail(claim, issue, delivery, error, now, force, error_kind=PERMANENT)
                 return {'success': False, 'error': error}
-            if not force and not self.store.recipient_verified(claim.issue_id):
-                # The database refuses to enable auto_send for an unverified address, so this
-                # means the address changed or was edited behind the API's back.
+            if not self.store.recipient_verified(claim.issue_id):
+                # Scheduled and manual alike. The database refuses to enable auto_send for an unverified
+                # address, so for a scheduled run this means the address changed or was edited behind
+                # the API's back.
                 error = "config: the recipient address has not been confirmed"
                 self._fail(claim, issue, delivery, error, now, force, error_kind=PERMANENT)
                 return {'success': False, 'error': error}

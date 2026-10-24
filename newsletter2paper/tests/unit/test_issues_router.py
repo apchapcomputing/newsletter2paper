@@ -404,11 +404,17 @@ class TestSendNow:
             c.app.state.scheduler = scheduler
         return c.post(f"/issues/{ISSUE_ID}/send-now")
 
-    def db(self, email="a@b.co", owned=True):
+    def db(self, email="a@b.co", owned=True, verified="2026-10-01T00:00:00Z"):
         return FakeSupabase({
-            ("issues", "select"): [{"id": str(ISSUE_ID), "target_email": email}],
+            ("issues", "select"): [{"id": str(ISSUE_ID), "target_email": email, "target_email_verified_at": verified}],
             ("user_issues", "select"): [{"issue_id": str(ISSUE_ID)}] if owned else [],
         })
+
+    def test_an_unconfirmed_address_is_refused_before_any_claim(self):
+        sched = self.FakeScheduler()
+        resp = self.post(self.db(verified=None), sched)
+        assert resp.status_code == 422 and "Confirm the delivery address" in resp.json()["detail"]
+        assert sched.claims == [] if hasattr(sched, "claims") else True
 
     def test_requires_bearer_token(self):
         sched = self.FakeScheduler()

@@ -186,3 +186,12 @@ added to `issues` later are not writable by browser roles until a migration gran
 newest first: `trigger`, `period_key`, `status`, `attempts`, `error`, the article window and count, and
 `sent_at` / `opened_at`.
 
+---
+
+### Requirement: Delivery Address
+
+An owner SHALL be able to set `target_email` to an address other than their own account email. The address
+starts unverified (see email-delivery, Recipient Verification); until it is confirmed, `auto_send`, Send now
+and on-demand emailing are refused for it. Only a linked owner may change the address of an existing issue;
+claiming a guest issue still requires the caller's own email.
+

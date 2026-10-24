@@ -202,7 +202,7 @@ class TestPdfEmail:
         import services.email_service as email
         import services.rss_service as rss
 
-        issue = {"id": ISSUE_ID, "title": "T", "format": "essay", "target_email": "victim@example.com",
+        issue = {"id": ISSUE_ID, "title": "T", "format": "essay", "target_email": "victim@example.com", "target_email_verified_at": "2026-10-01T00:00:00Z",
                  "status": "guest", "guest_token": GUEST_TOKEN}
         db = make_db(guest_row=issue, owned=False)
         monkeypatch.setattr(dbs, "DatabaseService", lambda: db)

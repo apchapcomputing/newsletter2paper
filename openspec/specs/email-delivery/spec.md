@@ -126,7 +126,9 @@ it and is cleared whenever `target_email` changes (unless the same statement set
 - The link opens `GET /email/verify?token=`, which only shows a page. The page's button sends `POST /email/verify?token=`, which verifies the address. Opening the link never verifies, so mail scanners that prefetch links cannot.
 - Tokens are random, single-use, expire after 24 hours and are stored as SHA-256 hashes (`email_verifications`, backend-only). A token is refused when the address changed after it was issued.
 - A database trigger (`enforce_recipient_verification`) refuses `auto_send = true` for an unverified address when the write comes from a browser role (`anon`, `authenticated`; error `recipient_not_verified`), because the browser writes `issues` directly. The API answers 422 for the same case, and the scheduler records an unconfirmed address as a permanent `config:` failure.
-- Changing the address of an issue with `auto_send` on through the API turns `auto_send` off until the new address is confirmed. Manual Send now is not restricted.
+- Changing the address of an issue with `auto_send` on through the API turns `auto_send` off until the new address is confirmed.
+- Every send to `target_email` needs a verified address, not only scheduled ones: Send now answers 422 (and the scheduler records a permanent `config:` failure for a manual delivery), and on-demand generation (`POST /pdf/generate/{id}`) still returns the PDF but reports `email_sent: false` with `email_error: "config: the delivery address has not been confirmed"`.
+- An owner may set `target_email` to any address, from the browser as well as the API (policy `issues_owner_update`). New issues are inserted with the account email and then updated, since an unlinked row is only visible to its creator through that address. A third-party address starts unverified.
 
 #### Scenario: Enabling delivery to a friend's address
 
