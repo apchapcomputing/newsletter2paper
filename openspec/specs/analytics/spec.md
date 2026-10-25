@@ -153,12 +153,14 @@ Names follow `object_action`, snake_case. Never send emails, article text, feed 
 | Event | Sent from | Properties |
 |---|---|---|
 | `$pageview`, `$exception` | posthog-js automatically | |
+| `landing_cta_clicked` | `app/welcome/Landing.js` | `location`: `hero`, `pricing_free`, `pricing_paid` or `footer`; `target`: `app` or `signup` |
+| `sample_pdf_viewed` | `app/welcome/Landing.js` (only when the sample file is in `ui/public/samples/`) | `sample`: `newspaper` or `essay` |
 | `publication_added` | `SearchModal`, `AddUrlModal` | `source`: `search` or `url` |
 | `issue_created` | `useNewsletterConfig` (first save of a new issue; auto-saves aren't counted) | `is_guest` |
 | `pdf_generate_clicked` | `app/page.js` `handleGeneratePdf` | `layout`, `frequency`, `publication_count`, `is_guest` |
 | `pdf_generated` | same | the above, plus `duration_ms` |
 | `pdf_generate_failed` | same (also sent to Error tracking unless it's a validation error) | the above, plus `error_type`: `validation`, `save` (saving the issue before generating failed), `network`, `backend_4xx`, `backend_5xx` or `bad_response` |
-| `auth_modal_opened` | `AuthModal` | `trigger`: `header` or `guest_banner` |
+| `auth_modal_opened` | `AuthModal` | `trigger`: `header`, `guest_banner` or `landing` |
 | `signup_started` | `useAuth` sign-in functions (magic link or OAuth) | `method` |
 | `signup_completed` / `signed_in` | `useAuth.trackCompletedSignIn`, once per sign-in (the auth callback adds `?signed_in=1`). An account created less than 10 minutes ago counts as a signup. | `method` |
 | `auto_send_enabled` / `auto_send_disabled` | `useNewsletterConfig.updateAutoSend` | `frequency` |

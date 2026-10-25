@@ -65,6 +65,7 @@ Create each insight below and add it to one dashboard. **"Printers"** means peop
 | Insight | Type | Definition |
 |---|---|---|
 | Weekly printers (north star) | Trends | Unique users with `pdf_generated` or `delivery_sent`, weekly |
+| Launch | Funnel, 30-day window | `$pageview` (`$pathname` = `/welcome`) → `pdf_generated` → `signup_completed` → `auto_send_enabled` (add `subscription_started` once Stripe exists). Break down by `$initial_utm_source` / `$initial_utm_campaign`; ad links should carry UTM params. |
 | Activation | Funnel, 1-day window | `$pageview` → `publication_added` → `pdf_generated` |
 | Monetization | Funnel, 30-day window | `pdf_generated` → `signup_completed` → `auto_send_enabled` (add `subscription_started` once Stripe exists) |
 | Retention | Retention, weekly | Start: `pdf_generated`. Return: `pdf_generated` or `delivery_sent`. Break down by `is_guest`. Look for a curve that flattens, not one that decays to zero. |
