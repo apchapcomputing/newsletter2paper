@@ -1,7 +1,8 @@
 import List from '@mui/material/List';
 import ListItem from '@mui/material/ListItem';
+import ListItemButton from '@mui/material/ListItemButton';
 import ListItemText from '@mui/material/ListItemText';
-import ListItemAvatar from '@mui/material/ListItemAvatar';
+import ListItemIcon from '@mui/material/ListItemIcon';
 import IconButton from '@mui/material/IconButton';
 import HistoryIcon from '@mui/icons-material/History';
 import CloseIcon from '@mui/icons-material/Close';
@@ -12,32 +13,34 @@ export default function SearchHistory({
     onSelectHistory,
     onRemoveFromHistory
 }) {
+    if (searchHistory.length === 0) return null;
     return (
-        <Box>
+        <Box component="section" aria-labelledby="search-history-heading">
+            <Box component="h3" id="search-history-heading" className="n2p-label-sm" sx={{ m: 0, mb: 1, color: 'var(--secondary)' }}>
+                Recent searches
+            </Box>
             <List disablePadding>
-                {searchHistory.map((term, index) => (
+                {searchHistory.map((term) => (
                     <ListItem
-                        key={index}
-                        sx={{ cursor: 'pointer', '&:hover': { bgcolor: 'grey.50' } }}
-                        onClick={() => onSelectHistory(term)}
+                        key={term}
+                        disablePadding
+                        // The remove button is always visible: hover-only controls are out of reach
+                        // for keyboard and touch users.
                         secondaryAction={
                             <IconButton
                                 edge="end"
                                 size="small"
-                                sx={{ opacity: 0, '.MuiListItem-root:hover &': { opacity: 1 } }}
-                                onClick={(e) => {
-                                    e.stopPropagation();
-                                    onRemoveFromHistory(term);
-                                }}
+                                aria-label={`Remove ${term} from recent searches`}
+                                onClick={() => onRemoveFromHistory(term)}
                             >
                                 <CloseIcon fontSize="small" />
                             </IconButton>
                         }
                     >
-                        <ListItemAvatar>
-                            <HistoryIcon sx={{ color: 'grey.400' }} />
-                        </ListItemAvatar>
-                        <ListItemText primary={term} />
+                        <ListItemButton onClick={() => onSelectHistory(term)} sx={{ pr: 7, '&:hover': { bgcolor: 'var(--secondary-soft)' } }}>
+                            <ListItemIcon sx={{ minWidth: 40, color: 'var(--ink-muted)' }}><HistoryIcon /></ListItemIcon>
+                            <ListItemText primary={term} />
+                        </ListItemButton>
                     </ListItem>
                 ))}
             </List>

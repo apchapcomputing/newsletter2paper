@@ -7,6 +7,7 @@ import IconButton from '@mui/material/IconButton';
 import InputAdornment from '@mui/material/InputAdornment';
 import List from '@mui/material/List';
 import ListItem from '@mui/material/ListItem';
+import ListItemButton from '@mui/material/ListItemButton';
 import ListItemText from '@mui/material/ListItemText';
 import ListItemAvatar from '@mui/material/ListItemAvatar';
 import Avatar from '@mui/material/Avatar';
@@ -154,109 +155,119 @@ export default function SearchModal({
         const publicationId = searchResult.handle || searchResult.subdomain;
         return selectedPublications.some(p => p.id === publicationId);
     };
+    const rowSecondary = (result) =>
+        `${result.type === 'user' ? `@${result.handle}` : result.subdomain}${result.subscribers ? ` • ${result.subscribers}` : ''}`;
+
     return (
         <Modal
             open={isOpen}
             onClose={onClose}
-            sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'center', pt: 10 }}
+            sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'center', p: { xs: 2, sm: 0 }, pt: { xs: 2, sm: 10 } }}
         >
-            <Paper sx={{ width: 600, height: 500, borderRadius: 0, overflow: 'hidden', backgroundColor: 'var(--paper-raised)', border: '2px solid var(--ink)', boxShadow: 'var(--shadow-stamp)' }}>
-                {/* Header */}
-                <Box sx={{ p: 3, borderBottom: 1, borderColor: 'grey.100' }}>
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                        <TextField
-                            fullWidth
-                            variant="outlined"
-                            placeholder="People, publications, or topics"
-                            value={searchQuery}
-                            onChange={(e) => onSearchQueryChange(e.target.value)}
-                            autoFocus
-                            InputProps={{
-                                startAdornment: (
-                                    <InputAdornment position="start">
-                                        <SearchIcon sx={{ color: 'grey.600' }} />
-                                    </InputAdornment>
-                                ),
-                                sx: { fontSize: '1.125rem' }
-                            }}
-                            sx={{ '& .MuiOutlinedInput-root': { border: 'none', '& fieldset': { border: 'none' } } }}
-                        />
-                        <IconButton
-                            onClick={onClose}
-                            sx={{ color: 'grey.400' }}
-                        >
-                            <CloseIcon />
-                        </IconButton>
+            <Paper
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="search-modal-title"
+                sx={{
+                    width: '100%',
+                    maxWidth: 600,
+                    maxHeight: 'calc(100vh - 32px)',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    overflow: 'hidden',
+                    backgroundColor: 'var(--paper-raised)',
+                    border: '2px solid var(--ink)',
+                    boxShadow: 'var(--shadow-stamp)',
+                }}
+            >
+                {/* Title bar, as on the step window */}
+                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', pl: 2, bgcolor: 'var(--primary)', borderBottom: '2px solid var(--ink)' }}>
+                    <Box component="h2" id="search-modal-title" sx={{ m: 0, font: '700 14px/20px var(--font-display)', textTransform: 'uppercase' }}>
+                        Search Substack
                     </Box>
+                    <IconButton onClick={onClose} aria-label="Close search" size="small" sx={{ m: 0.5 }}>
+                        <CloseIcon />
+                    </IconButton>
                 </Box>
 
-                {/* Content */}
-                <Box sx={{ p: 3, height: 400, overflow: 'auto' }}>
+                <Box sx={{ p: 3, pb: 2 }}>
+                    <TextField
+                        fullWidth
+                        variant="outlined"
+                        placeholder="People, publications, or topics"
+                        value={searchQuery}
+                        onChange={(e) => onSearchQueryChange(e.target.value)}
+                        autoFocus
+                        slotProps={{
+                            htmlInput: { 'aria-label': 'Search Substack for people, publications, or topics' },
+                            input: {
+                                startAdornment: (
+                                    <InputAdornment position="start">
+                                        <SearchIcon sx={{ color: 'var(--ink-muted)' }} />
+                                    </InputAdornment>
+                                ),
+                            },
+                        }}
+                    />
+                </Box>
+
+                <Box sx={{ px: 3, pb: 3, minHeight: 240, overflow: 'auto' }} aria-live="polite">
                     {searchResults.length > 0 ? (
-                        /* Search Results */
-                        <List>
+                        <List disablePadding aria-label="Search results">
                             {searchResults.map((result, index) => (
-                                <ListItem key={index} sx={{ cursor: 'pointer', '&:hover': { bgcolor: 'var(--secondary-soft)' } }}>
-                                    <ListItemAvatar>
-                                        <Avatar sx={{
-                                            backgroundColor: 'secondary.main',
-                                            color: 'secondary.contrastText',
-                                            fontWeight: 'medium'
-                                        }}>
-                                            {(result.name && result.name.length > 0) ? result.name.charAt(0).toUpperCase() : '?'}
-                                        </Avatar>
-                                    </ListItemAvatar>
-                                    <ListItemText
-                                        primary={result.name}
-                                        secondary={`${result.type === 'user' ? `@${result.handle}` : result.subdomain}${result.subscribers ? ` • ${result.subscribers}` : ''}`}
-                                    />
-                                    <Checkbox
-                                        checked={isPublicationSelected(result)}
-                                        onChange={() => handlePublicationToggle(result)}
-                                        sx={{ mr: 1 }}
-                                    />
+                                <ListItem key={index} disablePadding>
+                                    <ListItemButton onClick={() => handlePublicationToggle(result)} sx={{ '&:hover': { bgcolor: 'var(--secondary-soft)' } }}>
+                                        <ListItemAvatar>
+                                            <Avatar sx={{ backgroundColor: 'secondary.main', color: 'secondary.contrastText', fontWeight: 'medium' }}>
+                                                {(result.name && result.name.length > 0) ? result.name.charAt(0).toUpperCase() : '?'}
+                                            </Avatar>
+                                        </ListItemAvatar>
+                                        <ListItemText primary={result.name} secondary={rowSecondary(result)} />
+                                        <Checkbox
+                                            edge="end"
+                                            tabIndex={-1}
+                                            checked={isPublicationSelected(result)}
+                                            slotProps={{ input: { 'aria-label': `Include ${result.name}` } }}
+                                            sx={{ pointerEvents: 'none' }}
+                                        />
+                                    </ListItemButton>
                                 </ListItem>
                             ))}
                         </List>
                     ) : (
-                        /* Default Content - Selected Publications and Search History */
                         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-                            {/* Selected Publications */}
                             {selectedPublications.length > 0 && (
-                                <Box>
-                                    <Box sx={{ mb: 2 }}>
-                                        <Box sx={{ fontSize: '0.875rem', fontWeight: 'medium', color: 'grey.600', mb: 1 }}>
-                                            Your Selected Publications
-                                        </Box>
+                                <Box component="section" aria-labelledby="search-selected-heading">
+                                    <Box component="h3" id="search-selected-heading" className="n2p-label-sm" sx={{ m: 0, mb: 1, color: 'var(--secondary)' }}>
+                                        In this issue
                                     </Box>
-                                    <List>
+                                    <List disablePadding>
                                         {selectedPublications.slice(0, 5).map((publication, index) => (
-                                            <ListItem key={publication.id || index} sx={{ cursor: 'pointer', '&:hover': { bgcolor: 'var(--secondary-soft)' } }}>
-                                                <ListItemAvatar>
-                                                    <Avatar sx={{
-                                                        backgroundColor: 'primary.main',
-                                                        color: 'primary.contrastText',
-                                                        fontWeight: 'medium'
-                                                    }}>
-                                                        {(publication.name || publication.title || '').charAt(0).toUpperCase() || '?'}
-                                                    </Avatar>
-                                                </ListItemAvatar>
-                                                <ListItemText
-                                                    primary={publication.name || publication.title}
-                                                    secondary={publication.subscribers ? `${publication.subscribers}` : (publication.handle ? `@${publication.handle}` : publication.url)}
-                                                />
-                                                <Checkbox
-                                                    checked={true}
-                                                    onChange={() => removePublication(publication.id)}
-                                                    sx={{ mr: 1 }}
-                                                />
+                                            <ListItem key={publication.id || index} disablePadding>
+                                                <ListItemButton onClick={() => removePublication(publication.id)} sx={{ '&:hover': { bgcolor: 'var(--secondary-soft)' } }}>
+                                                    <ListItemAvatar>
+                                                        <Avatar sx={{ backgroundColor: 'primary.main', color: 'primary.contrastText', fontWeight: 'medium' }}>
+                                                            {(publication.name || publication.title || '').charAt(0).toUpperCase() || '?'}
+                                                        </Avatar>
+                                                    </ListItemAvatar>
+                                                    <ListItemText
+                                                        primary={publication.name || publication.title}
+                                                        secondary={publication.subscribers ? `${publication.subscribers}` : (publication.handle ? `@${publication.handle}` : publication.url)}
+                                                    />
+                                                    <Checkbox
+                                                        edge="end"
+                                                        tabIndex={-1}
+                                                        checked
+                                                        slotProps={{ input: { 'aria-label': `Remove ${publication.name || publication.title}` } }}
+                                                        sx={{ pointerEvents: 'none' }}
+                                                    />
+                                                </ListItemButton>
                                             </ListItem>
                                         ))}
                                     </List>
                                 </Box>
                             )}
 
-                            {/* Search History */}
                             <SearchHistory
                                 searchHistory={searchHistory}
                                 onSelectHistory={onSelectHistory}
@@ -266,6 +277,6 @@ export default function SearchModal({
                     )}
                 </Box>
             </Paper>
-        </Modal >
+        </Modal>
     );
 }
