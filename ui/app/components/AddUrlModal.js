@@ -1,7 +1,8 @@
 'use client'
 
 import { useState } from 'react'
-import { Modal, Box, Typography, TextField, Button, CircularProgress, Alert } from '@mui/material'
+import { Modal, Box, Typography, TextField, Button, CircularProgress, Alert, IconButton } from '@mui/material'
+import CloseIcon from '@mui/icons-material/Close'
 import { useSelectedPublications } from '../../contexts/useSelectedPublications'
 import { getRssFeedUrl } from '../../utils/rssUtils'
 import { searchSubstack } from '../../utils/substackUtils'
@@ -241,33 +242,39 @@ export default function AddUrlModal({ open, onClose, onPublicationAdded }) {
             onClose={handleClose}
             aria-labelledby="add-url-modal-title"
         >
-            <Box sx={{
-                position: 'absolute',
-                top: '50%',
-                left: '50%',
-                transform: 'translate(-50%, -50%)',
-                width: { xs: '90%', sm: '600px' },
-                maxWidth: '90vw',
-                maxHeight: '90vh',
-                bgcolor: 'var(--paper-raised)',
-                border: '2px solid var(--ink)',
-                boxShadow: 'var(--shadow-stamp)',
-                p: 4,
-                overflow: 'auto'
-            }}>
-                <Typography
-                    id="add-url-modal-title"
-                    variant="h5"
-                    component="h2"
-                    sx={{
-                        fontWeight: 600,
-                        mb: 2,
-                        color: 'var(--black)'
-                    }}
-                >
-                    Add Publications via URL
-                </Typography>
-
+            <Box
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="add-url-modal-title"
+                sx={{
+                    position: 'absolute',
+                    top: '50%',
+                    left: '50%',
+                    transform: 'translate(-50%, -50%)',
+                    width: { xs: '90%', sm: '600px' },
+                    maxWidth: '90vw',
+                    maxHeight: '90vh',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    bgcolor: 'var(--paper-raised)',
+                    border: '2px solid var(--ink)',
+                    boxShadow: 'var(--shadow-stamp)',
+                }}
+            >
+                {/* Title bar, as on the step window and the search modal */}
+                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', pl: 2, bgcolor: 'var(--primary)', borderBottom: '2px solid var(--ink)' }}>
+                    <Typography
+                        id="add-url-modal-title"
+                        component="h2"
+                        sx={{ font: '700 14px/20px var(--font-display)', textTransform: 'uppercase' }}
+                    >
+                        Add via link
+                    </Typography>
+                    <IconButton onClick={handleClose} disabled={isProcessing} aria-label="Close" size="small" sx={{ m: 0.5 }}>
+                        <CloseIcon />
+                    </IconButton>
+                </Box>
+                <Box sx={{ p: { xs: 2, sm: 4 }, overflow: 'auto' }}>
                 <Typography variant="body2" sx={{ mb: 3, color: 'var(--ink-muted)' }}>
                     Paste Substack publication URLs below. You can separate multiple URLs with commas, spaces, or new lines.
                 </Typography>
@@ -280,56 +287,24 @@ export default function AddUrlModal({ open, onClose, onPublicationAdded }) {
                     value={urlInput}
                     onChange={(e) => setUrlInput(e.target.value)}
                     disabled={isProcessing}
+                    slotProps={{ htmlInput: { 'aria-label': 'Publication URLs' } }}
                     sx={{ mb: 2 }}
                 />
 
                 {error && (
-                    <Alert
-                        severity="error"
-                        sx={{
-                            mb: 2,
-                            backgroundColor: '#ffebee',
-                            color: '#c62828',
-                            border: '1px solid #c62828',
-                            '& .MuiAlert-icon': {
-                                color: '#c62828'
-                            }
-                        }}
-                    >
+                    <Alert severity="error" sx={{ mb: 2 }}>
                         {error}
                     </Alert>
                 )}
 
                 {successCount > 0 && (
-                    <Alert
-                        severity="success"
-                        sx={{
-                            mb: 2,
-                            backgroundColor: '#e8f5e9',
-                            color: '#2e7d32',
-                            border: '1px solid #2e7d32',
-                            '& .MuiAlert-icon': {
-                                color: '#2e7d32'
-                            }
-                        }}
-                    >
+                    <Alert severity="success" sx={{ mb: 2 }}>
                         Successfully added {successCount} publication{successCount !== 1 ? 's' : ''}!
                     </Alert>
                 )}
 
                 {failedUrls.length > 0 && (
-                    <Alert
-                        severity="warning"
-                        sx={{
-                            mb: 2,
-                            backgroundColor: '#fff3e0',
-                            color: '#e65100',
-                            border: '1px solid #e65100',
-                            '& .MuiAlert-icon': {
-                                color: '#e65100'
-                            }
-                        }}
-                    >
+                    <Alert severity="warning" sx={{ mb: 2 }}>
                         <Typography variant="body2" sx={{ fontWeight: 600, mb: 1 }}>
                             Failed to add {failedUrls.length} URL{failedUrls.length !== 1 ? 's' : ''}:
                         </Typography>
@@ -363,6 +338,7 @@ export default function AddUrlModal({ open, onClose, onPublicationAdded }) {
                             'Add Publications'
                         )}
                     </Button>
+                </Box>
                 </Box>
             </Box>
         </Modal>
