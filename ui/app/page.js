@@ -604,20 +604,22 @@ export default function Home() {
               </>
             ))}
           </span>
+          {/* Only offered once there is a saved paper to open */}
+          {user && userIssues && userIssues.length > 0 && (
+            <button
+              type="button"
+              className="n2p-link"
+              id="select-issue-button"
+              onClick={handleSelectMenuOpen}
+              aria-haspopup="menu"
+              aria-expanded={isSelectMenuOpen ? 'true' : undefined}
+            >
+              Open saved paper
+            </button>
+          )}
           <button
             type="button"
-            className="n2p-btn"
-            id="select-issue-button"
-            onClick={handleSelectMenuOpen}
-            disabled={!user || !userIssues || userIssues.length === 0}
-            aria-haspopup="menu"
-            aria-expanded={isSelectMenuOpen ? 'true' : undefined}
-          >
-            Open saved paper
-          </button>
-          <button
-            type="button"
-            className="n2p-btn"
+            className="n2p-link"
             onClick={handleClearAll}
             disabled={!newspaperTitle && selectedPublications.length === 0}
           >

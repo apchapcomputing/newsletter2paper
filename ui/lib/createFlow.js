@@ -2,9 +2,9 @@
 // page, the stepper and the Configure step so step rules live in one place.
 
 export const STEPS = [
-    { key: 'add', label: 'Add', name: 'Publications', title: 'Add Publications', deck: 'Add Substack publications to print in your newspaper' },
-    { key: 'configure', label: 'Configure', name: 'Your paper', title: 'Configure Your Newspaper', deck: 'Configure the details for your newspaper' },
-    { key: 'print', label: 'Print', name: 'The issue', title: 'Print Your Newspaper Issue', deck: 'Check the front page, then start the press' },
+    { key: 'add', label: 'Add', name: 'Publications', title: 'Add Publications' },
+    { key: 'configure', label: 'Configure', name: 'Your paper', title: 'Configure Your Newspaper' },
+    { key: 'print', label: 'Print', name: 'The issue', title: 'Print Your Newspaper Issue' },
 ]
 
 export const LAST_STEP = STEPS.length - 1

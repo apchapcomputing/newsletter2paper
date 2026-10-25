@@ -4,7 +4,7 @@ import { useEffect, useRef } from 'react'
 import { STEPS, LAST_STEP } from '../../lib/createFlow'
 
 /**
- * The window that holds one step: a cornflower title bar over a raised page, the title and deck,
+ * The window that holds one step: a cornflower title bar over a raised page, the title,
  * a rule, the step's fields and Back / Next written as jump lines. Moving to another step moves
  * focus to the title so keyboard and screen-reader users land at the top of the new step.
  * `nextBlocked` marks Next aria-disabled (it stays focusable so the reason can be reached);
@@ -24,12 +24,9 @@ export default function StepWindow({ index, onBack, onNext, nextBlocked = false,
 
     return (
         <section className="n2p-window" aria-labelledby="step-title">
-            <div className="n2p-window__bar">
-                <span className="n2p-window__dots" aria-hidden="true"><i /><i /></span>
-            </div>
+            <div className="n2p-window__bar" aria-hidden="true" />
             <div className="n2p-window__body">
                 <h2 className="n2p-window__title" id="step-title" ref={titleRef} tabIndex={-1}>{step.title}</h2>
-                <p className="n2p-deck">{step.deck}</p>
                 <hr className="n2p-rule" />
                 {children}
                 <div className="n2p-window__nav">
