@@ -34,7 +34,6 @@ import {
   hashForStep,
   articleWindowError,
   articleWindowQuery,
-  describeArticleWindow,
   toQueryString,
   sheetsFilled,
   isStepDone,
@@ -564,7 +563,6 @@ export default function Home() {
   }
 
   const now = new Date();
-  const weekday = now.toLocaleDateString('en-US', { weekday: 'long' });
   const dateLabel = now.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
   const paperName = newspaperTitle.trim() || 'Your Paper';
 
@@ -597,7 +595,15 @@ export default function Home() {
       <div className="n2p-wrap">
         {/* Utility row: saving status, saved papers, new issue, account */}
         <div className="n2p-toolbar">
-          <span className="n2p-toolbar__who" role="status">{isSaving ? 'Saving changes…' : ''}</span>
+          <span className="n2p-toolbar__who" role="status">
+            {isSaving ? 'Saving changes…' : (!user && (
+              <>
+                Browsing as a guest.{' '}
+                <button type="button" className="n2p-link" onClick={() => setIsAuthModalOpen(true)}>Sign in</button>
+                {' '}to save papers and email them to yourself.
+              </>
+            ))}
+          </span>
           <button
             type="button"
             className="n2p-btn"
@@ -620,23 +626,9 @@ export default function Home() {
           <AuthButton />
         </div>
 
-        <Masthead
-          title={newspaperTitle}
-          weekday={weekday}
-          publicationCount={selectedPublications.length}
-          windowLabel={describeArticleWindow({ articleWindow, frequency, dateFrom, dateTo })}
-        />
+        <Masthead />
 
         <main>
-          {/* Authentication Status Notice */}
-          {!user && (
-            <div className="n2p-notice" style={{ marginTop: 'var(--space-4)' }}>
-              You&apos;re browsing as a guest.{' '}
-              <button type="button" onClick={() => setIsAuthModalOpen(true)}>Sign in</button>
-              {' '}to save your newsletter configurations, access them later, and email your issue PDFs to yourself.
-            </div>
-          )}
-
           <div className="n2p-stepper-wrap">
             <Stepper current={step} sheets={sheets} done={done} onSelect={goToStep} />
           </div>

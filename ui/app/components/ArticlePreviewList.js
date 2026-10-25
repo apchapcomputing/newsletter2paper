@@ -88,6 +88,8 @@ export default function ArticlePreviewList({ publication, articles, isLoading, e
                 </Typography>
                 <IconButton
                     size="small"
+                    aria-label={`${isExpanded ? 'Hide' : 'Show'} articles from ${publication?.title || publication?.name || 'this publication'}`}
+                    aria-expanded={isExpanded}
                     sx={{
                         ml: 'auto',
                         p: 0.5
@@ -105,7 +107,7 @@ export default function ArticlePreviewList({ publication, articles, isLoading, e
                             key={article.id || index}
                             sx={{
                                 py: 1,
-                                borderBottom: index < articles.length - 1 ? '2px solid var(--paper-sunk)' : 'none'
+                                borderBottom: index < articles.length - 1 ? 'var(--rule) solid var(--line)' : 'none'
                             }}
                         >
                             {/* Article title with link */}
