@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 
 const { apiFetch } = vi.hoisted(() => ({ apiFetch: vi.fn() }))
 vi.mock('@/lib/apiFetch', () => ({ apiFetch }))
@@ -54,7 +55,12 @@ describe('DeliveryHistory', () => {
             { id: 'd1', trigger: 'scheduled', status: 'abandoned', scheduled_for: '2026-10-05T09:00:00Z', error: 'pdf: renderer timed out' },
         ] }))
         render(<DeliveryHistory issueId="i1" />)
-        expect(await screen.findByText('Delivered · 4 articles')).toBeInTheDocument()
+        const toggle = await screen.findByRole('button', { name: /Show recent deliveries \(2\)/ })
+        expect(toggle).toHaveAttribute('aria-expanded', 'false')
+        expect(screen.queryByText('Delivered · 4 articles')).not.toBeVisible()
+        await userEvent.click(toggle)
+        expect(toggle).toHaveAttribute('aria-expanded', 'true')
+        expect(await screen.findByText('Delivered · 4 articles')).toBeVisible()
         expect(screen.getByText('Not delivered')).toBeInTheDocument()
         expect(screen.getByText(/We couldn't build the PDF/)).toBeInTheDocument()
         expect(apiFetch).toHaveBeenCalledWith('/api/issues/i1/deliveries?limit=10')

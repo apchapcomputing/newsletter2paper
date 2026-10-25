@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useId, useState } from 'react'
 import { Box, Typography } from '@mui/material'
 import { apiFetch } from '../../lib/apiFetch'
 import { friendlyError } from '../../utils/scheduleStatus'
@@ -34,6 +34,8 @@ export function describeDelivery(delivery) {
 
 export default function DeliveryHistory({ issueId, refreshKey }) {
     const [state, setState] = useState({ status: 'idle', deliveries: [] })
+    const [open, setOpen] = useState(false)
+    const listId = useId()
 
     useEffect(() => {
         if (!issueId) {
@@ -64,8 +66,16 @@ export default function DeliveryHistory({ issueId, refreshKey }) {
 
     return (
         <Box component="section" aria-label="Delivery history" sx={{ mt: 2 }}>
-            <Typography variant="body2" sx={{ fontWeight: 500, mb: 0.5 }}>Recent deliveries</Typography>
-            <Box component="ul" sx={{ listStyle: 'none', p: 0, m: 0 }}>
+            <button
+                type="button"
+                className="n2p-link"
+                aria-expanded={open}
+                aria-controls={listId}
+                onClick={() => setOpen((o) => !o)}
+            >
+                {open ? 'Hide' : 'Show'} recent deliveries ({state.deliveries.length})
+            </button>
+            <Box component="ul" id={listId} hidden={!open} sx={{ listStyle: 'none', p: 0, m: 0, display: open ? 'block' : 'none' }}>
                 {state.deliveries.map((delivery) => {
                     const line = describeDelivery(delivery)
                     return (
