@@ -44,6 +44,11 @@ describe('StepWindow', () => {
         </StepWindow>
     )
 
+    it('shows the live summary in the bottom strip', () => {
+        renderStep(1, { summary: '6 newsletters · 8 articles in the last week' })
+        expect(screen.getByText('6 newsletters · 8 articles in the last week')).toBeInTheDocument()
+    })
+
     it('hides Back on the first step and Next on the last', () => {
         const first = renderStep(0)
         expect(screen.queryByRole('button', { name: /Back to/ })).not.toBeInTheDocument()

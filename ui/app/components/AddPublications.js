@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useImperativeHandle, forwardRef } from 'react'
-import { Checkbox, FormControlLabel, Tooltip, CircularProgress } from '@mui/material'
+import { Tooltip, CircularProgress } from '@mui/material'
 import ImageIcon from '@mui/icons-material/Image'
 import HideImageIcon from '@mui/icons-material/HideImage'
 import { useSelectedPublications } from '../../contexts/useSelectedPublications'
@@ -12,10 +12,21 @@ import logger from '../../utils/logger'
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
+// The author line is only worth a second name when it says something the title does not.
+const squash = (text) => (text || '').toLowerCase().replace(/[^a-z0-9]/g, '')
+const authorLine = (title, author) => (author && squash(author) !== squash(title) ? author : '')
+
 // Step 1: choose the newsletters. Each one reads as a byline with the articles it would print.
-const AddPublications = forwardRef(({ onOpenSearch, onSaveIssue, isSaving: isSavingProp, isPopulatingPublications = false, previews }, ref) => {
+const AddPublications = forwardRef(({ onOpenSearch, onSaveIssue, isSaving: isSavingProp, isPopulatingPublications = false, previews, windowLabel }, ref) => {
     const { selectedPublications, removePublication, toggleRemoveImages } = useSelectedPublications()
+
     const [isUrlModalOpen, setIsUrlModalOpen] = useState(false)
+    const [openIds, setOpenIds] = useState(() => new Set())
+    const toggleOpen = (id) => setOpenIds(prev => {
+        const next = new Set(prev)
+        if (!next.delete(id)) next.add(id)
+        return next
+    })
 
     // Expose handlePublicationAdded to parent via ref
     useImperativeHandle(ref, () => ({
@@ -63,25 +74,6 @@ const AddPublications = forwardRef(({ onOpenSearch, onSaveIssue, isSaving: isSav
         previews.forget(pubId)
     }
 
-    // Handle master checkbox to toggle all publications
-    const handleToggleAllImages = (event) => {
-        const isChecked = event.target.checked
-        selectedPublications.forEach(pub => {
-            const currentState = pub.remove_images || false
-            // Only toggle if the current state is different from target state
-            if (currentState !== isChecked) {
-                toggleRemoveImages(pub.id || pub.name)
-            }
-        })
-    }
-
-    // Check if all publications have remove_images enabled
-    const allImagesRemoved = selectedPublications.length > 0 &&
-        selectedPublications.every(pub => pub.remove_images === true)
-
-    // Check if some (but not all) have remove_images enabled
-    const someImagesRemoved = selectedPublications.some(pub => pub.remove_images === true) && !allImagesRemoved
-
     return (
         <>
             <div className="n2p-field">
@@ -98,43 +90,33 @@ const AddPublications = forwardRef(({ onOpenSearch, onSaveIssue, isSaving: isSav
                     <span className="n2p-sticker n2p-sticker--hot" aria-label={`${selectedPublications.length} selected`}>{selectedPublications.length}</span>
                 </div>
 
-                {/* Master checkbox to toggle all (only show if there are publications) */}
-                {selectedPublications.length > 0 && (
-                    <Tooltip
-                        title="Toggle image removal for all publications at once. You can then adjust individual publications as needed."
-                        placement="right"
-                    >
-                        <FormControlLabel
-                            sx={{ mb: 1 }}
-                            control={
-                                <Checkbox
-                                    checked={allImagesRemoved}
-                                    indeterminate={someImagesRemoved}
-                                    onChange={handleToggleAllImages}
-                                    size="small"
-                                />
-                            }
-                            label="Remove images from all publications"
-                            slotProps={{ typography: { variant: 'body2' } }}
-                        />
-                    </Tooltip>
-                )}
-
                 {selectedPublications.length > 0 ? (
-                    <div aria-labelledby="in-issue-label" role="list">
+                    <div className="n2p-pubs" aria-labelledby="in-issue-label" role="list">
                         {selectedPublications.map((publication, index) => {
                             const name = publication.name || publication.title
                             const pubState = previews.previewFor(publication.id)
                             const removeImages = Boolean(publication.remove_images)
+                            const isOpen = openIds.has(publication.id)
+                            const author = authorLine(name, publication.publisher || publication.handle)
 
                             return (
-                                <div className="n2p-pub n2p-pub--stack" role="listitem" key={publication.id || index}>
+                                <div className={`n2p-pub${isOpen ? ' is-open' : ''}`} role="listitem" key={publication.id || index}>
                                     <div className="n2p-pub__main">
                                         <a href={publication.url} target="_blank" rel="noopener noreferrer">
-                                            <div className="n2p-pub__by">By <b className="n2p-pub__name">{name}</b></div>
-                                            <div className="n2p-pub__dl">{publication.publisher || publication.handle || publication.url}</div>
+                                            <b className="n2p-pub__name">{name}</b>
+                                            {author && <span className="n2p-pub__dl">{author}</span>}
                                         </a>
                                     </div>
+
+                                    <ArticlePreviewList
+                                        publication={publication}
+                                        articles={pubState.articles}
+                                        isLoading={pubState.status === 'loading'}
+                                        error={pubState.error}
+                                        windowLabel={windowLabel}
+                                        expanded={isOpen}
+                                        onToggle={() => toggleOpen(publication.id)}
+                                    />
 
                                     <div className="n2p-pub__tools">
                                         <Tooltip title={removeImages ? 'Images will be removed from this publication' : 'Images will be included from this publication'} placement="top">
@@ -156,15 +138,6 @@ const AddPublications = forwardRef(({ onOpenSearch, onSaveIssue, isSaving: isSav
                                         >
                                             ×
                                         </button>
-                                    </div>
-
-                                    <div className="n2p-pub__articles">
-                                        <ArticlePreviewList
-                                            publication={publication}
-                                            articles={pubState.articles}
-                                            isLoading={pubState.status === 'loading'}
-                                            error={pubState.error}
-                                        />
                                     </div>
                                 </div>
                             )

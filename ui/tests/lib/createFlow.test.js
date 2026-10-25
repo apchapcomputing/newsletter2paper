@@ -99,6 +99,12 @@ describe('stepper progress', () => {
         expect(sheetsFilled(1, { ...base, title: '  ', articleWindow: 'custom' })).toBe(1)
     })
 
+    it('keeps Configure sunk until the reader has seen its controls (title still counts if set)', () => {
+        expect(sheetsFilled(1, { ...base, visitedConfigure: false })).toBe(0)
+        expect(sheetsFilled(1, { ...base, visitedConfigure: false, title: 'Morning News' })).toBe(1)
+        expect(sheetsFilled(1, { ...base, visitedConfigure: true, title: 'Morning News' })).toBe(3)
+    })
+
     it('fills Print sheets while the press runs and when a PDF exists', () => {
         expect(sheetsFilled(2, base)).toBe(0)
         expect(sheetsFilled(2, { ...base, isGenerating: true })).toBe(2)

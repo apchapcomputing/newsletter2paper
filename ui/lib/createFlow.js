@@ -78,11 +78,12 @@ export function isStepComplete(index, { publicationCount, articleWindow, dateFro
     return false
 }
 
-/** How many of a step's three sheets are filled (0 to 3). */
-export function sheetsFilled(index, { publicationCount, title, articleWindow, dateFrom, dateTo, format, isGenerating, hasPdf }) {
+/** How many of a step's three sheets are filled (0 to 3). `visitedConfigure`: the reader has reached Configure. */
+export function sheetsFilled(index, { publicationCount, title, articleWindow, dateFrom, dateTo, format, isGenerating, hasPdf, visitedConfigure = true }) {
     if (index === 0) return Math.min(3, publicationCount)
     if (index === 1) {
-        return [Boolean(format), Boolean((title || '').trim()), !articleWindowError({ articleWindow, dateFrom, dateTo })]
+        // Format and window always hold a default; they only count once the reader has seen them.
+        return [visitedConfigure && Boolean(format), Boolean((title || '').trim()), visitedConfigure && !articleWindowError({ articleWindow, dateFrom, dateTo })]
             .filter(Boolean).length
     }
     if (hasPdf) return 3

@@ -34,6 +34,7 @@ import {
   hashForStep,
   articleWindowError,
   articleWindowQuery,
+  describeArticleWindow,
   toQueryString,
   sheetsFilled,
   isStepDone,
@@ -566,6 +567,18 @@ export default function Home() {
   const dateLabel = now.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
   const paperName = newspaperTitle.trim() || 'Your Paper';
 
+  // "in the last week" / "from 2026-01-01 to 2026-01-05"
+  const windowText = describeArticleWindow({ articleWindow, frequency, dateFrom, dateTo });
+  const windowLabel = windowText.startsWith('the last') ? `in ${windowText}` : `from ${windowText}`;
+  const previewStates = selectedPublications.map(pub => previews.previewFor(pub.id));
+  const stillCounting = previewStates.some(state => state.status === 'loading');
+  const articleCount = previewStates.reduce((sum, state) => sum + (state.articles?.length || 0), 0);
+  const countNoun = (n, noun) => `${n} ${noun}${n === 1 ? '' : 's'}`;
+  const summary = selectedPublications.length === 0
+    ? 'No newsletters yet'
+    : [countNoun(selectedPublications.length, 'newsletter'),
+       stillCounting ? 'counting articles…' : `${countNoun(articleCount, 'article')} ${windowLabel}`].join(' · ');
+
   const flow = {
     publicationCount: selectedPublications.length,
     title: newspaperTitle,
@@ -575,6 +588,7 @@ export default function Home() {
     dateTo,
     isGenerating: isGeneratingPdf,
     hasPdf: Boolean(pdfUrl),
+    visitedConfigure: reached >= 1,
   };
   const sheets = STEPS.map((_, i) => sheetsFilled(i, flow));
   const done = STEPS.map((_, i) => isStepDone(i, step, reached, flow));
@@ -640,6 +654,7 @@ export default function Home() {
               index={step}
               onBack={() => goToStep(step - 1)}
               onNext={handleNext}
+              summary={summary}
               nextBlocked={configureBlocked}
               nextDescribedBy={configureBlocked ? 'date-error' : undefined}
             >
@@ -651,6 +666,7 @@ export default function Home() {
                   isSaving={isSaving}
                   isPopulatingPublications={isPopulatingPublications}
                   previews={previews}
+                  windowLabel={windowLabel}
                 />
               )}
               {step === 1 && <ConfigureNewspaper />}

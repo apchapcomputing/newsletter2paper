@@ -1,14 +1,17 @@
 'use client'
 
-import { Box, Typography, Collapse, IconButton, Skeleton, Link as MuiLink } from '@mui/material'
-import { useState } from 'react'
+import { Box, Typography, Collapse, Skeleton, Link as MuiLink } from '@mui/material'
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore'
 import ExpandLessIcon from '@mui/icons-material/ExpandLess'
-import ArticleIcon from '@mui/icons-material/Article'
 import CalendarTodayIcon from '@mui/icons-material/CalendarToday'
 
-export default function ArticlePreviewList({ publication, articles, isLoading, error }) {
-    const [isExpanded, setIsExpanded] = useState(false)
+/**
+ * What one publication would print: an inline summary for the row's single line (a count that
+ * toggles the list, a quiet "0 articles" note, a skeleton or an error) and the list itself, which
+ * the row lays out below its line. Rendered as siblings so the row stays one flex container.
+ */
+export default function ArticlePreviewList({ publication, articles, isLoading, error, windowLabel = 'this window', expanded = false, onToggle }) {
+    const name = publication?.title || publication?.name || 'this publication'
 
     const formatDate = (dateString) => {
         try {
@@ -23,84 +26,32 @@ export default function ArticlePreviewList({ publication, articles, isLoading, e
         }
     }
 
-    const toggleExpanded = () => {
-        setIsExpanded(!isExpanded)
-    }
-
-    // If loading, show skeleton
     if (isLoading) {
-        return (
-            <Box sx={{ mt: 1 }}>
-                <Skeleton variant="text" width="60%" height={20} />
-                <Skeleton variant="text" width="80%" height={16} sx={{ mt: 0.4 }} />
-                <Skeleton variant="text" width="75%" height={16} />
-            </Box>
-        )
+        return <Skeleton variant="text" width={110} height={20} aria-label="Loading articles" />
     }
 
-    // If no articles, show message
     if (!articles || articles.length === 0) {
-        // If there's an error, show it
         if (error) {
-            return (
-                <Box sx={{ mt: 1 }}>
-                    <Typography variant="body2" sx={{ fontSize: '0.813rem', color: 'error.main' }}>
-                        Error loading articles: {error}
-                    </Typography>
-                </Box>
-            )
+            return <span className="n2p-pub__note n2p-pub__note--error" role="alert" title={error}>Couldn&apos;t load articles</span>
         }
-
-        return (
-            <Box sx={{ mt: 1 }}>
-                <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.813rem', fontStyle: 'italic' }}>
-                    No recent articles found in the selected time frame
-                </Typography>
-            </Box>
-        )
+        return <span className="n2p-pub__note">0 articles {windowLabel}</span>
     }
 
     return (
-        <Box sx={{ mt: 1 }}>
-            {/* Header with article count */}
-            <Box
-                sx={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 1,
-                    cursor: 'pointer',
-                    '&:hover': {
-                        opacity: 0.7
-                    }
-                }}
-                onClick={toggleExpanded}
+        <>
+            <button
+                type="button"
+                className="n2p-pub__count"
+                aria-expanded={expanded}
+                aria-label={`${expanded ? 'Hide' : 'Show'} ${articles.length} article${articles.length !== 1 ? 's' : ''} from ${name}`}
+                onClick={onToggle}
             >
-                <ArticleIcon sx={{ fontSize: '1rem', color: 'text.secondary' }} />
-                <Typography
-                    variant="body2"
-                    sx={{
-                        fontSize: '0.875rem',
-                        fontWeight: 500,
-                        color: 'text.secondary'
-                    }}
-                >
-                    {articles.length} article{articles.length !== 1 ? 's' : ''} to print
-                </Typography>
-                <IconButton
-                    size="small"
-                    aria-label={`${isExpanded ? 'Hide' : 'Show'} articles from ${publication?.title || publication?.name || 'this publication'}`}
-                    aria-expanded={isExpanded}
-                    sx={{
-                        ml: 'auto',
-                        p: 0.5
-                    }}
-                >
-                    {isExpanded ? <ExpandLessIcon fontSize="small" /> : <ExpandMoreIcon fontSize="small" />}
-                </IconButton>
-            </Box>
+                {articles.length} article{articles.length !== 1 ? 's' : ''}
+                {expanded ? <ExpandLessIcon fontSize="small" aria-hidden="true" /> : <ExpandMoreIcon fontSize="small" aria-hidden="true" />}
+            </button>
 
             {/* Article list */}
-            <Collapse in={isExpanded}>
+            <Collapse in={expanded} className="n2p-pub__list">
                 <Box sx={{ mt: 1, px: 2 }}>
                     {articles.map((article, index) => (
                         <Box
@@ -180,7 +131,7 @@ export default function ArticlePreviewList({ publication, articles, isLoading, e
                         </Box>
                     ))}
                 </Box>
-            </Collapse >
-        </Box >
+            </Collapse>
+        </>
     )
 }

@@ -6,9 +6,12 @@ const mocks = vi.hoisted(() => ({
     config: {},
     schedule: { issue: null, refresh: vi.fn(), save: vi.fn() },
     saveIssueToSupabase: vi.fn(),
+    selected: [],
+    toggleRemoveImages: vi.fn(),
 }))
 
 vi.mock('@/contexts/useNewsletterConfig', () => ({ useNewsletterConfig: () => mocks.config }))
+vi.mock('@/contexts/useSelectedPublications', () => ({ useSelectedPublications: () => ({ selectedPublications: mocks.selected, toggleRemoveImages: mocks.toggleRemoveImages }) }))
 vi.mock('@/contexts/useAuth', () => ({ useAuth: () => ({ session: { access_token: 'tok' } }) }))
 vi.mock('@/lib/useIssueSchedule', () => ({ useIssueSchedule: () => mocks.schedule }))
 vi.mock('@/lib/analytics', () => ({ track: vi.fn() }))
@@ -39,6 +42,22 @@ beforeEach(() => {
     mocks.config = base()
     mocks.schedule = { issue: row(), refresh: vi.fn(), save: vi.fn().mockResolvedValue({ error: null }) }
     mocks.saveIssueToSupabase.mockReset().mockResolvedValue({})
+    mocks.selected = []
+    mocks.toggleRemoveImages.mockReset()
+})
+
+describe('images for the whole paper', () => {
+    it('is offered only once there are publications, and toggles the ones that differ', () => {
+        const { unmount } = render(<ConfigureNewspaper />)
+        expect(screen.queryByLabelText(/Remove images from all publications/)).not.toBeInTheDocument()
+        unmount()
+
+        mocks.selected = [{ id: 'a', remove_images: true }, { id: 'b', remove_images: false }]
+        render(<ConfigureNewspaper />)
+        fireEvent.click(screen.getByLabelText(/Remove images from all publications/))
+        expect(mocks.toggleRemoveImages).toHaveBeenCalledTimes(1)
+        expect(mocks.toggleRemoveImages).toHaveBeenCalledWith('b')
+    })
 })
 
 describe('automatic delivery needs a confirmed address', () => {
