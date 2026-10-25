@@ -153,7 +153,7 @@ Names follow `object_action`, snake_case. Never send emails, article text, feed 
 | Event | Sent from | Properties |
 |---|---|---|
 | `$pageview`, `$exception` | posthog-js automatically | |
-| `landing_cta_clicked` | `app/welcome/Landing.js` | `location`: `header`, `hero`, `pricing_free`, `pricing_paid` or `footer`; `target`: `app` or `signup` |
+| `landing_cta_clicked` | `app/welcome/Landing.js` | `location`: `hero`, `pricing_free`, `pricing_paid` or `footer`; `target`: `app` or `signup` |
 | `sample_pdf_viewed` | `app/welcome/Landing.js` (only when the sample file is in `ui/public/samples/`) | `sample`: `newspaper` or `essay` |
 | `publication_added` | `SearchModal`, `AddUrlModal` | `source`: `search` or `url` |
 | `issue_created` | `useNewsletterConfig` (first save of a new issue; auto-saves aren't counted) | `is_guest` |
