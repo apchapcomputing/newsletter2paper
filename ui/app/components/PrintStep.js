@@ -15,6 +15,7 @@ export function frontPageStories(publications, previewFor) {
             const article = previewFor(publication.id).articles[0]
             if (!article) return null
             return {
+                id: publication.id,
                 headline: article.title,
                 deck: article.subtitle,
                 publication: publication.name || publication.title,

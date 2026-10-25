@@ -19,6 +19,7 @@ const previews = (byId) => ({
     previewFor: (id) => byId[id] || { status: 'loaded', articles: [], error: '' },
     fetchFor: vi.fn(),
     forget: vi.fn(),
+    retry: vi.fn(),
 })
 
 const renderRows = (byId) => render(
@@ -41,7 +42,7 @@ describe('publication rows', () => {
 
     it('says "0 articles" inline for an empty window instead of filling a row', () => {
         renderRows({})
-        expect(screen.getAllByText('0 articles in the last week')).toHaveLength(2)
+        expect(screen.getAllByText(/^0 articles in the last week/)).toHaveLength(2)
     })
 
     it('tints only the row that is expanded', () => {

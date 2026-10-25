@@ -10,7 +10,7 @@ import CalendarTodayIcon from '@mui/icons-material/CalendarToday'
  * toggles the list, a quiet "0 articles" note, a skeleton or an error) and the list itself, which
  * the row lays out below its line. Rendered as siblings so the row stays one flex container.
  */
-export default function ArticlePreviewList({ publication, articles, isLoading, error, windowLabel = 'this window', expanded = false, onToggle }) {
+export default function ArticlePreviewList({ publication, articles, status = 'loaded', error, windowLabel = 'this window', expanded = false, onToggle, onRetry }) {
     const name = publication?.title || publication?.name || 'this publication'
 
     const formatDate = (dateString) => {
@@ -26,15 +26,27 @@ export default function ArticlePreviewList({ publication, articles, isLoading, e
         }
     }
 
-    if (isLoading) {
+    if (status === 'loading') {
         return <Skeleton variant="text" width={110} height={20} aria-label="Loading articles" />
     }
 
+    // Not asked yet (the paper is still being saved): say so rather than spinning or claiming zero.
+    if (status === 'waiting') {
+        return <span className="n2p-pub__note">Articles appear once the paper is saved</span>
+    }
+
+    const again = onRetry && (
+        <>
+            {' · '}
+            <button type="button" className="n2p-pub__retry" onClick={onRetry}>{status === 'error' ? 'Try again' : 'Check again'}</button>
+        </>
+    )
+
     if (!articles || articles.length === 0) {
-        if (error) {
-            return <span className="n2p-pub__note n2p-pub__note--error" role="alert" title={error}>Couldn&apos;t load articles</span>
+        if (status === 'error' || error) {
+            return <span className="n2p-pub__note n2p-pub__note--error" role="alert" title={error}>Couldn&apos;t load articles{again}</span>
         }
-        return <span className="n2p-pub__note">0 articles {windowLabel}</span>
+        return <span className="n2p-pub__note">0 articles {windowLabel}{again}</span>
     }
 
     return (

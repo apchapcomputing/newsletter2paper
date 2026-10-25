@@ -17,7 +17,7 @@ const squash = (text) => (text || '').toLowerCase().replace(/[^a-z0-9]/g, '')
 const authorLine = (title, author) => (author && squash(author) !== squash(title) ? author : '')
 
 // Step 1: choose the newsletters. Each one reads as a byline with the articles it would print.
-const AddPublications = forwardRef(({ onOpenSearch, onSaveIssue, isSaving: isSavingProp, isPopulatingPublications = false, previews, windowLabel }, ref) => {
+const AddPublications = forwardRef(({ onOpenSearch, onSaveIssue, isPopulatingPublications = false, previews, windowLabel }, ref) => {
     const { selectedPublications, removePublication, toggleRemoveImages } = useSelectedPublications()
 
     const [isUrlModalOpen, setIsUrlModalOpen] = useState(false)
@@ -49,24 +49,18 @@ const AddPublications = forwardRef(({ onOpenSearch, onSaveIssue, isSaving: isSav
 
         logger.log(`📰 Publication added: ${publication.name || publication.title} (ID: ${publication.id})`)
 
-        // Wait for save to complete
+        // The publication has to be linked to a saved issue before its articles can be listed.
         if (onSaveIssue) {
             logger.log('💾 Saving issue before fetching preview...')
             await onSaveIssue()
-
-            // Wait for save prop to become false
-            let waitCount = 0
-            while (isSavingProp && waitCount < 30) { // Max 3 seconds
-                await new Promise(resolve => setTimeout(resolve, 100))
-                waitCount++
-            }
 
             // Add buffer for database replication
             await new Promise(resolve => setTimeout(resolve, 300))
         }
 
-        // Fetch articles for this publication only
-        previews.fetchFor(publication.id)
+        // Fetch articles for this publication only. `force` replaces any request the effect already
+        // started before the link existed, so an early empty answer cannot stand.
+        previews.fetchFor(publication.id, { force: true })
     }
 
     const handleRemovePublication = (pubId) => {
@@ -111,8 +105,9 @@ const AddPublications = forwardRef(({ onOpenSearch, onSaveIssue, isSaving: isSav
                                     <ArticlePreviewList
                                         publication={publication}
                                         articles={pubState.articles}
-                                        isLoading={pubState.status === 'loading'}
+                                        status={pubState.status}
                                         error={pubState.error}
+                                        onRetry={() => previews.retry(publication.id)}
                                         windowLabel={windowLabel}
                                         expanded={isOpen}
                                         onToggle={() => toggleOpen(publication.id)}

@@ -97,6 +97,8 @@
 .n2p-pub__count{display:inline-flex;align-items:center;gap:2px;min-height:var(--touch-min);padding:0 var(--space-1);font:700 14px/20px var(--font-sans);color:var(--ink);background:none;border:0;cursor:pointer;text-decoration:underline;text-decoration-thickness:2px;text-underline-offset:3px}
 .n2p-pub__tools{display:flex;align-items:center}
 /* The expanded list takes its own line under the row's controls */
+.n2p-pub__retry{font:inherit;color:inherit;background:none;border:0;padding:0;text-decoration:underline;text-underline-offset:3px;cursor:pointer}
+.n2p-pub__retry:hover{color:var(--ink)}
 .n2p-pub__list{order:10;flex-basis:100%}
 .n2p-pub__x{width:var(--touch-min);height:var(--touch-min);flex:none;display:grid;place-items:center;font:700 20px/1 var(--font-sans);color:var(--ink);background:none;border:var(--border) solid transparent;border-radius:0;cursor:pointer}
 .n2p-pub__x:hover{border-color:var(--line)}

@@ -84,6 +84,19 @@ describe('article window', () => {
     })
 })
 
+describe('legacy custom frequency', () => {
+    it('still means a custom range, not the 7-day default', () => {
+        const legacy = { articleWindow: '7x', frequency: 'custom', dateFrom: '2026-01-01', dateTo: '2026-01-05' }
+        expect(articleWindowQuery(legacy)).toEqual({ start_date: '2026-01-01', end_date: '2026-01-05' })
+        expect(articleWindowQuery({ ...legacy, dateTo: '' })).toBeNull()
+        expect(articleWindowError({ ...legacy, dateTo: '' })).toMatch(/Both dates/)
+    })
+
+    it('does not override a preset the reader chose', () => {
+        expect(articleWindowQuery({ articleWindow: '30', frequency: 'custom' })).toEqual({ days_back: 30 })
+    })
+})
+
 describe('stepper progress', () => {
     const base = { publicationCount: 0, title: '', format: 'essay', articleWindow: '7', dateFrom: '', dateTo: '', isGenerating: false, hasPdf: false }
 

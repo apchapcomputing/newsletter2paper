@@ -79,6 +79,10 @@ export default function Home() {
   const [pdfUrl, setPdfUrl] = useState(null);
   const [printStatus, setPrintStatus] = useState('');
   const printAbort = useRef(null);
+  const printRun = useRef(0); // Bumped when a print starts or is thrown away, so late results can be ignored
+  const savingRef = useRef(false);
+  const generatingRef = useRef(false);
+  const windowBlockedRef = useRef(false);
   const [step, setStep] = useState(0);
   const [reached, setReached] = useState(0);
   const previews = useArticlePreviews();
@@ -99,7 +103,12 @@ export default function Home() {
   // deep links work, and the data itself comes back from the config contexts after a reload.
   useEffect(() => {
     const syncStep = () => {
-      const next = stepFromHash(window.location.hash);
+      let next = stepFromHash(window.location.hash);
+      // Print is out of reach while the article window is unusable (a hand-typed #print included).
+      if (next > 1 && windowBlockedRef.current) {
+        next = 1;
+        window.history.replaceState(null, '', hashForStep(1));
+      }
       setStep(next);
       setReached(prev => Math.max(prev, next));
     };
@@ -108,10 +117,35 @@ export default function Home() {
     return () => window.removeEventListener('hashchange', syncStep);
   }, []);
 
+  const windowError = articleWindowError({ articleWindow, dateFrom, dateTo, frequency });
+  windowBlockedRef.current = Boolean(windowError);
+  generatingRef.current = isGeneratingPdf;
+
   const goToStep = (index) => {
-    const next = clampStep(index);
+    let next = clampStep(index);
+    if (next > 1 && windowError) next = 1; // The stepper tiles can't skip past a bad custom window
     if (next !== step) window.location.hash = hashForStep(next);
   };
+
+  // A saved paper opened on #print before its config loaded, or a window edited out from under Print.
+  useEffect(() => {
+    if (configLoaded && step > 1 && windowError) {
+      window.history.replaceState(null, '', hashForStep(1));
+      setStep(1);
+      setReached(prev => Math.min(prev, 1));
+    }
+  }, [configLoaded, step, windowError]);
+
+  // A printed PDF is only the paper it was printed from: any change to the paper retires it.
+  const printKey = JSON.stringify([
+    newspaperTitle, outputMode, removeImages, articleWindow, frequency, dateFrom, dateTo,
+    selectedPublications.map(pub => [pub.id, Boolean(pub.remove_images)]),
+  ]);
+  useEffect(() => {
+    if (generatingRef.current) return;
+    setPdfUrl(null);
+    setPrintStatus('');
+  }, [printKey]);
 
   // Auto-save effect - triggers when title, outputMode, or publications change
   useEffect(() => {
@@ -264,7 +298,8 @@ export default function Home() {
   };
 
   const handleSaveIssue = async () => {
-    if (isSaving) return; // Prevent double saves
+    if (savingRef.current) return; // Prevent double saves
+    savingRef.current = true;
 
     setIsSaving(true);
     try {
@@ -358,6 +393,7 @@ export default function Home() {
     } catch (error) {
       console.error('Error saving issue:', error);
     } finally {
+      savingRef.current = false;
       setIsSaving(false);
     }
   };
@@ -369,7 +405,24 @@ export default function Home() {
 
     if (isGeneratingPdf) return; // Prevent double clicks
 
+    const run = ++printRun.current;
+    const abort = new AbortController();
+    printAbort.current = abort;
+    // The paper has been thrown away (New issue, another paper opened): nothing below may touch the page.
+    const stale = () => run !== printRun.current;
+    // "Stop the presses" works in every phase, not only while the request is in the air.
+    const checkpoint = () => {
+      if (abort.signal.aborted) throw new DOMException('Printing stopped', 'AbortError');
+    };
+
+    // Browsers only allow a new tab straight from the click, and the PDF is minutes of awaits away,
+    // so the tab is opened now and pointed at the PDF later. A blocked tab falls back to the link.
+    const tab = window.open('', '_blank');
+    if (tab) tab.opener = null;
+    const closeTab = () => { try { tab?.close(); } catch { /* already gone */ } };
+
     setIsGeneratingPdf(true);
+    generatingRef.current = true;
     setPdfUrl(null);
     setPrintStatus('');
 
@@ -395,15 +448,18 @@ export default function Home() {
       }
 
       // Wait for any in-progress save to complete
-      while (isSaving) {
+      while (savingRef.current) {
         await new Promise(resolve => setTimeout(resolve, 100));
+        checkpoint();
       }
 
       // Perform one final save to ensure everything is up-to-date
       await handleSaveIssue();
+      checkpoint();
 
       // Give Supabase a moment to process the update (prevents race conditions)
       await new Promise(resolve => setTimeout(resolve, 300));
+      checkpoint();
 
       logger.log('✅ Issue saved, now generating PDF...');
 
@@ -411,15 +467,13 @@ export default function Home() {
       errorType = 'validation';
       const windowQuery = articleWindowQuery({ articleWindow, frequency, dateFrom, dateTo });
       if (!windowQuery) {
-        throw new Error(articleWindowError({ articleWindow, dateFrom, dateTo }));
+        throw new Error(articleWindowError({ articleWindow, dateFrom, dateTo, frequency }));
       }
       const pdfApiUrl = `/api/pdf/generate/${currentIssueId}?${toQueryString(windowQuery)}&layout_type=${outputMode}`;
       logger.log(`📅 Article window: ${JSON.stringify(windowQuery)}`);
 
       // Call Next.js API route, which proxies to Python backend
       errorType = 'network';
-      const abort = new AbortController();
-      printAbort.current = abort;
       const response = await apiFetch(pdfApiUrl, {
         method: 'POST',
         headers: {
@@ -430,19 +484,22 @@ export default function Home() {
 
       errorType = response.status >= 500 ? 'backend_5xx' : response.ok ? 'bad_response' : 'backend_4xx';
       const data = await response.json();
+      if (stale()) { closeTab(); return; }
+      checkpoint();
 
       if (data.success && data.pdf_url) {
         track('pdf_generated', { ...generateProps, duration_ms: Date.now() - startedAt });
         setPdfUrl(data.pdf_url);
         logger.log('PDF generated successfully:', data.pdf_url);
 
-        // Optionally open the PDF in a new tab
-        window.open(data.pdf_url, '_blank');
+        if (tab && !tab.closed) tab.location.href = data.pdf_url;
       } else {
         throw new Error(data.message || 'PDF generation failed');
       }
 
     } catch (error) {
+      closeTab();
+      if (stale()) return;
       if (error?.name === 'AbortError') {
         // "Stop the presses": the reader cancelled, so this is neither a failure nor an event.
         setPrintStatus('Presses stopped. Nothing was printed.');
@@ -456,13 +513,28 @@ export default function Home() {
         ? error.message
         : 'Your paper could not be printed. Check your connection and try again.');
     } finally {
-      printAbort.current = null;
-      setIsGeneratingPdf(false);
+      if (!stale()) {
+        printAbort.current = null;
+        generatingRef.current = false;
+        setIsGeneratingPdf(false);
+      }
     }
   };
 
   const handleStopPrinting = () => {
     printAbort.current?.abort();
+  };
+
+  // Forget everything about printing the paper that was open: a run still going must not finish
+  // into the next paper and open its PDF.
+  const resetPrint = () => {
+    printRun.current += 1;
+    printAbort.current?.abort();
+    printAbort.current = null;
+    generatingRef.current = false;
+    setIsGeneratingPdf(false);
+    setPdfUrl(null);
+    setPrintStatus('');
   };
 
   const handleSearchModalClose = () => {
@@ -478,9 +550,11 @@ export default function Home() {
 
   const handleClearAll = () => {
     // Clear all form fields and selections
+    resetPrint();
     resetConfig(); // Clears title, output mode, and current issue ID
     clearAllPublications(); // Clears all selected publications
-    setPdfUrl(null); // Clear any existing PDF URL
+    setReached(0);
+    goToStep(0); // A new paper starts at Add
   };
 
   const handleSelectMenuOpen = (event) => {
@@ -493,6 +567,9 @@ export default function Home() {
 
   const handleSelectIssue = async (issue) => {
     handleSelectMenuClose();
+    resetPrint();
+    setReached(0);
+    goToStep(0);
     try {
       // Load the issue configuration (this will trigger the useEffect to load publications)
       await loadIssue(issue.id);
@@ -572,12 +649,15 @@ export default function Home() {
   const windowLabel = windowText.startsWith('the last') ? `in ${windowText}` : `from ${windowText}`;
   const previewStates = selectedPublications.map(pub => previews.previewFor(pub.id));
   const stillCounting = previewStates.some(state => state.status === 'loading');
+  // A count with a missing publication in it would be a wrong count; say nothing instead.
+  const countKnown = previewStates.every(state => state.status === 'loaded');
   const articleCount = previewStates.reduce((sum, state) => sum + (state.articles?.length || 0), 0);
   const countNoun = (n, noun) => `${n} ${noun}${n === 1 ? '' : 's'}`;
   const summary = selectedPublications.length === 0
     ? 'No newsletters yet'
     : [countNoun(selectedPublications.length, 'newsletter'),
-       stillCounting ? 'counting articles…' : `${countNoun(articleCount, 'article')} ${windowLabel}`].join(' · ');
+       stillCounting ? 'counting articles…' : countKnown ? `${countNoun(articleCount, 'article')} ${windowLabel}` : null]
+      .filter(Boolean).join(' · ');
 
   const flow = {
     publicationCount: selectedPublications.length,
@@ -586,6 +666,7 @@ export default function Home() {
     articleWindow,
     dateFrom,
     dateTo,
+    frequency,
     isGenerating: isGeneratingPdf,
     hasPdf: Boolean(pdfUrl),
     visitedConfigure: reached >= 1,
@@ -594,7 +675,7 @@ export default function Home() {
   const done = STEPS.map((_, i) => isStepDone(i, step, reached, flow));
 
   // Configure can only move on once the article window is usable; the field shows why.
-  const configureBlocked = step === 1 && Boolean(articleWindowError({ articleWindow, dateFrom, dateTo }));
+  const configureBlocked = step === 1 && Boolean(windowError);
 
   const handleNext = () => {
     if (configureBlocked) {

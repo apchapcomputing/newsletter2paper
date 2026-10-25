@@ -28,9 +28,14 @@ export function clampStep(index) {
 const DAYS_BY_WINDOW = { '1': 1, '7': 7, '30': 30 }
 const DAYS_BY_FREQUENCY = { daily: 1, weekly: 7, monthly: 30 }
 
+// Issues saved before the article window existed carry `frequency: 'custom'` with their dates and
+// no usable window; they still mean a custom range, not the 7-day default.
+const isCustomWindow = ({ articleWindow, frequency }) =>
+    articleWindow === 'custom' || (!DAYS_BY_WINDOW[articleWindow] && frequency === 'custom')
+
 /** Why the article window can't be used yet, or null. Only a custom range can be wrong. */
-export function articleWindowError({ articleWindow, dateFrom, dateTo }) {
-    if (articleWindow !== 'custom') return null
+export function articleWindowError({ articleWindow, dateFrom, dateTo, frequency }) {
+    if (!isCustomWindow({ articleWindow, frequency })) return null
     if (!dateFrom || !dateTo) return 'Both dates are required for a custom range. Pick a start and an end day.'
     if (dateFrom > dateTo) return 'The start date is after the end date. Pick an earlier day.'
     return null
@@ -42,8 +47,8 @@ export function articleWindowError({ articleWindow, dateFrom, dateTo }) {
  * Returns null while a custom range is incomplete or reversed.
  */
 export function articleWindowQuery({ articleWindow, dateFrom, dateTo, frequency }) {
-    if (articleWindow === 'custom') {
-        if (articleWindowError({ articleWindow, dateFrom, dateTo })) return null
+    if (isCustomWindow({ articleWindow, frequency })) {
+        if (articleWindowError({ articleWindow, dateFrom, dateTo, frequency })) return null
         return { start_date: dateFrom, end_date: dateTo }
     }
     return { days_back: DAYS_BY_WINDOW[articleWindow] || DAYS_BY_FREQUENCY[frequency] || 7 }
@@ -62,7 +67,7 @@ export function toQueryString(query) {
 
 /** "the last week", for the masthead's right ear. */
 export function describeArticleWindow({ articleWindow, dateFrom, dateTo, frequency }) {
-    if (articleWindow === 'custom') {
+    if (isCustomWindow({ articleWindow, frequency })) {
         return dateFrom && dateTo ? `${dateFrom} to ${dateTo}` : 'custom dates'
     }
     const days = articleWindowQuery({ articleWindow, frequency }).days_back
@@ -72,18 +77,18 @@ export function describeArticleWindow({ articleWindow, dateFrom, dateTo, frequen
     return `the last ${days} days`
 }
 
-export function isStepComplete(index, { publicationCount, articleWindow, dateFrom, dateTo }) {
+export function isStepComplete(index, { publicationCount, articleWindow, dateFrom, dateTo, frequency }) {
     if (index === 0) return publicationCount > 0
-    if (index === 1) return !articleWindowError({ articleWindow, dateFrom, dateTo })
+    if (index === 1) return !articleWindowError({ articleWindow, dateFrom, dateTo, frequency })
     return false
 }
 
 /** How many of a step's three sheets are filled (0 to 3). `visitedConfigure`: the reader has reached Configure. */
-export function sheetsFilled(index, { publicationCount, title, articleWindow, dateFrom, dateTo, format, isGenerating, hasPdf, visitedConfigure = true }) {
+export function sheetsFilled(index, { publicationCount, title, articleWindow, dateFrom, dateTo, frequency, format, isGenerating, hasPdf, visitedConfigure = true }) {
     if (index === 0) return Math.min(3, publicationCount)
     if (index === 1) {
         // Format and window always hold a default; they only count once the reader has seen them.
-        return [visitedConfigure && Boolean(format), Boolean((title || '').trim()), visitedConfigure && !articleWindowError({ articleWindow, dateFrom, dateTo })]
+        return [visitedConfigure && Boolean(format), Boolean((title || '').trim()), visitedConfigure && !articleWindowError({ articleWindow, dateFrom, dateTo, frequency })]
             .filter(Boolean).length
     }
     if (hasPdf) return 3

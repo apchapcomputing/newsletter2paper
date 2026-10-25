@@ -133,7 +133,7 @@ export default function ConfigureNewspaper() {
     }
 
     // Validation for custom date range
-    const dateError = articleWindowError({ articleWindow, dateFrom, dateTo })
+    const dateError = articleWindowError({ articleWindow, dateFrom, dateTo, frequency })
     const datesReversed = articleWindow === 'custom' && dateFrom && dateTo && dateFrom > dateTo
 
     return (

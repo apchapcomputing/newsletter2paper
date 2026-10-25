@@ -36,8 +36,8 @@ export default function FrontPagePreview({ title, dateLabel, stories, emptyMessa
                             <p className="n2p-story__by">By {lead.publication}</p>
                             {lead.deck && <p className="n2p-dropcap">{lead.deck}</p>}
                         </div>
-                        {rest.slice(0, 2).map((story) => (
-                            <div className="n2p-story" key={story.publication}>
+                        {rest.slice(0, 2).map((story, i) => (
+                            <div className="n2p-story" key={story.id || `${story.publication}-${i}`}>
                                 <h4>{story.headline}</h4>
                                 <p className="n2p-story__by">By {story.publication}</p>
                             </div>

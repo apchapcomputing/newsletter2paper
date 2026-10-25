@@ -121,8 +121,8 @@ describe('front page', () => {
             (id) => previews[id]
         )
         expect(stories).toEqual([
-            { headline: 'Lead story', deck: 'A deck', publication: 'Field Notes' },
-            { headline: 'Third', deck: undefined, publication: 'Tidepool' },
+            { id: 'p1', headline: 'Lead story', deck: 'A deck', publication: 'Field Notes' },
+            { id: 'p3', headline: 'Third', deck: undefined, publication: 'Tidepool' },
         ])
     })
 

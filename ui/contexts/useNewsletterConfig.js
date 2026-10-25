@@ -658,6 +658,7 @@ export const NewsletterConfigProvider = ({ children }) => {
             setOutputMode(issue.format || 'essay');
             setRemoveImages(issue.remove_images || false);
             setFrequency(issue.frequency || 'weekly');
+            if (issue.frequency === 'custom') setArticleWindow('custom');
             // Restore custom dates – strip to YYYY-MM-DD for the date input
             setDateFrom(issue.custom_start_date ? issue.custom_start_date.slice(0, 10) : '');
             setDateTo(issue.custom_end_date ? issue.custom_end_date.slice(0, 10) : '');

@@ -51,6 +51,7 @@ export async function POST(request, { params }) {
                 ...tracingHeaders(request),
             },
             body: JSON.stringify({}), // Empty body as required by the backend
+            signal: request.signal, // "Stop the presses" drops the backend request too
         });
 
         const data = await response.json();
