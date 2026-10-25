@@ -13,11 +13,13 @@ import { STEPS, LAST_STEP } from '../../lib/createFlow'
 export default function StepWindow({ index, onBack, onNext, nextBlocked = false, nextDescribedBy, children }) {
     const step = STEPS[index]
     const titleRef = useRef(null)
-    const mounted = useRef(false)
+    const shown = useRef(index)
 
     useEffect(() => {
-        if (mounted.current) titleRef.current?.focus({ preventScroll: true })
-        mounted.current = true
+        // Compare with the step last shown, not "is this the first effect": Strict Mode re-runs
+        // effects on mount, which would otherwise focus the title (and ring it) on page load.
+        if (shown.current !== index) titleRef.current?.focus({ preventScroll: true })
+        shown.current = index
     }, [index])
 
     return (

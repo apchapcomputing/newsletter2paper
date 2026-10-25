@@ -43,10 +43,12 @@ export const metadata = {
 
 export default function RootLayout({ children }) {
   return (
-    <html lang="en">
-      <body
-        className={`${atkinson.variable} ${courier.variable} ${unbounded.variable} ${unifraktur.variable} antialiased`}
-      >
+    // The font variables go on <html>: globals.css reads them at :root to build --font-*.
+    <html
+      lang="en"
+      className={`${atkinson.variable} ${courier.variable} ${unbounded.variable} ${unifraktur.variable}`}
+    >
+      <body className="antialiased">
         <AppRouterCacheProvider>
           <Providers>
             {children}

@@ -53,7 +53,7 @@
   --shadow-bevel-sm: inset 2px 2px 0 #ffffff99, inset -2px -2px 0 #2a182044;
   --shadow-bevel-sunk: inset 3px 3px 0 #2a182044, inset -3px -3px 0 #ffffff99;
 
-  /* The next/font variables are set on <body> in layout.js. */
+  /* The next/font variables are set on <html> in layout.js. */
   --font-blackletter: var(--font-unifraktur), Georgia, serif;
   --font-display: var(--font-unbounded), "Arial Black", Verdana, sans-serif;
   --font-sans: var(--font-atkinson), "Trebuchet MS", system-ui, sans-serif;

@@ -143,8 +143,7 @@
 .n2p-btn--quiet:hover{border-color:var(--line)}
 .n2p-stepper-wrap{margin:var(--space-6) 0 28px}
 .n2p-window-wrap{margin-bottom:var(--space-8)}
-.n2p-window__title:focus{outline:none}
-.n2p-window__title:focus-visible{outline:3px solid var(--ink);outline-offset:3px}
+.n2p-window__title:focus,.n2p-window__title:focus-visible,.n2p-page .n2p-window__title:focus-visible{outline:none}
 .n2p-window__head{margin-bottom:var(--space-1)}
 .n2p-row{display:flex;gap:var(--space-3);flex-wrap:wrap}
 .n2p-row>.n2p-btn{flex:1;min-width:160px}
