@@ -46,17 +46,11 @@ beforeEach(() => {
     mocks.toggleRemoveImages.mockReset()
 })
 
-describe('images for the whole paper', () => {
-    it('is offered only once there are publications, and toggles the ones that differ', () => {
-        const { unmount } = render(<ConfigureNewspaper />)
-        expect(screen.queryByLabelText(/Remove images from all publications/)).not.toBeInTheDocument()
-        unmount()
-
-        mocks.selected = [{ id: 'a', remove_images: true }, { id: 'b', remove_images: false }]
+describe('images', () => {
+    it('are handled on the Add step only', () => {
+        mocks.selected = [{ id: 'a', remove_images: true }]
         render(<ConfigureNewspaper />)
-        fireEvent.click(screen.getByLabelText(/Remove images from all publications/))
-        expect(mocks.toggleRemoveImages).toHaveBeenCalledTimes(1)
-        expect(mocks.toggleRemoveImages).toHaveBeenCalledWith('b')
+        expect(screen.queryByLabelText(/Remove images from all publications/)).not.toBeInTheDocument()
     })
 })
 

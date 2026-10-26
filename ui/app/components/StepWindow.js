@@ -33,7 +33,7 @@ export default function StepWindow({ index, onBack, onNext, nextBlocked = false,
                     <p className="n2p-window__summary">{summary}</p>
                     <div className="n2p-window__nav">
                         {index > 0 && (
-                            <button type="button" className="n2p-btn n2p-btn--quiet" onClick={onBack}>
+                            <button type="button" className="n2p-btn" onClick={onBack}>
                                 <span className="n2p-btn__ar" aria-hidden="true">←</span> Back to {STEPS[index - 1].label}
                             </button>
                         )}

@@ -1,8 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { Switch, FormControlLabel, Checkbox } from '@mui/material'
-import { useSelectedPublications } from '../../contexts/useSelectedPublications'
+import { Switch, FormControlLabel } from '@mui/material'
 import { useNewsletterConfig } from '../../contexts/useNewsletterConfig'
 import { useAuth } from '../../contexts/useAuth'
 import { track } from '../../lib/analytics'
@@ -59,17 +58,6 @@ export default function ConfigureNewspaper() {
         updateArticleWindow,
         updateAutoSend
     } = useNewsletterConfig()
-
-    const { selectedPublications, toggleRemoveImages } = useSelectedPublications()
-    // A format choice for the whole paper; single publications can still differ (Add step).
-    const allImagesRemoved = selectedPublications.length > 0 && selectedPublications.every(pub => pub.remove_images === true)
-    const someImagesRemoved = selectedPublications.some(pub => pub.remove_images === true) && !allImagesRemoved
-    const handleToggleAllImages = (event) => {
-        const target = event.target.checked
-        selectedPublications.forEach(pub => {
-            if (Boolean(pub.remove_images) !== target) toggleRemoveImages(pub.id || pub.name)
-        })
-    }
 
     const { session } = useAuth()
     const [sendNowState, setSendNowState] = useState({ status: 'idle', message: '' })
@@ -159,25 +147,6 @@ export default function ConfigureNewspaper() {
                     style={{ marginTop: 'var(--space-2)' }}
                 />
             </div>
-
-            {selectedPublications.length > 0 && (
-                <div className="n2p-field">
-                    <span className="n2p-label" id="images-label">Images</span>
-                    <p className="n2p-help">Individual publications can still differ; change them on the Add step.</p>
-                    <FormControlLabel
-                        control={
-                            <Checkbox
-                                checked={allImagesRemoved}
-                                indeterminate={someImagesRemoved}
-                                onChange={handleToggleAllImages}
-                                size="small"
-                            />
-                        }
-                        label="Remove images from all publications"
-                        slotProps={{ typography: { variant: 'body2' } }}
-                    />
-                </div>
-            )}
 
             <div className="n2p-field" style={{ marginBottom: 0 }}>
                 <span className="n2p-label" id="window-label">Article window</span>

@@ -7,21 +7,17 @@ import FrontPagePreview from './FrontPagePreview'
 import PrintPress from './PrintPress'
 import PullQuote from './PullQuote'
 
-// One story per newsletter: its newest article in the chosen window. Newsletters with nothing
-// new are left off the page rather than invented.
+// One story per article in the chosen window, newsletter by newsletter, so the page counts what
+// will print. Newsletters with nothing new are left off rather than invented.
 export function frontPageStories(publications, previewFor) {
-    return publications
-        .map((publication) => {
-            const article = previewFor(publication.id).articles[0]
-            if (!article) return null
-            return {
-                id: publication.id,
-                headline: article.title,
-                deck: article.subtitle,
-                publication: publication.name || publication.title,
-            }
-        })
-        .filter(Boolean)
+    return publications.flatMap((publication) =>
+        (previewFor(publication.id).articles || []).map((article, i) => ({
+            id: `${publication.id}:${article.id || i}`,
+            headline: article.title,
+            deck: article.subtitle,
+            publication: publication.name || publication.title,
+        }))
+    )
 }
 
 export default function PrintStep({
@@ -35,7 +31,7 @@ export default function PrintStep({
     onGeneratePdf,
     onStopPrinting,
 }) {
-    const { currentIssueId } = useNewsletterConfig()
+    const { currentIssueId, outputMode } = useNewsletterConfig()
     const { selectedPublications } = useSelectedPublications()
 
     const stories = frontPageStories(selectedPublications, previewFor)
@@ -54,6 +50,7 @@ export default function PrintStep({
                 title={paperName}
                 dateLabel={dateLabel}
                 stories={stories}
+                format={outputMode}
                 emptyMessage={noPublications
                     ? 'No stories yet. Go back to Add and choose a newsletter.'
                     : 'Nothing new in this window yet. Go back to Configure to widen it.'}

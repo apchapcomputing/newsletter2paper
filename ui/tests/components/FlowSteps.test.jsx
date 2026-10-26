@@ -112,18 +112,26 @@ describe('OptionButtons', () => {
 })
 
 describe('front page', () => {
-    const article = (title, subtitle) => ({ articles: [{ title, subtitle }] })
+    const article = (...titles) => ({ articles: titles.map((title, i) => ({ id: `a${i}`, title, subtitle: i === 0 ? 'A deck' : undefined })) })
 
-    it('sets one story per newsletter that has something new, and skips the rest', () => {
-        const previews = { p1: article('Lead story', 'A deck'), p2: { articles: [] }, p3: article('Third') }
+    it('sets one story per article, newsletter by newsletter, and skips empty newsletters', () => {
+        const previews = { p1: article('Lead story', 'Second'), p2: { articles: [] }, p3: article('Third') }
         const stories = frontPageStories(
             [{ id: 'p1', name: 'Field Notes' }, { id: 'p2', name: 'Quiet Letter' }, { id: 'p3', title: 'Tidepool' }],
             (id) => previews[id]
         )
         expect(stories).toEqual([
-            { id: 'p1', headline: 'Lead story', deck: 'A deck', publication: 'Field Notes' },
-            { id: 'p3', headline: 'Third', deck: undefined, publication: 'Tidepool' },
+            { id: 'p1:a0', headline: 'Lead story', deck: 'A deck', publication: 'Field Notes' },
+            { id: 'p1:a1', headline: 'Second', deck: undefined, publication: 'Field Notes' },
+            { id: 'p3:a0', headline: 'Third', deck: 'A deck', publication: 'Tidepool' },
         ])
+    })
+
+    it('counts and lays out every article, not just two columns', () => {
+        const stories = Array.from({ length: 7 }, (_, i) => ({ id: `s${i}`, headline: `Story ${i}`, publication: i < 4 ? 'A' : 'B' }))
+        const { container } = render(<FrontPagePreview title="T" dateLabel="d" stories={stories} emptyMessage="" />)
+        expect(container.textContent).toContain('7 stories')
+        expect(container.querySelectorAll('.n2p-story')).toHaveLength(7)
     })
 
     it('renders the lead, bylines and a story count', () => {
@@ -143,6 +151,19 @@ describe('front page', () => {
         expect(container.textContent).toContain('By Field Notes')
         expect(container.textContent).toContain('2 stories')
         expect(container.querySelectorAll('.n2p-frontpage__reg')).toHaveLength(4)
+    })
+
+    it('shows the essay layout when essay is the chosen format', () => {
+        const stories = [
+            { id: 'a', headline: 'Opening piece', deck: 'Some words', publication: 'A' },
+            { id: 'b', headline: 'Second piece', publication: 'B' },
+        ]
+        const { container } = render(<FrontPagePreview title="T" dateLabel="d" stories={stories} emptyMessage="" format="essay" />)
+        expect(screen.getByRole('img', { name: 'Preview of the opening page of T' })).toBeInTheDocument()
+        expect(container.querySelector('.n2p-essay')).not.toBeNull()
+        expect(container.querySelector('.n2p-cols')).toBeNull()
+        expect(container.textContent).toContain('2 pieces')
+        expect(container.textContent).toContain('+ 1 more piece to follow')
     })
 
     it('says so when there is nothing to print', () => {

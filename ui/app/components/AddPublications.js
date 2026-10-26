@@ -1,12 +1,14 @@
 'use client'
 
 import { useState, useImperativeHandle, forwardRef } from 'react'
-import { Tooltip, CircularProgress } from '@mui/material'
+import { Tooltip, CircularProgress, Checkbox, FormControlLabel } from '@mui/material'
 import ImageIcon from '@mui/icons-material/Image'
 import HideImageIcon from '@mui/icons-material/HideImage'
+import ExpandMoreIcon from '@mui/icons-material/ExpandMore'
+import ExpandLessIcon from '@mui/icons-material/ExpandLess'
 import { useSelectedPublications } from '../../contexts/useSelectedPublications'
 import AddUrlModal from './AddUrlModal'
-import ArticlePreviewList from './ArticlePreviewList'
+import ArticlePreviewList, { ArticleList } from './ArticlePreviewList'
 import PullQuote from './PullQuote'
 import logger from '../../utils/logger'
 
@@ -19,6 +21,16 @@ const authorLine = (title, author) => (author && squash(author) !== squash(title
 // Step 1: choose the newsletters. Each one reads as a byline with the articles it would print.
 const AddPublications = forwardRef(({ onOpenSearch, onSaveIssue, isPopulatingPublications = false, previews, windowLabel }, ref) => {
     const { selectedPublications, removePublication, toggleRemoveImages } = useSelectedPublications()
+
+    // One switch for the whole paper; each row's own toggle can still differ.
+    const allImagesRemoved = selectedPublications.length > 0 && selectedPublications.every(pub => pub.remove_images === true)
+    const someImagesRemoved = selectedPublications.some(pub => pub.remove_images === true) && !allImagesRemoved
+    const handleToggleAllImages = (event) => {
+        const target = event.target.checked
+        selectedPublications.forEach(pub => {
+            if (Boolean(pub.remove_images) !== target) toggleRemoveImages(pub.id || pub.name)
+        })
+    }
 
     const [isUrlModalOpen, setIsUrlModalOpen] = useState(false)
     const [openIds, setOpenIds] = useState(() => new Set())
@@ -84,6 +96,21 @@ const AddPublications = forwardRef(({ onOpenSearch, onSaveIssue, isPopulatingPub
                     <span className="n2p-sticker n2p-sticker--hot" aria-label={`${selectedPublications.length} selected`}>{selectedPublications.length}</span>
                 </div>
 
+                {selectedPublications.length > 0 && (
+                    <FormControlLabel
+                        control={
+                            <Checkbox
+                                checked={allImagesRemoved}
+                                indeterminate={someImagesRemoved}
+                                onChange={handleToggleAllImages}
+                                size="small"
+                            />
+                        }
+                        label="Remove images from all publications"
+                        slotProps={{ typography: { variant: 'body2' } }}
+                    />
+                )}
+
                 {selectedPublications.length > 0 ? (
                     <div className="n2p-pubs" aria-labelledby="in-issue-label" role="list">
                         {selectedPublications.map((publication, index) => {
@@ -91,10 +118,12 @@ const AddPublications = forwardRef(({ onOpenSearch, onSaveIssue, isPopulatingPub
                             const pubState = previews.previewFor(publication.id)
                             const removeImages = Boolean(publication.remove_images)
                             const isOpen = openIds.has(publication.id)
+                            const hasArticles = (pubState.articles?.length || 0) > 0
                             const author = authorLine(name, publication.publisher || publication.handle)
 
                             return (
                                 <div className={`n2p-pub${isOpen ? ' is-open' : ''}`} role="listitem" key={publication.id || index}>
+                                    <div className="n2p-pub__head">
                                     <div className="n2p-pub__main">
                                         <a href={publication.url} target="_blank" rel="noopener noreferrer">
                                             <b className="n2p-pub__name">{name}</b>
@@ -134,6 +163,13 @@ const AddPublications = forwardRef(({ onOpenSearch, onSaveIssue, isPopulatingPub
                                             ×
                                         </button>
                                     </div>
+
+                                    <span className={`n2p-pub__chev${hasArticles ? '' : ' is-empty'}`} aria-hidden="true">
+                                        {isOpen ? <ExpandLessIcon fontSize="small" /> : <ExpandMoreIcon fontSize="small" />}
+                                    </span>
+                                    </div>
+
+                                    <ArticleList publication={publication} articles={pubState.articles} expanded={isOpen} />
                                 </div>
                             )
                         })}

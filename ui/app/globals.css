@@ -21,6 +21,7 @@
   --secondary: var(--color-secondary);
   --on-secondary: var(--color-on-secondary);
   --secondary-soft: var(--color-secondary-soft);
+  --selected: var(--color-selected);
 
   --error: var(--color-error);
   --success: var(--color-success);
@@ -75,6 +76,7 @@
   --color-secondary: #a44200;
   --color-on-secondary: #fbf4ea;
   --color-secondary-soft: #fff4e6;
+  --color-selected: #c97932; /* 3.2:1 vs paper-raised; ink text 5:1 */
 
   --color-error: #9e2a2b;
   --color-success: #3f5f43;
