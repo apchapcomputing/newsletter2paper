@@ -64,7 +64,7 @@
 
 /* ---------- buttons ---------- */
 .n2p-btn{min-height:var(--touch-min);padding:var(--space-2) var(--space-4);font:700 15px/20px var(--font-display);text-transform:uppercase;background:var(--paper-raised);color:var(--ink);border:var(--border) solid var(--line);border-radius:0;box-shadow:var(--shadow-bevel-sm);cursor:pointer}
-.n2p-btn .n2p-btn__ar{color:var(--secondary)}
+.n2p-btn .n2p-btn__ar{color:var(--secondary);display:inline-block;font:700 1.5em/1 var(--font-sans);vertical-align:-.05em;transform:translateY(-.1em)}
 .n2p-btn--fill{background:var(--primary);color:var(--on-primary)}
 .n2p-btn--fill .n2p-btn__ar{color:var(--on-primary)}
 .n2p-btn:hover{transform:translate(-1px,-1px)}
@@ -89,7 +89,6 @@
 .n2p-pubs{border-top:1px solid var(--line)}
 .n2p-pub{border-bottom:1px solid var(--line)}
 .n2p-pub__head{position:relative;display:flex;flex-wrap:wrap;align-items:center;gap:var(--space-1) var(--space-3);padding:2px var(--space-3)}
-.n2p-pub__head:has(.n2p-pub__count:hover){background:var(--primary-soft)}
 .n2p-pub.is-open{background:var(--primary-soft)}
 .n2p-pub__main{flex:1 1 220px;min-width:0}
 .n2p-pub__main a{display:flex;flex-wrap:wrap;align-items:baseline;gap:0 var(--space-3);color:inherit;text-decoration:none}
@@ -99,13 +98,9 @@
 .n2p-pub__note{font:400 14px/20px var(--font-sans);color:var(--ink-muted)}
 .n2p-pub__note--error{color:var(--error)}
 .n2p-pub__count{display:inline-flex;align-items:center;min-height:var(--touch-min);padding:0;font:700 14px/20px var(--font-sans);color:var(--ink);background:none;border:0;cursor:pointer}
-/* The whole header toggles the row: the button's overlay covers it, the name link and tools sit above */
-.n2p-pub__count::after{content:"";position:absolute;inset:0}
-.n2p-pub__count:focus-visible{outline:none}
-.n2p-pub__count:focus-visible::after{outline:3px solid var(--ink);outline-offset:-3px}
+.n2p-pub__count:hover{text-decoration:underline;text-decoration-thickness:2px;text-underline-offset:3px}
 .n2p-pub__main,.n2p-pub__tools{position:relative;z-index:1}
-.n2p-pub__chev{display:grid;place-items:center;width:24px;flex:none;color:var(--ink)}
-.n2p-pub__chev.is-empty{visibility:hidden}
+.n2p-pub__chev.is-empty{visibility:hidden;pointer-events:none}
 .n2p-pub__tools{display:flex;align-items:center}
 .n2p-pub__retry{font:inherit;color:inherit;background:none;border:0;padding:0;text-decoration:underline;text-underline-offset:3px;cursor:pointer}
 .n2p-pub__retry:hover{color:var(--ink)}
@@ -119,8 +114,8 @@
 .n2p-art__date{font:inherit}
 .n2p-art__excerpt{margin:2px 0 0;font:400 14px/20px var(--font-sans);color:var(--ink-muted);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 .n2p-pub__x{width:var(--touch-min);height:var(--touch-min);flex:none;display:grid;place-items:center;font:700 20px/1 var(--font-sans);color:var(--ink);background:none;border:var(--border) solid transparent;border-radius:0;cursor:pointer}
-.n2p-pub__x:hover{border-color:var(--line)}
-.n2p-pub__x[aria-pressed="true"]{border-color:var(--line);background:var(--paper-raised)}
+.n2p-pub__x:hover{border-color:var(--line);background:var(--paper-sunk);transform:translate(-1px,-1px)}
+.n2p-pub__x:active{transform:translate(2px,2px)}
 
 /* ---------- stickers ---------- */
 .n2p-sticker{display:inline-block;padding:3px 8px;font:700 14px/16px var(--font-typewriter);letter-spacing:.08em;text-transform:uppercase;background:var(--paper-raised);color:var(--ink);border:var(--border) solid var(--line);box-shadow:var(--shadow-bevel-sm)}
@@ -164,7 +159,7 @@
 .n2p-halftone{height:84px;margin:0 0 6px;border:1px solid var(--line);background:radial-gradient(circle,var(--primary-deep) 38%,transparent 40%) 0 0/6px 6px,var(--primary-soft);-webkit-mask:linear-gradient(115deg,#000 20%,#000c 45%,#0006 75%,#0003);mask:linear-gradient(115deg,#000 20%,#000c 45%,#0006 75%,#0003)}
 @media (max-width:640px){.n2p-cols{grid-template-columns:1fr}.n2p-story-cols{column-count:1;border-left:0;border-top:1px solid var(--line);margin-top:10px}.n2p-story{padding:10px 0 0}.n2p-frontpage__name{font-size:28px}}
 
-@media (prefers-reduced-motion:reduce){.n2p-press.is-printing,.n2p-print[aria-busy="true"] .n2p-reg{animation:none}.n2p-step:hover,.n2p-btn:hover,.n2p-option:hover,.n2p-print:hover{transform:none}}
+@media (prefers-reduced-motion:reduce){.n2p-press.is-printing,.n2p-print[aria-busy="true"] .n2p-reg{animation:none}.n2p-step:hover,.n2p-btn:hover,.n2p-option:hover,.n2p-print:hover,.n2p-pub__x:hover{transform:none}}
 
 /* ---------- app layout (not in the design system's bundle) ---------- */
 .n2p-wrap{max-width:var(--content-max);margin:0 auto;padding-inline:max(16px,env(safe-area-inset-left,0px)) max(16px,env(safe-area-inset-right,0px));padding-block:var(--space-4) 0}

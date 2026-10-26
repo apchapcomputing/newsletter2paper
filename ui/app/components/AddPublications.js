@@ -164,9 +164,16 @@ const AddPublications = forwardRef(({ onOpenSearch, onSaveIssue, isPopulatingPub
                                         </button>
                                     </div>
 
-                                    <span className={`n2p-pub__chev${hasArticles ? '' : ' is-empty'}`} aria-hidden="true">
+                                    {/* Mouse shortcut for the "N articles" button, which is the accessible toggle */}
+                                    <button
+                                        type="button"
+                                        className={`n2p-pub__x n2p-pub__chev${hasArticles ? '' : ' is-empty'}`}
+                                        tabIndex={-1}
+                                        aria-hidden="true"
+                                        onClick={() => toggleOpen(publication.id)}
+                                    >
                                         {isOpen ? <ExpandLessIcon fontSize="small" /> : <ExpandMoreIcon fontSize="small" />}
-                                    </span>
+                                    </button>
                                     </div>
 
                                     <ArticleList publication={publication} articles={pubState.articles} expanded={isOpen} />
